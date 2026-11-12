@@ -23,6 +23,7 @@ struct MelPlayer {
   static constexpr int kRegimes = 8;
   double sr = 48000;
   SynthLane synth;
+  std::function<double(int,double)> tuning;
   DrumBank *bank = nullptr;     // shared with the drum player: one bank
   int kit = 0;                  // the bank's code for the melody voice that is on
   std::function<int(const double *, size_t, double, uint64_t)> begin;
@@ -63,7 +64,7 @@ struct MelPlayer {
     if (slide && en->from.empty()) slide = false;
     if (slide) slides++;
     PatchedVoice v;
-    bank->patch(*en, e.vel, e.accent, (double)e.midi, e.frame, sr, (uint64_t)now, v, durSec, slide ? (double)e.glideFrom : -1, 1.0, 0.0, slide ? e.glideFrames / sr : 0.0);
+    bank->patch(*en, e.vel, e.accent, (double)e.midi, e.frame, sr, (uint64_t)now, v, durSec, slide ? (double)e.glideFrom : -1, 1.0, 0.0, slide ? e.glideFrames / sr : 0.0, tuning ? tuning(e.midi,e.frameExact) : 0);
     const int h = begin(v.prog.data(), v.prog.size(), v.timeBase, v.startFrame);
     if (h < 0) { refused++; return; }
     voices++;

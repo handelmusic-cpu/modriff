@@ -27,6 +27,12 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       { at: 72000.75, note: 48, dur: 0.15, vel: 0.4, from: 67 },
       { at: 86400.25, note: 72, dur: 0.1, vel: 0.2, ...(part === 5 ? { note:-1, tones:[48,60,64,67] } : {}) }
     ] }));
+    cases.push({part:3, notes:[
+      {at:48000.25,note:60,tones:[60,64,67],dur:0.2,vel:0.8},
+      {at:52800.75,note:60,tones:[52,60,64,67],dur:0.1,vel:0.3,accent:true,slide:true,from:0.012},
+      {at:72000.25,note:62,tones:[62,66,69],dur:1,vel:1,accent:true,slide:true,from:-1},
+      {at:96000.75,note:48,tones:[48,55,60,64,67],dur:0.4,vel:0.5,from:-1}
+    ]});
     const out = await page.evaluate(async cases => {
       clearTimeout(clockTimer); const sr = 48000, backing = audioCtx;
       // Keep the already-built part buses on their real context while freezing
@@ -37,7 +43,7 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       _ensureAllPartBuses(ctx);
       const events = [];
       for (const c of cases) {
-        const part = {2:'bass',5:'arp',6:'melgen'}[c.part], trace = [];
+        const part = {2:'bass',3:'chord',5:'arp',6:'melgen'}[c.part], trace = [];
         const eng = Object.create(MS.Engine.prototype);
         eng.ready = true; eng.ctx = ctx; eng.asleep = false;
         eng.node = { port: { postMessage: m => trace.push({ kind:m.t === 'on' ? 'N' : m.t === 'off' ? 'R' : 'C', at:m.at, id:m.id, note:m.note, vel:m.vel || 0 }) } };
@@ -47,7 +53,12 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
           const m = { v:1, kind: n.tones ? 'chord' : 'note', part, id:1, note:n.note, at:n.at / sr, dur:n.dur,
             vel:n.vel, accent:!!n.accent, slide:!!n.slide, from:n.from == null ? null : n.from, tune:0, level:0.55, pan:-0.75,
             glideFrom:n.from == null ? null : n.from, glideTime:0.08, notes:n.tones, tunes:n.tones && n.tones.map(() => 0) };
+          if(c.part === 3) {
+            Object.assign(window._webParams, {'chord.sub':false,'chord.attack':0.025,'chord.strum':!!n.accent,'chord.strumSpread':0.12});
+            m.root = n.note; m.bass = null; m.dur = n.slide ? null : n.dur;
+          }
           window._webEngineSend ? window._webEngineSend(m) : window.modEngine.web(m);
+          if(c.part === 3 && n.slide && n.from >= 0) window.modEngine.web({v:1,kind:'release',part:'chord',at:(n.at / sr) + n.from});
         }
         events.push(trace);
       }
@@ -67,9 +78,9 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       window.msxApply = part => calls.push('patch:' + part);
       window._modNativeStripSync = part => calls.push('strip:' + part);
       window._modNativeFlush = () => calls.push('flush');
-      MODGRAPH.on = true; MODGRAPH.parts = {bass:true,melgen:true,arp:true};
+      MODGRAPH.on = true; MODGRAPH.parts = {bass:true,melgen:true,arp:true,chord:true};
       window._nsBank.have = {}; window._nsBank.bad = {};
-      const prepared = [await window._nsBank.ensureBass(), await window._nsBank.ensureArp(), await window._nsBank.ensureMel()];
+      const prepared = [await window._nsBank.ensureBass(), await window._nsBank.ensureArp(), await window._nsBank.ensureMel(), await window._nsBank.ensureChord([])];
       const nEntries = entries.length;
       const started = [await window._nsBass.start(250), await window._nsArp.start(250), await window._nsMel.start(250)];
       const kept = await window._nsBank.ensureMel();
@@ -78,7 +89,7 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       window._modNativeEnsureProc = async () => false;
       const noProcessor = await window._nsBank.ensureBass();
       return {events, starts, started, entries:entries.slice(0,nEntries), calls, prepared, kept, oldHost, noProcessor,
-        scores:[window._blNativeScore(),window._arpNativeScore(),window._mlNativeScore()], kit:[window._nsKitCode('bass:modsynth'),window._nsKitCode('arp:modsynth'),window._nsKitCode('mel:modsynth')]};
+        scores:[window._blNativeScore(),window._arpNativeScore(),window._mlNativeScore()], kit:[window._nsKitCode('bass:modsynth'),window._nsKitCode('arp:modsynth'),window._nsKitCode('mel:modsynth'),window._nsKitCode('chord:modsynth')]};
     }, cases);
     const flat = [cases.length];
     for (const c of cases) { flat.push(c.part, c.notes.length); for (const n of c.notes) flat.push(n.at,n.note,n.dur*48000,n.vel,n.accent?1:0,n.slide?1:0,n.from==null?-1:n.from,(n.tones||[]).length,...(n.tones||[])); }
@@ -91,7 +102,7 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
     const normalize = trace => { const ids = new Map(); return trace.map(e => { if (!ids.has(e.id)) ids.set(e.id,ids.size+1); return {...e,id:ids.get(e.id)}; }); };
     cases.forEach((c,i) => ok(JSON.stringify(normalize(native[i]||[])) === JSON.stringify(normalize(out.events[i])) && out.events[i].length >= 10,
       'part ' + c.part + ': every note and release matches real msxVoice/Engine messages (' + out.events[i].length + ' messages)', {native:normalize(native[i]||[]),page:normalize(out.events[i])}));
-    ok(out.prepared.every(r => r.built === 1 && r.failed.length === 0) && out.entries.length === 3 && out.entries.every((e,i) => e[0] === 2 && e[1] === [2,5,6][i] && e[2] === out.kit[i] && e[3] === -1), 'all three preparation paths publish a Processor descriptor', out);
+    ok(out.prepared.every(r => r.built === 1 && r.failed.length === 0) && out.entries.length === 4 && out.entries.every((e,i) => e[0] === 2 && e[1] === [2,5,6,3][i] && e[2] === out.kit[i] && e[3] === -1), 'all four preparation paths publish a Processor descriptor', out);
     ok(out.started.every(s => s.ok) && out.starts.length === 3 && out.starts.every((s,i) => s.kit === out.kit[i]), 'developer start entries choose the Processor-backed bank codes', out.starts);
     ok(out.scores.every(s => s.ok), 'the scores accept the three supported patch parts', out.scores.map(s=>s.why));
     ok(out.kept.kept === 1 && out.calls.includes('attach:melgen') && out.calls.includes('patch:melgen'), 'cached descriptors keep the live patch-control and strip path', out);

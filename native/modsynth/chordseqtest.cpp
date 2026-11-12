@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <sstream>
+#include <string>
 #include <cstdlib>
 #include <vector>
 #include "chordplay.h"
@@ -55,16 +57,29 @@ int main(int argc, char **argv) {
   }
   modsynth::ChordPlayer pl;
   pl.sr = SR; pl.bank = &bank; pl.kit = (int)d[k++];
+  const bool subOnly = getenv("SUB_ONLY") && std::string(getenv("SUB_ONLY")) == "1";
+  if (subOnly) {
+    const double desc[] = {2,3,(double)pl.kit,-1,1,0.025}; if (!bank.put(desc,6)) return 2;
+    pl.synth.send = [](const modsynth::SynthEvent &){ return true; };
+  }
   pl.begin = [&](const double *prog, size_t n, double base, uint64_t start) { return b.begin(prog, n, base, start); };
   pl.edit = [&](int h, const double *inc, size_t n) {
     if (getenv("OPS_DEBUG")) { printf("engine edit on %d:", h); for (size_t i = 0; i < n; i += 6) printf(" [%g,%g,%g,%g,%.5f,%g]", inc[i], inc[i+1], inc[i+2], inc[i+3], inc[i+4], inc[i+5]); printf("\n"); }
     return !getenv("NOEDIT") && b.edit(h, inc, n); };
+  modsynth::Tuning tuning;
+  if (const char *raw = getenv("TUNING_TABLE")) {
+    std::string values(raw); std::replace(values.begin(),values.end(),',',' '); std::istringstream in(values);
+    for (double &c:tuning.table) if (!(in>>c)) return 2;
+    tuning.enabled = true;
+  }
+  pl.tuning = &tuning; pl.glide = getenv("GLIDE_TEST") != nullptr;
+  if (getenv("GLIDE_TIME")) pl.glideTime = std::atof(getenv("GLIDE_TIME"));
   const int nc = (int)d[k++];
   long lastEnd = 0, firstClear = 0;
   for (int c = 0; c < nc; c++) {
     modsynth::ChordEvent e; const int nn = (int)d[k++];
     for (int i = 0; i < nn; i++) e.notes.push_back((int)d[k++]);
-    e.subNote = (int)d[k++]; e.vel = d[k++]; e.durSec = d[k++]; e.onsetExact = d[k++];
+    e.subNote = (int)d[k++]; if (getenv("TUNING_TEST")) e.rootNote = (int)d[k++]; e.vel = d[k++]; e.durSec = d[k++]; e.onsetExact = d[k++];
     e.settings.strum = d[k++] != 0; e.settings.spread = d[k++]; e.settings.width = d[k++]; e.settings.sub = d[k++] != 0;
     e.hold = d[k++] != 0; e.holdSec = d[k++];
     const size_t len = (size_t)d[k++];
@@ -73,7 +88,7 @@ int main(int argc, char **argv) {
     const double *ed = d.data() + k; k += ned;
     // the earliest voice the engine will begin for it: the truth is begun there
     std::vector<modsynth::ComposedVoice> vs;
-    if (!modsynth::ChordComposer::compose(bank, pl.kit, e.notes, e.subNote, e.vel, e.durSec, e.onsetExact, e.settings, SR, 0, vs, e.hold)) { printf("SEQ miss 0 0 0 0 0 0\nWORST 0 0\n"); return 0; }
+    if (!modsynth::ChordComposer::compose(bank, pl.kit, e.notes, e.subNote, e.vel, e.durSec, e.onsetExact, e.settings, SR, 0, vs, e.hold, subOnly, &tuning, e.rootNote)) { printf("SEQ miss 0 0 0 0 0 0\nWORST 0 0\n"); return 0; }
     uint64_t minStart = ~0ull, maxStart = 0;
     for (auto &v : vs) { minStart = std::min(minStart, v.v.startFrame); maxStart = std::max(maxStart, v.v.startFrame); }
     const int ha = a.begin(prog, len, (double)minStart / SR, minStart);

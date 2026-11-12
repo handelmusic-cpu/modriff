@@ -32,10 +32,10 @@ static NSData *bytes(const std::vector<double> &d) { return [NSData dataWithByte
 
 // A synthetic one-note chord for a pitch (part 3: a tone that is one oscillator and a gain, no sub; part 4, the same held, with its release).
 // `life`: seconds the voice would sound if nothing stopped it.
-static std::vector<double> chordNoteEntry(int pitch, bool hold, double life = 1.5) {
+static std::vector<double> chordNoteEntry(int pitch, bool hold, double life = 1.5, bool subOnly = false) {
   std::vector<double> p = {0x6d6f6467, SR, 3, 0};
   const double stop = 0.048 + life, amp = 0.5;
-  p.insert(p.end(), {8, 5, 2, 0, 0, stop, 220, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
+  p.insert(p.end(), {8, subOnly ? 11.0 : 5.0, 2, 0, 0, stop, 220, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
   size_t amp_i = 0, stop_i = 0; for (size_t i = 0; i < p.size(); i++) { if (p[i] == amp) amp_i = i; if (std::fabs(p[i] - stop) < 1e-12) stop_i = i; }
   std::vector<double> e = {1, hold ? 4.0 : 3.0, 9, (double)pitch, 1, 0.048, 0.048, 0.8, (double)p.size()};
   e.insert(e.end(), p.begin(), p.end());
@@ -43,7 +43,8 @@ static std::vector<double> chordNoteEntry(int pitch, bool hold, double life = 1.
   e.insert(e.end(), {0, 0});                                                            // no chokes, no floors
   e.insert(e.end(), {(double)pitch, life, 0, 0, 0, 0});                                  // refPitch, refDur, refFrom, no length, glide or held slots
   e.insert(e.end(), {12, 2, 0, 5, 0, 0, 0,  2, 0, 1, 0, 0.022, 0});                     // the stop of the chord before: hold the gain, fade it
-  e.insert(e.end(), {1, (double)amp_i, 0, -1, 0, 1, (double)stop_i, (double)stop_i, 1}); // chord block: level slot; no times; no panner; no sub; the tone's source
+  if (subOnly) e.insert(e.end(), {0, 0, -1, 1, (double)stop_i, (double)stop_i, 1, 0});
+  else e.insert(e.end(), {1, (double)amp_i, 0, -1, 0, 1, (double)stop_i, (double)stop_i, 1}); // chord block: level slot; no times; no panner; no sub; the tone's source
   e.insert(e.end(), {0});                                                               // no velocity curve
   // the release of a held chord: no sooner than 45 ms after the voice began; hold the gain, fall in 100 ms
   if (hold) e.insert(e.end(), {0.045, 12, 2, 0, 5, 0, 0, 0,  2, 0, 1, 0, 0.1, 0});
@@ -242,8 +243,159 @@ static void testSynthSequencers() {
 
 }
 
+static void testChordPatch() {
+  ModEngineHost *a = fresh(), *b = fresh();
+  for (ModEngineHost *g in @[a,b]) {
+    [g ensurePart:0]; [g ensureGraphPart:0];
+    // Leave the Processor alive and accepting patch notes, with its oscillators
+    // silent so the separate sub's trim routing can be compared sample for sample.
+    for (int index : {13,29,45,69,72,75}) [g post:@{@"t":@"p", @"part":@0, @"i":@(index), @"v":@0}];
+    CHECK([g seqPutBankEntry:bytes(std::vector<double>{2,3,9,-1,1,0.025})], "a chord Processor descriptor carries its attack");
+    CHECK([g seqPutBankEntry:bytes(chordNoteEntry(60,false,1.5,true))], "the separate sub is banked without any patch-tone graph");
+    const std::vector<double> score = {1,16,-1,0,1,1,0.8,0.3,0,0,0,1,60,3,60,64,67,1,0,1,0};
+    [g seqSetChordScore:bytes(score)];
+    [g post:@{@"t":@"strip", @"part":@0, @"i":@0, @"v":g == a ? @0.15 : @1}];
+    CHECK([g seqChordStartWithBpm:120 leadMs:300 alignToDrums:NO kit:9], "the hybrid chord starts with only its sub pitch banked");
+  }
+  std::vector<float> al(240), ar(240), bl(240), br(240); double error = 0, peak = 0;
+  for (int t = 0; t < 1000; t += 5) {
+    [a renderInto:al.data() right:ar.data() frames:240]; [b renderInto:bl.data() right:br.data() frames:240];
+    for (int i = 0; i < 240; i++) { error = std::max(error,std::fabs((double)al[i]-bl[i])); error = std::max(error,std::fabs((double)ar[i]-br[i])); peak = std::max(peak,(double)std::fabs(al[i])); }
+    usleep(5000);
+  }
+  CHECK(peak > 0.01 && error < 1e-7, "the sub bypasses patch calibration before chord effects/meters (peak %.4f, trim comparison error %.9f)", peak,error);
+  CHECK([[a seqMirror][@"chord"][@"voices"] intValue] == 4 && a.notesOn == 3, "one graph sub and three Processor tones start together, with no missing tone bank");
+  CHECK([a killGraphVoices:0x1f fadeMs:22],"melodic Panic accepts the chord and its separate sub");
+  double cutPeak=0,controlPeak=0;
+  for(int t=0;t<200;t+=5){[a renderInto:al.data() right:ar.data() frames:240];[b renderInto:bl.data() right:br.data() frames:240];if(t>=100)for(int j=0;j<240;j++){cutPeak=std::max(cutPeak,(double)std::abs(al[j]));controlPeak=std::max(controlPeak,(double)std::abs(bl[j]));}usleep(5000);}
+  CHECK(cutPeak<1e-6 && controlPeak>.01,"Panic cuts a sounding native sub while the uncut control still sounds (%.9g / %.4f)",cutPeak,controlPeak);
+  [a seqChordStop]; [b seqChordStop]; run(a,500); run(b,500);
+  CHECK([[b seqMirror][@"chord"][@"stops"] intValue] >= 1 && [a renderOfflinePeakForPart:0 frames:4096] < 0.00001,
+    "chord Stop cuts its graph sub and cancels/releases the patch voices");
+}
+
+static std::vector<double> editSong(int root) {
+  return {5,16,0,0,0,0,0,1, 0,0,1, 4,0,0,0,(double)root,-1,-1,-1,0,0,-1,3,0,4,7,
+    0,-1,-1,-1,0,4,2,140,0,2,7, 4,1,.15,0,0,0};
+}
+static void testTransportOwnership() {
+  ModEngineHost *h=fresh();[h seqSetObserverRoutes:bytes({}) localMask:0];
+  std::vector<double> bs={1,1,0,1,0,0,3,0,4,7,7,0,2,4,5,7,9,11,.7,0,1,1,.5,14,.28,18,0,0,0,1,1,0,2,1,0,0,0,0,0};
+  [h seqSetDrumScore:bytes(score())];[h seqSetBassScore:bytes(bs)];[h seqSetArpScore:bytes(arpScore(0,1))];[h seqSetArpNotes:bytes({60,64,67})];[h seqSetMelScore:bytes(melScore(false,{{1,4,4,1,{}}}))];[h seqSetSong:bytes(editSong(60))];
+  const std::vector<double> opts={1,120,1,1,1,1,1,1,0,1,7,7,7,0,0,0};
+  CHECK([h seqTransportStart:bytes(opts) token:100],"whole-band native transport starts after validation");
+  NSDictionary *m=[h seqMirror];const double first=[m[@"firstFrame"] doubleValue];
+  CHECK([m[@"transport"][@"owned"] boolValue] && first==[m[@"bass"][@"firstFrame"] doubleValue] && first==[m[@"arp"][@"firstFrame"] doubleValue] && first==[m[@"mel"][@"firstFrame"] doubleValue] && first==[m[@"song"][@"firstFrame"] doubleValue],"drums, bass, arp, melody and song share one uncommitted first bar");
+  CHECK([h seqTransportStart:bytes(opts) token:100] && [[h seqMirror][@"firstFrame"] doubleValue]==first,"retrying the same native claim cannot restart its epoch");
+  CHECK(![h seqTransportStop:99] && [[h seqMirror][@"transport"][@"owned"] boolValue],"a stale Stop cannot silence a newer owner");
+  run(h,650);CHECK([h seqTransportStop:101],"Stop takes the entire native band");
+  NSDictionary *stopped=[h seqMirror];run(h,250);NSDictionary *later=[h seqMirror];
+  CHECK(![later[@"running"] boolValue] && ![later[@"bass"][@"running"] boolValue] && ![later[@"arp"][@"running"] boolValue] && ![later[@"mel"][@"running"] boolValue] && ![later[@"song"][@"running"] boolValue] && ![later[@"transport"][@"owned"] boolValue] && [later[@"events"] intValue]==[stopped[@"events"] intValue],"all native clocks stop and no new drum event appears afterward");
+  CHECK(![h seqTransportStart:bytes(opts) token:100],"a cancelled start cannot revive after its Stop");
+  CHECK([h seqTransportStop:200] && ![h seqTransportStart:bytes(opts) token:199],"Stop arriving before a delayed Start cancels it too");
+  auto bad=opts;bad[15]=99;CHECK(![h seqTransportStart:bytes(bad) token:201] && ![[h seqMirror][@"running"] boolValue],"invalid song place refuses the whole claim without partially starting drums");
+  CHECK(![h seqTransportStart:bytes({1}) token:201] && ![h seqTransportStop:NAN],"malformed transport commands are rejected");
+  // A note committed into the lookahead must still be cancellable before its
+  // onset: counting only stopped clocks would miss this stray-note regression.
+  ModEngineHost *g=fresh();[g ensureGraphPart:4];[g seqSetDrumScore:bytes(score())];[g seqSetObserverRoutes:bytes({}) localMask:(1<<5)];[g seqPutBankEntry:bytes(arpEntry(7,0,.3))];[g seqSetArpScore:bytes(arpScore(0,1))];[g seqSetArpNotes:bytes({60})];
+  [g seqTransportStart:bytes({1,120,1,1,1,0,1,0,0,0,0,7,0,0,0,0}) token:1];run(g,400);const int queued=[[g seqMirror][@"arp"][@"voices"] intValue];[g seqTransportStop:2];
+  float peak=0;std::vector<float> l(240),r(240);for(int t=0;t<700;t+=5){[g renderInto:l.data() right:r.data() frames:240];for(int j=0;j<240;j++)peak=std::max(peak,std::max(std::abs(l[j]),std::abs(r[j])));usleep(5000);}
+  CHECK(queued>0 && peak<1e-7,"Stop cancels committed future graph notes (peak %.9g)",peak);
+}
+
+static void testChartEdits() {
+  for(bool drums:{false,true}) {
+    ModEngineHost *h=fresh();[h seqSetObserverRoutes:bytes({}) localMask:0];
+    std::vector<double> bs={1,1,0,1,1,0,3,0,4,7,7,0,2,4,5,7,9,11,.7,0,1,1,.5,14,.28,18,0,0,0,1,1,0,2,1,0,0,0,0,0};
+    [h seqSetBassScore:bytes(bs)]; [h seqBassStartWithBpm:120 rate:1 leadMs:100 alignToDrums:NO kit:7 seed:1];
+    if(drums){[h seqSetDrumScore:bytes(score())];[h seqStartWithBpm:120 rate:1 leadMs:100 seed:1];}
+    [h seqSetSong:bytes(editSong(60))];[h seqSongStartWithLeadMs:100 alignToDrums:drums section:0 slot:0 pass:3];run(h,250);
+    const double revision=[[h seqMirror][@"song"][@"revision"] doubleValue];
+    CHECK([h seqSetSong:bytes(editSong(65))],"running chart edit accepted");
+    NSDictionary *pending=[h seqMirror][@"song"]; const double at=[pending[@"editFrame"] doubleValue];
+    [h seqSetSong:bytes(editSong(67))];
+    CHECK([pending[@"editPending"] boolValue] && [[h seqMirror][@"song"][@"editFrame"] doubleValue]==at,"repeated edits retain their original next-bar boundary");
+    run(h,800);NSDictionary *early=[h seqMirror];
+    CHECK([early[@"song"][@"revision"] doubleValue]==revision && [early[@"bass"][@"lastMidi"] intValue]%12==0,"old chord remains current before the staged bar");
+    run(h,1400);NSDictionary *after=[h seqMirror];
+    CHECK(![after[@"song"][@"editPending"] boolValue] && [after[@"song"][@"chartEdits"] intValue]==1 && [after[@"song"][@"revision"] doubleValue]==revision+1 && [after[@"song"][@"pass"] intValue]==3 && [after[@"bass"][@"lastMidi"] intValue]%12==7,"latest edit applies once at the bar, preserving pass and native followers");
+    NSDictionary *stream=[h seqObserveAfter:0 limit:4096];NSData *data=[[NSData alloc] initWithBase64EncodedString:stream[@"events"] options:0];const double *d=(const double *)data.bytes;bool exact=true;int old=0,newN=0;
+    for(size_t i=0;i<data.length/sizeof(double);i+=7) if(d[i+1]==1 && d[i+2]==2){if(d[i+5]<at){old++;exact=exact && ((int)d[i+3]%12==0);}else{newN++;exact=exact && ((int)d[i+3]%12==7);}}
+    CHECK(exact && old>0 && newN>0,"retained bass events switch roots at the exact staged frame with%s drums",drums?"":"out");
+    CHECK(![h seqSetBassScore:bytes(bs) revision:revision] && ![h seqSetMelScore:bytes(melScore(false,{{1,4,4,1,{}}})) revision:revision],"late generated score replies from the old chart are refused atomically");
+    CHECK(![h seqSetBassPending:bytes({0}) revision:revision] && ![h seqSetMelPending:bytes({0}) revision:revision],"late pending-line replies are refused too");
+    [h seqSetSong:bytes(editSong(62))];[h seqSongStop];
+    CHECK(![[h seqMirror][@"song"][@"editPending"] boolValue],"Stop discards a queued chart edit");
+  }
+}
+
+static void testObservers() {
+  ModEngineHost *h=fresh(); [h ensureGraphPart:4];
+  CHECK([h seqSetObserverRoutes:bytes({0,0,36}) localMask:0], "observer routes and external-only mask accepted");
+  CHECK(![h seqSetObserverRoutes:bytes({0,0,NAN}) localMask:127], "invalid drum MIDI routes refused atomically");
+  [h seqPutBankEntry:bytes(arpEntry(7,0,.3))];
+  [h seqSetArpScore:bytes(arpScore(0,2))];
+  [h seqSetArpNotes:bytes({60,64,67})];
+  [h seqArpStartWithBpm:120 leadMs:100 alignToDrums:NO kit:7 seed:1];
+  run(h,600);
+  NSDictionary *a=[h seqObserveAfter:0 limit:2],*again=[h seqObserveAfter:0 limit:2];
+  CHECK([a[@"events"] isEqual:again[@"events"]] && [a[@"cursor"] intValue]==2, "native observer pages can be retried without destructive reads");
+  CHECK([a[@"clockReady"] boolValue] && std::isfinite([a[@"clockOffsetMs"] doubleValue]), "observer includes the render frame / wall-clock mapping");
+  CHECK([[h seqMirror][@"arp"][@"voices"] intValue]==0 && [a[@"latest"] intValue]>=2, "external-only arp still emits every musical event without local voices");
+  [h seqSetObserverRoutes:bytes({0,0,36}) localMask:127]; run(h,300);
+  CHECK([[h seqMirror][@"arp"][@"voices"] intValue]>0,"restoring local sound starts native voices again");
+  [h seqArpStop];
+  NSDictionary *all=[h seqObserveAfter:0 limit:4096];
+  NSData *data=[[NSData alloc] initWithBase64EncodedString:all[@"events"] options:0];
+  const double *d=(const double *)data.bytes; const size_t n=data.length/sizeof(double);
+  CHECK(n>=7 && d[n-6]==2 && d[n-5]==5,"Stop appends the arp cut after its retained notes");
+  CHECK([all[@"lost"] intValue]==0 && [all[@"cursor"] isEqual:all[@"latest"]],"observer drain reaches the latest event without loss");
+  [h seqRecord:YES capacity:1]; CHECK([[h seqObserveAfter:0 limit:4096][@"events"] isEqual:all[@"events"]],"diagnostic recording cannot clear musical events");
+  ModEngineHost *g=fresh(); [g seqSetObserverRoutes:bytes({0,0,36,0,1,42}) localMask:0];
+  [g seqSetDrumScore:bytes(score())];
+  std::vector<double> bs={1,1,0,1,0,0,3,0,4,7,7,0,2,4,5,7,9,11,.7,0,1,1,.5,14,.28,18,0,0,0,1,1,0,2,1,0,0,0,0,0};
+  [g seqSetBassScore:bytes(bs)]; [g seqSetMelScore:bytes(melScore(false,{{1,4,4,1,{{7,4}}}}))];
+  [g seqSetArpScore:bytes(arpScore(6,1))];[g seqSetArpNotes:bytes({60,64,67})];
+  [g seqSetChordScore:bytes({1,16,-1,0,1,1,.8,.3,0,0,0,0,60,3,60,64,67,1,0,1,0,-8,60})];
+  [g seqStartWithBpm:120 rate:1 leadMs:100 seed:1];
+  [g seqBassStartWithBpm:120 rate:1 leadMs:100 alignToDrums:NO kit:7 seed:1];
+  [g seqMelStartWithBpm:120 rate:1 leadMs:100 alignToDrums:NO kit:7 seed:1];
+  [g seqArpStartWithBpm:120 leadMs:100 alignToDrums:NO kit:7 seed:1];
+  [g seqChordStartWithBpm:120 leadMs:100 alignToDrums:NO kit:7];run(g,600);
+  NSDictionary *band=[g seqObserveAfter:0 limit:4096],*mirror=[g seqMirror];
+  NSData *raw=[[NSData alloc] initWithBase64EncodedString:band[@"events"] options:0]; const double *ev=(const double *)raw.bytes;
+  int counts[7]={}; bool gm=true,arpGate=true;
+  for(size_t i=0;i<raw.length/sizeof(double);i+=7) if(ev[i+1]==1) {
+    const int p=(int)ev[i+2]; counts[p]++;
+    if(p==0) gm=gm && (ev[i+3]==36 || ev[i+3]==42);
+    if(p==5) arpGate=arpGate && ev[i+4]==85 && ev[i+6]>ev[i+5];
+  }
+  CHECK(counts[0]==[mirror[@"events"] intValue] && counts[2]==[mirror[@"bass"][@"notes"] intValue] && counts[6]==[mirror[@"mel"][@"scheduled"] intValue] && counts[5]==3*[mirror[@"arp"][@"scheduled"] intValue] && counts[3]==4 && counts[2]>0 && counts[6]>0,
+    "all native sources retained: drums %d, bass %d, poly melody %d, block arp %d, chord+root %d",counts[0],counts[2],counts[6],counts[5],counts[3]);
+  CHECK(gm && arpGate,"native events retain configured GM notes and block velocities/gates");
+
+}
+
+static void testIntonation() {
+  ModEngineHost *h=fresh(); std::vector<double> table(12,0); table[4]=-13.69;
+  CHECK([h seqSetIntonation:bytes(table) pure:YES glide:YES glideTime:0 root:5], "Pure table and zero-duration glide accepted");
+  CHECK(![h seqSetIntonation:bytes({0}) pure:YES glide:NO glideTime:.15 root:0], "truncated Pure table refused");
+  table[2]=NAN; CHECK(![h seqSetIntonation:bytes(table) pure:YES glide:NO glideTime:.15 root:0], "nonfinite tuning refused"); table[2]=0;
+  CHECK(![h seqSetIntonation:bytes(table) pure:YES glide:NO glideTime:-1 root:0] && ![h seqSetIntonation:bytes(table) pure:YES glide:NO glideTime:.15 root:12], "invalid glide and root refused");
+  CHECK([h seqSetIntonation:bytes(table) pure:NO glide:NO glideTime:.15 root:-1], "Equal and no-root reset accepted");
+}
+
 int main() {
   @autoreleasepool {
+    if (getenv("MODRIFF_TRANSPORT_ONLY")) { testTransportOwnership(); return failed ? 1 : 0; }
+    testTransportOwnership();
+    if (getenv("MODRIFF_CHART_EDIT_ONLY")) { testChartEdits(); return failed ? 1 : 0; }
+    testChartEdits();
+    if (getenv("MODRIFF_OBSERVER_ONLY")) { testObservers(); return failed ? 1 : 0; }
+    testObservers();
+    if (getenv("MODRIFF_INTONATION_ONLY")) { testIntonation(); return failed ? 1 : 0; }
+    testIntonation();
+    if (getenv("MODRIFF_CHORD_PATCH_ONLY")) { testChordPatch(); return failed ? 1 : 0; }
     if (getenv("MODRIFF_SYNTH_ONLY")) { testSynthSequencers(); return failed ? 1 : 0; }
     if (getenv("MODRIFF_LIVE_ONLY")) { testLiveChords(); return failed ? 1 : 0; }
     ModEngineHost *h = fresh();
@@ -595,7 +747,7 @@ int main() {
       CHECK([sg[@"section"] intValue] == 1 && [sg[@"slot"] intValue] == 0, "the queued Next was taken at the end of the pass (now in section %d)", [sg[@"section"] intValue]);
       CHECK([m[@"bass"][@"windows"] intValue] >= 2, "and the bass has its chord windows: %d", [m[@"bass"][@"windows"] intValue]);
       NSArray *ask = sg[@"ask"];
-      CHECK(ask.count == 9 && [ask[0] intValue] == [sg[@"chords"] intValue] && [ask[5] doubleValue] > [ask[4] doubleValue] && [ask[6] intValue] >= 0 && [ask[6] intValue] <= 1 && [ask[7] intValue] >= 0,
+      CHECK(ask.count == 10 && [ask[0] intValue] == [sg[@"chords"] intValue] && [ask[5] doubleValue] > [ask[4] doubleValue] && [ask[6] intValue] >= 0 && [ask[6] intValue] <= 1 && [ask[7] intValue] >= 0,
             "the mirror asks the page about the chord that follows: chord %d now (section %d chord %d), %d/%d next, ends %.0f frames after it began", [ask[0] intValue], [ask[1] intValue], [ask[2] intValue], [ask[6] intValue], [ask[7] intValue], [ask[5] doubleValue] - [ask[4] doubleValue]);
       CHECK([m[@"sampleRate"] doubleValue] == SR, "and says its sample rate (%.0f)", [m[@"sampleRate"] doubleValue]);
       [g seqSongSetCapo:2];
@@ -861,6 +1013,7 @@ int main() {
 
     testLiveChords();
     testSynthSequencers();
+    testChordPatch();
 
     // The melody generator through the host: the same thread and bank, no page. A synthetic melody voice (part 6), a line of a note every step with a chord on the first, started with the
     // drums' bar line. Then in a song: armed, it starts with the song on the same bar line and, with Follow on, plays each chord's tones (the line is written over C: over F it is F) and

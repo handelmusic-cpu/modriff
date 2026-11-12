@@ -82,6 +82,7 @@ class SongVoicer {
     ChordEvent &e = a.e;
     if (vch.bass >= 0) e.notes.push_back(vch.bass);
     for (int n : vch.notes) e.notes.push_back(n);
+    e.rootNote = vch.root;
     e.subNote = vch.bass >= 0 ? vch.bass : vch.root;
     e.vel = std::max(0.0, std::min(1.0, cfg.velBase));
     e.onsetExact = frame;
@@ -129,6 +130,7 @@ class SongVoicer {
     ChordEvent &e = a.e;
     if (vch.bass >= 0) e.notes.push_back(vch.bass);
     for (int n : vch.notes) e.notes.push_back(n);
+    e.rootNote = vch.root;
     e.subNote = vch.bass >= 0 ? vch.bass : vch.root;
     e.vel = std::max(0.0, std::min(1.0, cfg.velBase * velMul));
     e.onsetExact = a.onset;

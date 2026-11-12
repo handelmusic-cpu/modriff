@@ -69,7 +69,12 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTempoRamp", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqIntonation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqLiveChord", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqTransportStart", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqTransportStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqObserve", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqObserverRoutes", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqMirror", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSong", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongStart", returnType: CAPPluginReturnPromise),
@@ -846,7 +851,38 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("seqBassScore needs score")
             return
         }
-        call.resolve(["ok": host.seqSetBassScore(data)])
+        call.resolve(["ok": host.seqSetBassScore(data, revision:call.getDouble("revision") ?? -1)])
+    }
+
+    @objc func seqTransportStart(_ call: CAPPluginCall) {
+        guard let host = host, let b64 = call.getString("options"), let options = Data(base64Encoded:b64), let token = call.getDouble("token") else { call.reject("transport options required"); return }
+        call.resolve(["ok":host.seqTransportStart(options, token:token)])
+    }
+    @objc func seqTransportStop(_ call: CAPPluginCall) {
+        guard let host = host, let token = call.getDouble("token") else { call.reject("transport token required"); return }
+        call.resolve(["ok":host.seqTransportStop(token)])
+    }
+
+    @objc func seqObserve(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        let after = call.getDouble("after") ?? -1
+        guard after.isFinite else { call.reject("invalid observer cursor"); return }
+        call.resolve(host.seqObserve(after:after, limit:Int32(max(1,min(4096,call.getInt("limit") ?? 4096)))) as? [String:Any] ?? [:])
+    }
+    @objc func seqObserverRoutes(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("routes"), let data = Data(base64Encoded:b64) else { call.reject("observer routes required"); return }
+        call.resolve(["ok":host.seqSetObserverRoutes(data, localMask:Int32(max(0,min(127,call.getInt("localMask") ?? 127))))])
+    }
+
+    @objc func seqIntonation(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        guard let b64 = call.getString("table"), let table = Data(base64Encoded:b64) else {
+            call.reject("seqIntonation needs table"); return
+        }
+        call.resolve(["ok":host.seqSetIntonation(table, pure:call.getBool("pure") ?? false,
+            glide:call.getBool("glide") ?? false, glideTime:call.getDouble("glideTime") ?? 0.15,
+            root:Int32(call.getInt("root") ?? -1))])
     }
 
     /// Atomically update bass, melody and arp from one hand chord.
@@ -879,7 +915,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("seqBassPending needs pending")
             return
         }
-        call.resolve(["ok": host.seqSetBassPending(data)])
+        call.resolve(["ok": host.seqSetBassPending(data, revision:call.getDouble("revision") ?? -1)])
     }
 
     /// Starts the bass line. `align` shares the drums' downbeat when they run; `kit` is the bank's code for the voice.
@@ -953,7 +989,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("seqMelPending needs pending")
             return
         }
-        call.resolve(["ok": host.seqSetMelPending(data)])
+        call.resolve(["ok": host.seqSetMelPending(data, revision:call.getDouble("revision") ?? -1)])
     }
 
     @objc func seqMelScore(_ call: CAPPluginCall) {
@@ -962,7 +998,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.reject("seqMelScore needs score")
             return
         }
-        call.resolve(["ok": host.seqSetMelScore(data)])
+        call.resolve(["ok": host.seqSetMelScore(data, revision:call.getDouble("revision") ?? -1)])
     }
 
     /// The chord windows with the melody's locks, `chords` base64 float64 (window._mlNativeChords(sr)): frames from the line's start. Resolves `ok`.

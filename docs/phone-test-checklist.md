@@ -84,6 +84,12 @@ Since 6.2:
   finger on it): it fades out at start-up, or on Panic.
 - [ ] 44. Resume keeps Song (6.9.9.9.9.9.9.7g) — Song on, leave, Resume: Song is lit and Play starts the chart.
 
+- [ ] 45. Native patch chords/sub (6.9.9.9.9.9.9.7h) — compare patch trims, sub on/off, strums, short gates and Stop → every tone/sub sounds once, with no late or held note.
+- [ ] 46. Native Pure/glide (6.9.9.9.9.9.9.7h) — compare synthesized/recorded voices, slash chords, held chords and zero/long glide → tuning and voice slides agree with the page.
+- [ ] 47. Native MIDI/takes (6.9.9.9.9.9.9.7h) — Bounce all lanes through background/return, import MIDI, test external-only routing → notes/gates align, no local duplicate or stuck MIDI note.
+- [ ] 48. Native chart edits (6.9.9.9.9.9.9.7h) — edit repeatedly around a bar with locks, Next/Prev, Hold and an ending → latest edit lands once, old generated replies never replace it.
+- [ ] 49. Native transport owner (6.9.9.9.9.9.9.7h) — supported public Play/rapid Stop, lock/leave/return, interruptions/routes and fallback cases → one clock, no late notes; Copy diagnostics reports native/page ownership correctly.
+
 ## Done
 
 - [x] 14. Leaving the app goes quiet (6.9.3) — heard on an iPhone 17 Pro Max, all pass.

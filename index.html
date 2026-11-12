@@ -9338,7 +9338,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7g</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.7h</span></div>
  </div>
 </div>
 
@@ -10787,7 +10787,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7g</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.7h</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11987,7 +11987,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.7g';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.7h';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13043,7 +13043,7 @@ function modNativePlugin(){
                      seqBassScore:call('seqBassScore'), seqBassChords:call('seqBassChords'), seqBassPending:call('seqBassPending'), seqBassStart:call('seqBassStart'),
                      seqBassStop:call('seqBassStop'), seqBassTempo:call('seqBassTempo'),
                      seqChordScore:call('seqChordScore'), seqChordStart:call('seqChordStart'), seqChordStop:call('seqChordStop'), seqChordTempo:call('seqChordTempo'),
-                     seqLiveChord:call('seqLiveChord'), seqArpScore:call('seqArpScore'), seqArpNotes:call('seqArpNotes'), seqArpArm:call('seqArpArm'), seqArpStart:call('seqArpStart'), seqArpStop:call('seqArpStop'),
+                     seqTransportStart:call('seqTransportStart'), seqTransportStop:call('seqTransportStop'), seqObserve:call('seqObserve'), seqObserverRoutes:call('seqObserverRoutes'), seqIntonation:call('seqIntonation'), seqLiveChord:call('seqLiveChord'), seqArpScore:call('seqArpScore'), seqArpNotes:call('seqArpNotes'), seqArpArm:call('seqArpArm'), seqArpStart:call('seqArpStart'), seqArpStop:call('seqArpStop'),
                      seqMelPending:call('seqMelPending'), seqMelScore:call('seqMelScore'), seqMelChords:call('seqMelChords'), seqMelArm:call('seqMelArm'), seqMelStart:call('seqMelStart'), seqMelStop:call('seqMelStop'), seqMelTempo:call('seqMelTempo'),
                      // The microphone's permission, asked of iOS by the app; and the app's
                      // page in Settings. A method missing from this list is a method the page
@@ -13895,7 +13895,7 @@ var _mgRpwOwner = {};
 var MODGRAPH = { on:false, plugin:null, parts:{}, capture:null, captureClock:null, gid:0, flushing:false, pending:[], bypass:false,
                  sent:0, fellBack:0, edits:0, empty:0, why:{},
                  // The host's part slots: a graph names a bus by one of these.
-                 CODE:{chord:0, mel:1, melgen:2, bass:3, arp:4, drum:5, auxperc:6, sampler:7, master:8, chordRoom:9, room:10} };
+                 CODE:{chord:0, mel:1, melgen:2, bass:3, arp:4, drum:5, auxperc:6, sampler:7, master:8, chordRoom:9, room:10, chordSub:11} };
 // Which messages make a new sound (the rest only change one that exists, and
 // reach the host through the recorder's own edits).
 var _MG_KINDS = { hit:1, note:1, chord:1, clip:1, glide:1 };
@@ -14011,17 +14011,25 @@ function modGraphStartAll(){
   // The engine outlives the page. A web view that was ended for memory and reloaded finds the previous page's held
   // chords still sounding in the engine, with no id anywhere to release them by; nothing this page has played yet
   // can be among them, so let go of the lot.
-  if(ok) _engineLetGo();
+  if(ok) _engineLetGo(true);
   try{ _graphPathSync(); }catch(e){}
   return ok;
  });
 }
 // Fades out every melodic voice the engine is holding (see ModEngine.graphKillAll). Panic and start-up.
-function _engineLetGo(){
- try{
-  var pl = modNativePlugin();
-  if(pl && pl.graphKillAll) Promise.resolve(pl.graphKillAll({fadeMs:60})).catch(function(){});
- }catch(e){}
+function _engineLetGo(startup){
+ var pl=modNativePlugin(),generation=window._nativeTransport?window._nativeTransport.generation:0;
+ var changed=function(){return window._nativeTransport && (window._nativeTransport.generation!==generation || window._nativeTransport.state!=='page');};
+ return (async function(){
+  // A reloaded page no longer owns the old band's ids or clocks. Stop that
+  // orphaned owner too, but never let a delayed startup reply kill a new Play.
+  if(startup && pl && pl.seqMirror && pl.seqTransportStop){
+   var m=await pl.seqMirror();if(changed())return;
+   if(m && m.transport && m.transport.owned)await pl.seqTransportStop({token:m.transport.token+1});
+  }
+  if(startup && changed())return;
+  if(pl && pl.graphKillAll)await pl.graphKillAll({fadeMs:60});
+ })().catch(function(){});
 }
 function toggleGraphPath(){
  var on = !_graphPathWanted();
@@ -24105,17 +24113,12 @@ function _duckAudio(down){
 // window.Capacitor is not guaranteed to exist yet when this script runs, and a
 // value fixed too early is how the pause kept happening in the app.
 function _inNativeApp(){ try{ var C=window.Capacitor; return !!(C && typeof C.isNativePlatform==='function' && C.isNativePlatform()); }catch(e){ return false; } }
-// 6.9.4: a test switch, not a setting. `modo-bgtest` = '1' (set from Safari's
-// console on a paired phone, or MODRIFF_BGTEST=1 in a debug scheme) lets the app keep
-// playing when it is left, but only when the parts are on the native engine: that is
-// the one path the audio thread carries by itself. It is a new key on purpose: a
-// `modo-bgplay` saved by the 7.7 builds is still ignored, so an old test phone does
-// not start playing in the background on its own. MODGRAPH is a var, so reading it
-// from an event cannot hit a dead zone.
+// Background permission follows the completed native transport claim. A web
+// or whole-band page fallback pauses on leaving; it never inherits permission
+// from an old debug flag or from Native sound alone.
 function _bgKeepPlaying(){
  try{
-  if(localStorage.getItem('modo-bgtest') !== '1') return false;
-  return _inNativeApp() && !!MODGRAPH.on;
+  return _inNativeApp() && !!MODGRAPH.on && !!(window._nativeTransport && window._nativeTransport.state==='native');
  }catch(e){ return false; }
 }
 // SceneDelegate asks the engine to go quiet the instant the app is left, before the page
@@ -24219,6 +24222,7 @@ function copyDiagnostics(){
  try{ out.dropouts = dropoutReport(); }catch(e){ out.dropouts = String(e); }
  try{ out.haptics = Object.assign({on:_hapticsOn(), available:modPlatform.hapticAvailable()}, modPlatform._hapStat); }catch(e){}
  try{ out.lead = window.leadStats ? window.leadStats() : null; }catch(e){ out.lead = String(e); }
+ try{ out.nativeTransport=window._nativeTransport ? {state:window._nativeTransport.state,last:window._nativeTransport.last} : null; }catch(e){}
  try{ out.bgPage = _bgPage; out.bgTest = { switch: localStorage.getItem('modo-bgtest') === '1', on:_bgKeepPlaying() }; }catch(e){}
  try{ out.graph = { wanted:_graphPathWanted(), on:MODGRAPH.on, sent:MODGRAPH.sent, fellBack:MODGRAPH.fellBack, edits:MODGRAPH.edits, empty:MODGRAPH.empty, why:MODGRAPH.why }; }catch(e){}
  var done = function(){
@@ -28288,11 +28292,11 @@ function _webChordOn(msg){
  // always clamped for this reason; the chord, slash, bass and drum paths did
  // not. A note a few milliseconds late is inaudible. The click is not.
  const now=Math.max(ctx.currentTime, (atTime!=null) ? atTime : ctx.currentTime + FADE_OUT);
- glideBegin();
+ if(!msg.noGlide) glideBegin();
  const _gOrder = intvs.map((s,i)=>i).sort((a,b)=>intvs[a]-intvs[b]);
- glideRemember(intvs.map(s=>rootM+s), now);
+ if(!msg.noGlide) glideRemember(intvs.map(s=>rootM+s), now);
 
- _webChordStop(atTime); _chordDamp(now, intvs.map(s=>rootM+s));
+ _webChordStop(atTime); if(!msg.noGlide) _chordDamp(now, intvs.map(s=>rootM+s));
  // A muted or zeroed Chord channel used to still build every voice — the
  // sustain+strum path even threw (an exponentialRampToValueAtTime target of
  // exactly 0 is invalid), and the tap path ramped toward a hardcoded .0001
@@ -28341,6 +28345,9 @@ function _webChordOn(msg){
  reapVoice([bo],[bg],atk+dec,sustain);
  }
 
+ // The native patch bank records only this separate sub. Recording its
+ // silent Processor handle as a tone would silently lose every patch note.
+ if(msg.subOnly) return;
  // Chord tones
  const offsets=strumOffsets(intvs.length);
  // A strum whose notes all fall after the beat drags: the chord's perceived
@@ -28370,8 +28377,8 @@ function _webChordOn(msg){
  g.connect(fx.head);
  const _rv=feedChordRev(fx.plain?g:fx.tail,revMix); // reverb hears the filtered tone, not the raw one
  const oscs=makeVoice(ctx,rootM+s,g,t0,atk+dec,voice,'chord');
- tuningApply(oscs, rootM+s, rootM);
- glideApply(oscs, rootM+s, _gOrder.indexOf(i), intvs.length, t0);
+ if(msg.tuneProbe != null) tuningShift(oscs,msg.tuneProbe); else tuningApply(oscs, rootM+s, rootM);
+ if(!msg.noGlide) glideApply(oscs, rootM+s, _gOrder.indexOf(i), intvs.length, t0);
  activeOscs.push({oscs, gain:g, t0:t0, peak:vol*.45*vl*wg*vsc*_mxCh*_tr});
  reapVoice(oscs,[g,fx.plain?null:fx.head,fx.plain?null:fx.tail,_rv],atk+dec,sustain);
  });
@@ -28422,7 +28429,7 @@ function _webEngineSend(msg){
  const kind = msg && msg.kind, part = msg && msg.part;
  // A part the native host plays through recorded graphs: the voice is built on a recorder.
  // (A part on a mõdSynth patch is built from an AudioWorklet, which a recorder does not hold: the native engine's own Processor plays those.)
- if(MODGRAPH.on && !_mgScope && !MODGRAPH.bypass && msg && msg.v === 1 && MODGRAPH.parts[part] && _MG_KINDS[kind] && msg.voice !== 'modsynth' && !(part !== 'drum' && part !== 'auxperc' && _wp(part + '.voice') === 'modsynth')) return _mgRun(msg, function(){ _webEngineSend(msg); });
+ if(MODGRAPH.on && !_mgScope && !MODGRAPH.bypass && msg && msg.v === 1 && MODGRAPH.parts[part] && _MG_KINDS[kind] && (msg.subOnly || (msg.voice !== 'modsynth' && !(part !== 'drum' && part !== 'auxperc' && _wp(part + '.voice') === 'modsynth')))) return _mgRun(msg, function(){ _webEngineSend(msg); });
  if(msg && msg.v === 1 && kind === 'state' && msg.params){ Object.assign(window._webParams, msg.params); return; }
  // A part-level param that is not one of the live controls below (bend,
  // accent) is standing state: kept, and read when the next voice is built.
@@ -31330,6 +31337,7 @@ let _clockLastTick = 0;
 var _clockArmedAt = 0, _clockByTimer = false;
 function _tickClockTimer(){ _clockByTimer = true; tickClock(); }
 function tickClock(){
+ if(window._nativeTransport && window._nativeTransport.claim()) return;
  if(_clockByTimer && _clockArmedAt){ _latNoteGap(Date.now() - _clockArmedAt); try{ _bgThrottleWatch(Date.now() - _clockArmedAt); }catch(e){} }
  _clockByTimer = false; _clockArmedAt = 0;
  _clockLastTick = Date.now();
@@ -34039,7 +34047,6 @@ window._arpNativeScore = function(){
           [arpMotionHold, hs.amt, hs.time, hs.vel, hs.drift, hs.maxMs, hs.maxVel, hs.maxDriftMs, hs.off.indexOf('arp') >= 0 ? 1 : 0, arpOcts]);
  // Custom sampler slots and Pure tuning still need native equivalents; patches use the live Processor and factory recordings have per-pitch banks.
  try{ var av = _wp('arp.voice'); if(av === 'sampler') why.push('a custom sampler arp voice'); }catch(e){}
- try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
  return {ok: !why.length, why: why, score: d};
 };
 // The tones the arp is on now (setArpChord's arpNotes), for the engine's arp when a person hands it a chord.
@@ -49293,6 +49300,7 @@ function startSongLoop(alignedStart, atTime){
  // from a different song entirely.
  _songRunSounded = false;
  _updateSectionNavUI();
+ if(window._nativeTransport && window._nativeTransport.suppresses()){ clearTimeout(songLoopTimer); songLoopTimer=null; return; }
  var sqOn = typeof window._sqPlaying==='function' && window._sqPlaying();
  if(atTime!=null){
   var _c=getCtx(), _lead=_c ? atTime-_c.currentTime : 0;
@@ -49878,6 +49886,7 @@ function _crNativeScore(voiced){
           strumMode ? 1 : 0, _wp('chord.strumSpread') || 0, _wp('fx.width') || 0, _webChordSubOn() ? 1 : 0, v.bass != null ? v.bass : v.root, v.notes.length];
  v.notes.forEach(function(n){ d.push(n); });
  d.push(pat.ev.length); pat.ev.forEach(function(e){ d.push(e.p, e.v, e.len); });
+ d.push(-8,v.root);
  return {ok: !why.length, why: why, score: d};
 }
 window._crNativeScore = _crNativeScore;
@@ -51547,9 +51556,6 @@ window._songNativeScore = function(opts){
  var voice = _wp('chord.voice');
  if(opts && opts.chords){
   try{ if(voice === 'sampler') chordWhy.push('a custom sampler chord voice'); }catch(e){}
-  try{ if(voice === 'modsynth') chordWhy.push('a mõdSynth chord voice'); }catch(e){}
-  try{ if(_wp('chord.glide')) chordWhy.push('chord glide'); }catch(e){}
-  try{ if(tuningOn()) chordWhy.push('Pure tuning'); }catch(e){}
  }
  var locks = [], byKey = {}, secs = [sections.length], patIdx = {}, pats = [], nPats = 0, mlocks = [], mlByKey = {}, mlIdx = [];
  sections.forEach(function(sec){
@@ -51651,6 +51657,7 @@ window._songChordPitches = function(capoArg){
 };
 
 function _playLoopSlot(atTime){
+ if(window._nativeTransport && window._nativeTransport.suppresses()){if(window._nativeTransport.state==='native')window._nativeTransport.fallback(window._nativeTransport.generation,new Error('chart position changed'));return;}
  if(!songLoopActive) return;
  const sec = sections[songLoopSection];
  if(!sec || !sec.slots.length){ songLoopActive=false; return; }
@@ -52354,6 +52361,7 @@ function isAnythingPlaying(){
 // bassline, song loop, and any held melody notes.
 // arpOn and blEnabled flags are preserved so next Play restores them.
 function stopEverything(){
+ if(window._nativeTransport) window._nativeTransport.stop();
  // An external instrument holding a note is the one stuck sound in this app the
  // user cannot escape by closing the tab, so Stop releases it first — before
  // anything below can throw and skip it.
@@ -54195,9 +54203,11 @@ async function _finishSinkTaps(written, taps, base, sr, tags, span, folder){
 // 150 ms flush captured buffers already rendered, never the remaining sound.
 var _recFinishing=false;
 var REC_TAIL_MS=8000;
-function _stopRecording(transportStopped){
+async function _stopRecording(transportStopped){
   if(!_isRecording || _recFinishing) return;
   _recFinishing=true;
+  var midiStopWall=Date.now();
+  if(window._nsEvents) try{ await window._nsEvents.flushRecording(midiStopWall); }catch(e){ _midiRecNativeCut=true; }
   var midiFile=_stopMidiRecording();
   if(!bounceMidi) midiFile=null;
   if(!transportStopped) stopEverything();
@@ -54386,6 +54396,7 @@ function _finishRecording(midiFile){
     // half minute, not a refusal.
     var _cutWhat=[];
     if(_audioCut) _cutWhat.push('the first '+FREE_NUMBERS.audioExportSeconds+' seconds of audio');
+    if(midiFile && midiFile.incomplete) done += '. MIDI is incomplete: the native event buffer overflowed';
     if(midiFile && midiFile.cut) _cutWhat.push('the first '+FREE_NUMBERS.midiExportBars+' bars of MIDI');
     if(_cutWhat.length) done += '. Free saves '+_cutWhat.join(' and ')+'; the Studio Pack saves the whole take';
     // Stems were on (or came on mid-take) but some did not make it: say which,
@@ -54472,6 +54483,7 @@ function _updateRecBtn(){
 // never risks changing actual audio behavior. Sources living inside their
 // own IIFEs (bass, drums) can't be wrapped from out here, so they instead
 // call a small window._midiRecLog* hook — see blPlayNote/sqHitTrack.
+var _midiRecWallStart=0, _midiRecNativeCut=false;
 var _midiRecOn=false, _midiRecNotes=[], _midiRecStart=0, _midiRecCtxEpoch=0;
 var _midiRecPendingChord=null, _midiRecActiveMel={};
 // General MIDI percussion note per track name. Every track in every machine
@@ -54582,10 +54594,11 @@ function _midiNow(){
 function _midiCtxNow(t){ return (t-_midiRecCtxEpoch)*1000; } // AudioContext time -> ms since rec start
 function _startMidiRecording(){
   _midiRecNotes=[]; _midiRecPendingChord=null; _midiRecActiveMel={};
-  _midiRecStart=performance.now();
+  _midiRecStart=performance.now(); _midiRecWallStart=Date.now(); _midiRecNativeCut=false;
   var ctx=getCtx();
   _midiRecCtxEpoch=ctx?ctx.currentTime:0;
   _midiRecOn=true;
+  if(window._nsEvents) window._nsEvents.beginRecording();
 }
 function _closePendingChord(now){
   if(!_midiRecPendingChord) return;
@@ -54708,7 +54721,7 @@ function _buildMidiRecording(){
     var bytes=new Uint8Array(hdr.concat(allTrks));
     var blob=new Blob([bytes],{type:'audio/midi'});
     return { name:(document.getElementById('chart-title')?.value||'modriff-performance')+'-live.mid',
-             blob:blob, notes:recNotes.length, lanes:numTracks-1, cut:midiCut };
+             blob:blob, notes:recNotes.length, lanes:numTracks-1, cut:midiCut, incomplete:!!_midiRecNativeCut };
   }catch(e){ console.error('MIDI recording export error',e); return null; }
 }
 // Global hooks called from inside the bass/drum IIFEs (their state isn't
@@ -59504,7 +59517,7 @@ function sqDraw(){
     return;
   }
   var c=sqCtx();if(!c){sqRafID=requestAnimationFrame(sqDraw);return;}
-  try{ _sqQueueTick(c); }catch(e){}
+  if(!(window._nativeTransport && window._nativeTransport.suppresses())) try{ _sqQueueTick(c); }catch(e){}
   // Which step you can actually HEAR right now — not which one the scheduler
   // has reached.
   //
@@ -60853,7 +60866,7 @@ window._sqResetStep = function(){ sqSeqStep = 0; };
 // reads, as the flat array DrumScore::fromDoubles takes, plus the kit table the kit indexes point into.
 // Nothing calls it yet but the test that holds the native clock to _sqScheduler on the same score
 // (tests/seq/drumgrid.test.js); it is the page's half of "the page hands over state, the engine decides when".
-window._sqNativeScore = function(){
+window._sqNativeScore = function(opts){
  sqStashFocused();
  var hs = window._humanState(), d = [1, sqSteps, sqSwing, sqSwing8 ? 1 : 0,
   (typeof meterBeatSteps==='function') ? meterBeatSteps() : 4,
@@ -60862,7 +60875,7 @@ window._sqNativeScore = function(){
   hs.amt, hs.time, hs.vel, hs.drift, hs.maxMs, hs.maxVel, hs.maxDriftMs,
   hs.off.indexOf('drum') >= 0 ? 1 : 0, hs.off.indexOf('auxperc') >= 0 ? 1 : 0];
  for(var i = 0; i < 2; i++){
-  var L = sqLayers[i], M = SQM[L.mach], on = !!(L.on && L.grid && M);
+  var L = sqLayers[i], M = SQM[L.mach], on = !!(L.on && L.grid && M && (!opts || opts.sounding!==false));
   var ki = window._nsKitCode(L.mach);
   var lk = sqLK(L.mach, i), tracks = M ? M.tracks : [];
   d.push(on ? 1 : 0, i, ki, tracks.length);
@@ -60876,6 +60889,12 @@ window._sqNativeScore = function(){
   }
  }
  return {score: d, kits: window._nsKitCodes.slice()};
+};
+window._nsDrumMidiRoutes = function(){
+ var out=[];
+ Object.keys(SQM).forEach(function(name){ var kit=window._nsKitCode(name);
+  (SQM[name].tracks||[]).forEach(function(t,lane){ out.push(kit,lane,GM_DRUM_MAP[t.n]||39); });
+ }); return out;
 };
 // A kit's number in the native sequencer's score and bank: the order the kits were first named in this session, so
 // a bank entry and a score made at different moments mean the same kit by the same number.
@@ -60894,6 +60913,18 @@ window._nsKitCode = function(name){
 // the lane is recorded again.
 window._nsBank = {
  LEADF: 2304, have: {}, bad: {}, gen: 0, keepRecs: false, recs: [], constRandom: false,
+ isolated:false, _probe:{active:[],chokes:{},bass:null},
+ resetProbeChokes:function(){if(this.isolated)this._probe.chokes={};else _chokeReg={};},
+ withProbe:function(fn){
+  if(!this.isolated) return fn();
+  var me=this,live={active:activeOscs,chokes:_chokeReg,kill:_voiceKillReg,bass:window._blProbeSwap?window._blProbeSwap(me._probe.bass):null};
+  activeOscs=me._probe.active;_chokeReg=me._probe.chokes;_voiceKillReg=[];
+  try{return fn();}finally{
+   me._probe.active=activeOscs;me._probe.chokes=_chokeReg;
+   if(window._blProbeSwap) me._probe.bass=window._blProbeSwap(live.bass);
+   activeOscs=live.active;_chokeReg=live.chokes;_voiceKillReg=live.kill;
+  }
+ },
  _rng: function(){ var q = 13579 >>> 0; return function(){ q = (q + 0x6D2B79F5) >>> 0; var t = q; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; },
  // One recording of one hit: the program the page would send for it, and whether the voice edits itself later. The same
  // random stream every time, or the random detunes and phases would read as slots that move.
@@ -60908,7 +60939,7 @@ window._nsBank = {
   // the spike did it (a note at 0.048 s on a clock at 0), so its program is small numbers with the onset a lead in, and a
   // replay moves it by a few frames rather than subtracting a long running clock (whose rounding moved onsets a frame).
   var cap = MODGRAPH.capture = []; MODGRAPH.captureClock = 0;
-  try{ window.modEngine.send(Object.assign({v: 1}, msg)); }
+  try{ this.withProbe(function(){ window.modEngine.send(Object.assign({v: 1}, msg)); }); }
   finally{ MODGRAPH.capture = null; MODGRAPH.captureClock = null; Math.random = keep; _rrLast = rr; }
   await Promise.resolve(); await Promise.resolve();
   if(cap.length !== 1) return null;
@@ -60920,7 +60951,7 @@ window._nsBank = {
   // (takeIncrements). The page's own choke is run on the registry the voice just made -- the same code a closing hat
   // runs -- either on the whole group at chokeAt (what the page would do: the reference a test compares the engine's
   // edits with), or, with `perVoice`, once for each registration alone, which is how the engine's template is made.
-  if(chokeAt != null){
+  if(chokeAt != null) this.withProbe(function(){
    if(perVoice){
     out.chokes = [];
     var groups = Object.keys(_chokeReg);
@@ -60936,8 +60967,29 @@ window._nsBank = {
     for(var g in _chokeReg) _chokeGroup(g, chokeAt);
     out.inc = Array.from(rec.takeIncrements());
    }
-  }
+  });
   return out;
+ },
+ // Probe the actual voice's tuning path. Some bass voices tune frequency;
+ // shared/sample voices add cents to detune. Keep the map independent of MIDI
+ // pitch so a per-pitch sample bank can still move by fractional semitones.
+ _tunedEntry: function(d, base, plus, minus){
+  var slots = [], add = {}, ratio = Math.pow(2,31/1200);
+  var close = function(a,b){ return Math.abs(a-b) <= 1e-9 * Math.max(1,Math.abs(a),Math.abs(b)); };
+  for(var i=0;i<base.length;i++) {
+   if(base[i] === plus[i] && base[i] === minus[i]) continue;
+   if(close(plus[i],base[i]+31) && close(minus[i],base[i]-31)){ slots.push([i,0]); add[i]=true; }
+   else if(close(plus[i],base[i]*ratio) && close(minus[i],base[i]/ratio)) slots.push([i,1]);
+   else throw new Error('tuning slot '+i+' is neither cents nor frequency');
+  }
+  var nodes = [];
+  this.parseProgram(base).nodes.forEach(function(n,id){
+   if((n.type === 2 || n.type === 4) && n.params[1] && add[n.params[1][0]]) nodes.push([id,1,n.params[1][0]]);
+  });
+  var out = [3].concat(d.slice(1,9),[slots.length]);
+  slots.forEach(function(t){ out.push(t[0],t[1]); }); out.push(nodes.length);
+  nodes.forEach(function(g){ out.push(g[0],g[1],g[2]); });
+  return Float64Array.from(out.concat(d.slice(9)));
  },
  // value = a + b*x per slot from two recordings, checked on a third.
  _fit: function(P0, x0, P1, x1, P2, x2){
@@ -60955,7 +61007,7 @@ window._nsBank = {
   var self = this, ctx = audioCtx, sr = ctx.sampleRate;
   var LEAD = this.LEADF / sr, AT0 = LEAD;
   var R = async function(o, chokeAt, perVoice){
-   if(typeof window._chokeReset==='function') window._chokeReset();
+   if(typeof window._chokeReset==='function') window._nsBank.resetProbeChokes();
    return self.record(Object.assign({kind: 'hit', part: part, id: 1, kit: kit, lane: lane, vel: 0.9, accent: false, pitch: 0, dyn: null, at: AT0}, o), chokeAt, perVoice);
   };
   await R({});                                   // the first recording of a voice builds caches that draw random numbers: thrown away
@@ -61054,7 +61106,7 @@ window._nsBank = {
   for(var variant = 0; variant < 4; variant++){
    var glides = (variant & 1) === 1;
    var base = {kind: 'note', part: 'bass', id: 1, note: REFN, vel: REFV, accent: false, slide: (variant & 2) === 2, from: glides ? REFFROM : null, at: AT0, dur: REFD, tune: 0};
-   var R = async function(o){ window._chokeReset(); return self.record(Object.assign({}, base, o, fixed ? {note: REFN} : {})); };
+   var R = async function(o){ window._nsBank.resetProbeChokes(); return self.record(Object.assign({}, base, o, fixed ? {note: REFN} : {})); };
    var tag = ['', ' (gliding)', ' (sliding)', ' (sliding and gliding)'][variant];
    await R({});
    var ref = await R({});
@@ -61181,7 +61233,7 @@ window._nsBank = {
    var cutOf = async function(velA){
     self.keepRecs = true; self.recs = [];
     try {
-     window._chokeReset();
+     window._nsBank.resetProbeChokes();
      await self.record(Object.assign({}, base, {vel: velA}));
      await self.record(Object.assign({}, base, {at: AT0 + 0.05, note: REFN + 2}));
      await Promise.resolve(); await Promise.resolve();
@@ -61206,7 +61258,7 @@ window._nsBank = {
    }
    if(!cutOps.length) return {ok: false, why: 'the voice records no cut of the note before it' + tag};
    d.push(cutOps.length); cutOps.forEach(function(x){ d.push(x); });
-   entries.push(Float64Array.from(d));
+   try { entries.push(this._tunedEntry(d,P0,await must({tune:31},'tuning +31'),await must({tune:-31},'tuning -31'))); } catch(e){ return {ok:false,why:String(e.message || e)}; }
   }
   return {ok: true, entries: entries};
  },
@@ -61236,12 +61288,12 @@ window._nsBank = {
    // The message the page sends for the arp; `o` overrides one field of it.
    var mk = function(o){
     if(fixed) o = Object.assign({}, o, {note: REFN});
-    if(blk) return {kind: 'chord', part: 'arp', id: 1, root: null, notes: [o.note != null ? o.note : REFN], bass: null, vel: 1, at: o.at != null ? o.at : AT0, dur: o.dur, tunes: [0]};
+    if(blk) return {kind: 'chord', part: 'arp', id: 1, root: null, notes: [o.note != null ? o.note : REFN], bass: null, vel: 1, at: o.at != null ? o.at : AT0, dur: o.dur, tunes: [o.tune || 0]};
     return Object.assign({kind: 'note', part: 'arp', id: 1, note: REFN, vel: REFV, level: REFL, pan: REFP, at: AT0, tune: 0}, o);
    };
    // Every random draw is 0.5 while a block records: its tones draw one after the other, so a tone recorded alone would draw other detunes and phases than the
    // same tone in a chord (the chord voice has the same rule); a note draws from the same stream every time and needs no such thing.
-   var R = async function(o){ window._chokeReset(); self.constRandom = blk; return self.record(mk(o)); };
+   var R = async function(o){ window._nsBank.resetProbeChokes(); self.constRandom = blk; return self.record(mk(o)); };
    // 1. The ladder of lengths: where does the order of the envelope's events change?
    var grid = [], g0 = 0.003; while(g0 < DMAX){ grid.push(g0); g0 *= fixed ? 1.09 : 1.19; }
    [atk, atk + 0.005].forEach(function(b){ [-0.0004, 0.0004].forEach(function(e){ if(b + e > 0.001) grid.push(b + e); }); });
@@ -61396,7 +61448,7 @@ window._nsBank = {
     d.push(REFL, flv.length); flv.forEach(function(q){ d.push(q[0], q[1], 0); });
     d.push(reg.max);
     d.push(REFP, fpv.length); fpv.forEach(function(q){ d.push(q[0], q[1], 0); });
-    entries.push(Float64Array.from(d));
+    try { entries.push(this._tunedEntry(d,P0,await must({tune:31},'tuning +31'),await must({tune:-31},'tuning -31'))); } catch(e){ return {ok:false,why:String(e.message || e)}; }
    }
   }
   return {ok: true, entries: entries};
@@ -61429,7 +61481,7 @@ window._nsBank = {
     if(glides){ if(m.glideFrom == null) m.glideFrom = REFFROM; if(m.glideTime == null) m.glideTime = REFGT; }
     return m;
    };
-   var R = async function(o){ window._chokeReset(); return self.record(mk(o)); };
+   var R = async function(o){ window._nsBank.resetProbeChokes(); return self.record(mk(o)); };
    // 1. The ladder of lengths: where does the order of the envelope's events change?
    var grid = [], g0 = 0.003; while(g0 < DMAX){ grid.push(g0); g0 *= fixed ? 1.09 : 1.19; }
    var gp = [], size = 0;
@@ -61593,7 +61645,7 @@ window._nsBank = {
     d.push(reg.max);
     d.push(0, 0);                                                 // refPan, no pan slots
     d.push(REFGT, fgt.length); fgt.forEach(function(q){ d.push(q[0], q[1], 0); });
-    entries.push(Float64Array.from(d));
+    try { entries.push(this._tunedEntry(d,P0,await must({tune:31},'tuning +31'),await must({tune:-31},'tuning -31'))); } catch(e){ return {ok:false,why:String(e.message || e)}; }
    }
   }
   return {ok: true, entries: entries};
@@ -61609,6 +61661,8 @@ window._nsBank = {
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
+  var intonation = await window._nsIntonation.sync();
+  if(intonation.ok === false){ rep.failed.push({why:intonation.why}); return rep; }
   var voice = _wp('melgen.voice'), sig = this.signatureMel();
   if(voice === 'modsynth') return this.ensureSynth('melgen');
   var perPitch = voice === 'piano' || voice === 'organ' || voice === 'sampler' || !!SAMPLED_WAVES[voice];
@@ -61730,15 +61784,22 @@ window._nsBank = {
  },
  // hold: the chord as a gated rhythm hit plays it (playChord's `sustain`: no decay, held until a release), part 4 in the bank, with the edits
  // the page's release makes (_webChordReleaseAt) beside the stop of the chord before. A decaying chord is part 3.
- buildChordNote: async function(voice, pitch, hold){
+ buildChordNote: async function(voice, pitch, hold, subOnly){
   if(!MODGRAPH.on || !MODGRAPH.parts.chord) return {ok: false, why: 'the chord part is not on the graph path (Native sound)'};
   var self = this, sr = audioCtx.sampleRate, LEAD = this.LEADF / sr, AT0 = LEAD, REFV = 0.8, REFD = 1.0;
   if(voice === 'sampler') return {ok: false, why: 'a custom sampler voice (slot and slice invalidation is not banked yet)'};
+  if(voice === 'modsynth' && !subOnly) return {ok:false, why:'a patch tone uses the Processor; only its separate sub is a graph'};
   if(SAMPLED_WAVES[voice] && SAMPLE_STATE[SAMPLED_WAVES[voice]] !== 'ready') return {ok: false, why: 'the instrument recordings are still loading'};
-  var base = {kind: 'chord', part: 'chord', id: 1, root: pitch, notes: [pitch], bass: null, vel: REFV, dur: hold ? null : REFD, at: AT0};
+  var base = {kind: 'chord', part: 'chord', id: 1, noGlide:true, subOnly: !!subOnly, root: pitch, notes: [pitch], bass: null, vel: REFV, dur: hold ? null : REFD, at: AT0};
   var keep = this.constRandom; this.constRandom = true;
   try {
-   var R = async function(o){ window._chokeReset(); return self.record(Object.assign({}, base, o)); };
+   var R = async function(o){
+    window._nsBank.resetProbeChokes(); var r = await self.record(Object.assign({}, base, o));
+    if(subOnly && r) self.parseProgram(r.prog).nodes.forEach(function(n){
+     if(n.type === 8 && n.code === MODGRAPH.CODE.chord) r.prog[n.start + 1] = MODGRAPH.CODE.chordSub;
+    });
+    return r;
+   };
    await R({});
    var ref = await R({});
    if(!ref) return {ok: false, why: 'makes no voice'};
@@ -61752,7 +61813,7 @@ window._nsBank = {
    var comp = {}; G.nodes.forEach(function(nd, k){ if(nd.type === T.ext) return; var r = find(k); (comp[r] = comp[r] || []).push(k); });
    var comps = Object.keys(comp).map(function(r){ return comp[r]; }).sort(function(a, b){ return Math.min.apply(null, a) - Math.min.apply(null, b); });
    if(comps.length > 2) return {ok: false, why: 'the one-note chord has ' + comps.length + ' separate parts (a sub and a tone are expected)'};
-   var subNodes = comps.length === 2 ? comps[0] : [], toneNodes = comps[comps.length - 1];
+   var subNodes = subOnly ? (comps[0] || []) : comps.length === 2 ? comps[0] : [], toneNodes = subOnly ? [] : comps[comps.length - 1];
    var ownerOf = new Array(P0.length).fill(0);   // 1 sub, 2 tone
    var mark = function(list, who){ list.forEach(function(k){ for(var q = G.nodes[k].start; q < G.nodes[k].end; q++) ownerOf[q] = who; }); };
    mark(subNodes, 1); mark(toneNodes, 2);
@@ -61797,7 +61858,7 @@ window._nsBank = {
    var cutOf = async function(velA, durA){
     self.keepRecs = true; self.recs = [];
     try {
-     window._chokeReset();
+     window._nsBank.resetProbeChokes();
      await self.record(Object.assign({}, base, hold ? {vel: velA} : {vel: velA, dur: durA}));
      await self.record(Object.assign({}, base, {at: AT0 + 0.05, root: pitch + 2, notes: [pitch + 2]}));
      await Promise.resolve(); await Promise.resolve();
@@ -61823,11 +61884,11 @@ window._nsBank = {
     var relOf = async function(velA, at){
      self.keepRecs = true; self.recs = [];
      try {
-      window._chokeReset();
+      window._nsBank.resetProbeChokes();
       await self.record(Object.assign({}, base, {vel: velA}));
       // under the recorder's clock, which reads zero for the length of a recording: a release never goes before currentTime
       MODGRAPH.capture = []; MODGRAPH.captureClock = 0;
-      try { window.modEngine.send({v: 1, kind: 'release', part: 'chord', id: 1, at: at}); }
+      try { self.withProbe(function(){window.modEngine.send({v: 1, kind: 'release', part: 'chord', id: 1, at: at});}); }
       finally { MODGRAPH.capture = null; MODGRAPH.captureClock = null; }
       await Promise.resolve(); await Promise.resolve();
       return (self.recs[0].capturedInc || []).slice();
@@ -61843,7 +61904,7 @@ window._nsBank = {
     if(C.length !== A.length || C.some(function(x, i){ return Math.abs(x - A[i]) > 1e-9; })) return {ok: false, why: 'the release of a held chord is not the same when it is early'};
     d.push(tHold - AT0, A.length); A.forEach(function(x){ d.push(x); });
    }
-   return {ok: true, entry: Float64Array.from(d), info: {size: n, sub: subNodes.length > 0, toneLevel: toneLevel.length, toneTime: toneTime.length, pan: panSlot >= 0, dur: dslots.length}};
+   return {ok: true, entry: this._tunedEntry(d,P0,await must({tuneProbe:31},'tuning +31'),await must({tuneProbe:-31},'tuning -31')), info: {size: n, sub: subNodes.length > 0, toneLevel: toneLevel.length, toneTime: toneTime.length, pan: panSlot >= 0, dur: dslots.length}};
   } catch(e){ return {ok: false, why: String(e.message || e)}; }
   finally { this.constRandom = keep; }
  },
@@ -61859,13 +61920,20 @@ window._nsBank = {
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
+  var intonation = await window._nsIntonation.sync();
+  if(intonation.ok === false){ rep.failed.push({why:intonation.why}); return rep; }
   var voice = _wp('chord.voice'), sig = this.signatureChord();
+  if(voice === 'modsynth') {
+   rep = await this.ensureSynth('chord');
+   if(rep.failed.length || !_webChordSubOn()) return rep;
+  }
   for(var i = 0; i < pitches.length; i++){
    var key = 'chord:' + voice + ':' + pitches[i] + (hold ? ':hold' : '');
    if(this.have[key] === sig){ rep.kept++; continue; }
    if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings'}); continue; }
-   var r = await this.buildChordNote(voice, pitches[i], hold);
-   if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
+   var r = await this.buildChordNote(voice, pitches[i], hold, voice === 'modsynth');
+   if(r.ok){ var sent = await P.seqBank({entry: _mgB64(r.entry)}); if(sent && sent.ok === false) r = {ok:false, why:'the engine refused the chord bank entry'}; }
+   if(r.ok){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
    else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: pitches[i], why: r.why}); }
   }
   return rep;
@@ -61875,7 +61943,7 @@ window._nsBank = {
  // older binary refuses v2 instead of reporting a silent prepared voice.
  ensureSynth: async function(part){
   var rep = {built: 0, kept: 0, failed: []}, P = window._nsDrum.plugin();
-  var codes = {bass:2, arp:5, melgen:6}, key = 'processor:' + part;
+  var codes = {bass:2, chord:3, arp:5, melgen:6}, key = 'processor:' + part;
   var fail = function(why){ rep.failed.push({voice:'modsynth', why:why}); return rep; };
   if(!P || codes[part] == null) return fail('no native Processor bank');
   try {
@@ -61883,11 +61951,14 @@ window._nsBank = {
    var eng = await msxEnsure(part);
    if(!eng || !eng.ready || !await _modNativeEnsureProc(part)) return fail('the patch Processor is not ready');
    _modNativeAttach(part, eng); msxApply(part); _modNativeStripSync(part); _modNativeFlush();
-   var sig = 'processor-v2';
+   var attack = part === 'chord' ? (_wp('chord.attack') || 0.025) : 0;
+   var sig = 'processor-v2:' + attack;
    // The descriptor refers to the live patch. Knobs, matrix, motion, effects,
    // fader and tuning keep their existing native message path while it runs.
    if(this.have[key] === sig){ rep.kept++; return rep; }
-   var entry = Float64Array.from([2, codes[part], window._nsKitCode((part === 'melgen' ? 'mel' : part) + ':modsynth'), -1, 1]);
+   var values = [2, codes[part], window._nsKitCode((part === 'melgen' ? 'mel' : part) + ':modsynth'), -1, 1];
+   if(part === 'chord') values.push(attack);
+   var entry = Float64Array.from(values);
    var r = await P.seqBank({entry: _mgB64(entry)});
    if(!r || r.ok !== true) return fail('the engine does not support Processor bank entries');
    this.have[key] = sig; rep.built++; return rep;
@@ -61904,6 +61975,8 @@ window._nsBank = {
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
+  var intonation = await window._nsIntonation.sync();
+  if(intonation.ok === false){ rep.failed.push({why:intonation.why}); return rep; }
   var voice = _wp('bass.voice'), sig = this.signatureBass();
   var lib = BASS_SAMPLED[voice] ? BASS_SAMPLED[voice].lib : SAMPLED_WAVES[voice];
   if(voice === 'modsynth') return this.ensureSynth('bass');
@@ -61939,6 +62012,8 @@ window._nsBank = {
   var P = window._nsDrum.plugin(), rep = {built: 0, kept: 0, failed: []};
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
+  var intonation = await window._nsIntonation.sync();
+  if(intonation.ok === false){ rep.failed.push({why:intonation.why}); return rep; }
   var voice = _wp('arp.voice'), sig = this.signatureArp();
   if(voice === 'modsynth') return this.ensureSynth('arp');
   var perPitch = voice === 'piano' || voice === 'organ' || voice === 'sampler' || !!SAMPLED_WAVES[voice];
@@ -62015,8 +62090,9 @@ window._nsBank = {
 // stepping and sounding.
 window._nsDrum = {
  plugin: function(){ var P = (typeof modNativePlugin==='function') ? modNativePlugin() : null; return P && P.seqScore ? P : null; },
- sync: function(){
+ sync: async function(){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  if(P.seqObserve) { var obs=await window._nsEvents.prepare(); if(!obs.ok) return obs; }
   return P.seqScore({score: _mgB64(Float64Array.from(window._sqNativeScore().score))});
  },
  // Records what the score plays that the host does not hold yet, and re-sends the score. Resolves the bank report.
@@ -62039,6 +62115,103 @@ window._nsDrum = {
  // The tempo moves in a straight line to `bpm` over `ms` and holds it; the drums, the bass and the chord rhythm follow it together (a ritardando).
  tempoRamp: function(bpm, ms){ var P = this.plugin(); return P && P.seqTempoRamp ? P.seqTempoRamp({bpm: bpm, ms: ms}) : Promise.resolve({ok: false, why: 'no engine'}); },
  mirror: function(){ var P = this.plugin(); return P ? P.seqMirror() : Promise.resolve(null); }
+};
+
+// Musical observers read retained native events, never a last-note mirror.
+// The native block clock maps frames to wall time. Hold that mapping through
+// a take: AudioContext time can freeze while native audio keeps rendering.
+window._nsEvents = {
+ cursor:null, timer:null, pending:null, offset:null, last:null, lost:0, routesSig:'', busy:null,
+ lanes:{0:'drum',1:'auxperc',2:'bass',3:'chord',5:'arp',6:'melgen'},
+ routes: async function(){
+  var P=window._nsDrum.plugin(); if(!P || !P.seqObserverRoutes) return {ok:false,why:'native MIDI observers unavailable'};
+  var d=window._nsDrumMidiRoutes(), mask=127, me=this;
+  Object.keys(me.lanes).forEach(function(p){ if(moSilences(me.lanes[p])) mask &= ~(1<<(+p)); });
+  var sig=mask+':'+d.join(','); if(sig===me.routesSig) return {ok:true};
+  var r=await P.seqObserverRoutes({routes:_mgB64(Float64Array.from(d)),localMask:mask});
+  if(r && r.ok) me.routesSig=sig; return r;
+ },
+ prepare: async function(){
+  var P=window._nsDrum.plugin(),me=this;
+  if(!P || !P.seqObserve || !P.seqObserverRoutes) return {ok:false,why:'native MIDI observers unavailable'};
+  var r=await me.routes(); if(!r || !r.ok) return r || {ok:false};
+  if(me.cursor===null){ var head=await P.seqObserve({after:-1,limit:1}); if(!head || !head.ok || !isFinite(head.cursor)) return {ok:false,why:'native MIDI observer refused initialization'}; me.cursor=head.cursor; me.pending=new Map(); }
+  if(!me.timer) me.timer=setInterval(function(){ me.poll().catch(function(e){me.last={ok:false,why:String(e)};}); },40);
+  return {ok:true};
+ },
+ consume: function(r){
+  var me=this; if(!r || !r.ok || !r.clockReady) return;
+  if(me.offset===null || !_midiRecOn) me.offset=r.clockOffsetMs;
+  if(r.lost){ me.lost+=r.lost; _midiRecNativeCut=true; me.suspendOutput(); me.pending.clear(); me.last={ok:false,why:'native MIDI event buffer overflow',lost:r.lost}; }
+  var d=new Float64Array(Uint8Array.from(atob(r.events||''),function(c){return c.charCodeAt(0);}).buffer);
+  for(var i=0;i+6<d.length;i+=7){
+   if(d[i]<=me.cursor) continue;
+   var id=d[i],kind=d[i+1],part=d[i+2],lane=me.lanes[part],at=me.offset+d[i+5]*1000/r.sampleRate;
+   if(!lane) continue;
+   if(kind===2){
+    me.pending.forEach(function(n,key){ if(n.part!==part) return;
+     if(n.at>=at){ me.cancel(n); if(n.on) moNoteOff(n.lane,n.note,0); if(n.rec){ var j=_midiRecNotes.indexOf(n.rec); if(j>=0) _midiRecNotes.splice(j,1); } me.pending.delete(key); }
+     else { if(n.offTimer){clearTimeout(n.offTimer);n.offTimer=null;} n.end=Math.min(n.end,at); if(n.rec) n.rec.tOff=Math.min(n.rec.tOff,at-_midiRecWallStart); }
+    });
+   } else if(kind===1){
+    var n={id:id,part:part,lane:lane,note:d[i+3],vel:d[i+4],at:at,end:me.offset+d[i+6]*1000/r.sampleRate,on:false};
+    if(_midiRecOn && at>=_midiRecWallStart){ n.rec={lane:lane,note:n.note,vel:n.vel,tOn:at-_midiRecWallStart,tOff:n.end-_midiRecWallStart,_native:true}; _midiRecNotes.push(n.rec); }
+    me.pending.set(id,n);
+   }
+  }
+  me.cursor=r.cursor;
+  var wall=Date.now(), ctx=getCtx(), current=ctx ? ctx.currentTime : 0;
+  me.pending.forEach(function(n,key){
+   // Background MIDI output is outside this transition. Retained notes still
+   // reach the take; expired notes are never replayed on foreground return.
+   if(!me.outputBlocked && !n.on && !n.onTimer && n.at<=wall+60 && n.end>wall && !document.hidden){
+    n.onTimer=setTimeout(function(){n.onTimer=null; if(!me.outputBlocked && !document.hidden && me.pending.has(key) && n.end>Date.now()){moNoteOn(n.lane,n.note,n.vel,0);n.on=true;}},Math.max(0,n.at-wall));
+   }
+   if(n.end<=wall+60 && !n.offTimer){
+    n.offTimer=setTimeout(function(){n.offTimer=null; if(n.on) moNoteOff(n.lane,n.note,0); me.cancel(n); me.pending.delete(key);},Math.max(0,n.end-wall));
+   }
+   if(n.end<=wall && !n.on){me.cancel(n);me.pending.delete(key);}
+  });
+ },
+ cancel: function(n){ if(n.onTimer) clearTimeout(n.onTimer); if(n.offTimer) clearTimeout(n.offTimer); n.onTimer=n.offTimer=null; },
+ suspendOutput: function(){ var me=this; if(me.pending) me.pending.forEach(function(n){me.cancel(n);n.on=false;}); moAllOff(); },
+ poll: function(){
+  var me=this; if(me.busy) return me.busy;
+  var P=window._nsDrum.plugin(); if(me.cursor===null || !P || !P.seqObserve) return Promise.resolve();
+  me.busy=(async function(){
+   await me.routes();
+   var r; do { r=await P.seqObserve({after:me.cursor,limit:4096}); me.consume(r); }
+   while(r && r.clockReady && r.cursor<r.latest);
+   return r;
+  })().finally(function(){me.busy=null;}); return me.busy;
+ },
+ beginRecording: function(){
+  var start=_midiRecWallStart;
+  if(this.pending) this.pending.forEach(function(n){ if(n.end<=start) return;
+   n.rec={lane:n.lane,note:n.note,vel:n.vel,tOn:Math.max(0,n.at-start),tOff:n.end-start,_native:true}; _midiRecNotes.push(n.rec);
+  });
+ },
+ flushRecording: async function(stopWall){
+  if(this.cursor!==null) await this.poll();
+  var end=(stopWall || Date.now())-_midiRecWallStart;
+  _midiRecNotes=_midiRecNotes.filter(function(n){ if(!n._native) return true; if(n.tOn>=end) return false; n.tOff=Math.max(n.tOn+1,Math.min(n.tOff,end)); return true; });
+ }
+};
+document.addEventListener('visibilitychange',function(){ if(document.hidden && window._nsEvents && window._nsEvents.timer) window._nsEvents.suspendOutput(); });
+
+// The page is the source of truth for Pure's table and chord glide controls.
+// A host missing this API may still play Equal without glide, but must refuse
+// enabled features instead of silently dropping their cents or ramps.
+window._nsIntonation = {
+ sync: async function(){
+  var P = window._nsDrum.plugin();
+  if(P && P.seqObserve) { var obs=await window._nsEvents.prepare(); if(!obs.ok) return obs; }
+  var pure = tuningOn(), glide = !!_wp('chord.glide');
+  if(!P || !P.seqIntonation) return Promise.resolve(pure || glide ? {ok:false,why:'Pure tuning or chord glide needs a newer native engine'} : {ok:true});
+  var w = window._blPeekLast ? window._blPeekLast() : null, time = +_wp('chord.glideTime');
+  return P.seqIntonation({table:_mgB64(Float64Array.from(TUNING_JI5)),pure:pure,glide:glide,
+    glideTime:isFinite(time) ? Math.max(0,time) : 0.15,root:w && !w.rest ? w.rootPc : -1});
+ }
 };
 
 // Hand chords are changes, not another clock. The host ignores them unless a
@@ -62082,8 +62255,9 @@ window._nsBass = {
    return me.sync().then(function(r){ r.bank = rep; return r; });
   });
  },
- sync: function(){
+ sync: async function(){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  var intonation = await window._nsIntonation.sync(); if(intonation.ok === false) return intonation;
   var sc = window._blNativeScore();
   if(!sc.ok) return Promise.resolve({ok: false, why: 'the engine cannot play this line yet: ' + sc.why.join(', ')});
   var wins = (typeof window._blPeekLast === 'function' && window._songHasChordWindows()) ? window._blNativeChordsFromFirst(48000) : [0, 0];
@@ -62358,15 +62532,17 @@ window._nsSong = {
    return need.held ? me.ensureChord(need.pitches, true) : {built: 0, kept: 0, failed: []};
   }).then(function(r){ add(r); return rep; });
  },
- sync: function(){
+ sync: async function(){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
+  var intonation = await window._nsIntonation.sync(); if(intonation.ok === false) return intonation;
+  this.syncing=(this.syncing||0)+1;
   var me = this, want = this.chords && !!(MODGRAPH.on && MODGRAPH.parts.chord);
   var endL = window._songEndLanes(), landing = (MODGRAPH.on && MODGRAPH.parts.drum) ? window._nsBank.ensureLanes([endL.kick, endL.cym, endL.snare]) : Promise.resolve(null);     // the lanes the landing hits
-  return landing.then(function(){ return want ? me.prepareChords() : Promise.resolve(null); }).then(function(rep){
+  try { return await landing.then(function(){ return want ? me.prepareChords() : Promise.resolve(null); }).then(function(rep){
    var sc = window._songNativeScore({chords: want && (!rep || !rep.failed.length)});
    if(!sc.ok) return {ok: false, why: 'the engine cannot step this song yet: ' + sc.why.join(', ')};
    return P.seqSong({score: _mgB64(Float64Array.from(sc.score))}).then(function(r){ if(r && typeof r === 'object'){ r.bank = rep; r.chordWhy = sc.chordWhy; r.chords = sc.chords; } return r; });
-  });
+  }); } finally { this.syncing--; }
  },
  start: function(section, slot, leadMs){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
@@ -62386,25 +62562,26 @@ window._nsSong = {
  // Answers the engine's asks (window._songAnswer) while the song runs: polls the mirror, and each time it has started a chord, writes the bass's line for the
  // next one and sends it. The engine takes it at the moment that chord starts. `answering: false` leaves the bass on the one line it has.
  driving: false,
- answering: true, _timer: null, _seen: 0, _pre: null, _melPre: null, asked: 0, lastMs: 0,
+ answering: true, syncing:0, _revision:null, _timer: null, _seen: 0, _pre: null, _melPre: null, asked: 0, lastMs: 0,
  watch: function(on){
   var me = this, P = this.plugin();
   if(me._timer){ clearInterval(me._timer); me._timer = null; }
   if(!on || !P) return;
-  me._seen = 0; me._pre = null; me._melPre = null; me.asked = 0;
+  me._seen = 0; me._revision=null; me._pre = null; me._melPre = null; me.asked = 0;
   me._timer = setInterval(function(){
    P.seqMirror().then(function(m){
     try{ window._songMirror.apply(m); }catch(e){}
     var s = m && m.song, ask = s && s.ask;
-    if(!me.answering || !s || !s.running || !ask || ask[0] === me._seen || !ask[0]) return;
+    if(s && s.revision!==me._revision){ me._revision=s.revision; me._pre=null; me._melPre=null; me._seen=0; }
+    if(me.syncing || (s && s.editPending) || !me.answering || !s || !s.running || !ask || ask[0] === me._seen || !ask[0]) return;
     me._seen = ask[0];
     var t0 = performance.now();
     var r = window._songAnswer(ask, (m.bass && m.bass.firstFrame) || 0, m.sampleRate || 48000, me._pre, (m.mel && m.mel.firstFrame) || 0, me._melPre);
     me._pre = r.pre; me._melPre = r.mel.pre; me.asked++;
-    var melSent = r.mel.score && P.seqMelScore ? P.seqMelScore({score: _mgB64(Float64Array.from(r.mel.score))}) : Promise.resolve();
-    melSent.then(function(){ if(r.mel.pending && P.seqMelPending) return P.seqMelPending({pending: _mgB64(Float64Array.from(r.mel.pending))}); });
-    if(r.score && P.seqBassScore) P.seqBassScore({score: _mgB64(Float64Array.from(r.score))});
-    if(r.pending && P.seqBassPending) P.seqBassPending({pending: _mgB64(Float64Array.from(r.pending))});
+    var melSent = r.mel.score && P.seqMelScore ? P.seqMelScore({score: _mgB64(Float64Array.from(r.mel.score)),revision:ask[9]}) : Promise.resolve();
+    melSent.then(function(){ if(r.mel.pending && P.seqMelPending) return P.seqMelPending({pending: _mgB64(Float64Array.from(r.mel.pending)),revision:ask[9]}); });
+    if(r.score && P.seqBassScore) P.seqBassScore({score: _mgB64(Float64Array.from(r.score)),revision:ask[9]});
+    if(r.pending && P.seqBassPending) P.seqBassPending({pending: _mgB64(Float64Array.from(r.pending)),revision:ask[9]});
     me.lastMs = performance.now() - t0;
    });
   }, 40);
@@ -62423,6 +62600,150 @@ window._nsSong = {
   return (this.chords && MODGRAPH.on && MODGRAPH.parts.chord ? me.prepareChords(semis) : Promise.resolve(null)).then(function(){ return P.seqSongCapo({capo: semis}); });
  },
  mirror: function(){ var P = this.plugin(); return P ? P.seqMirror().then(function(m){ return m && m.song; }) : Promise.resolve(null); }
+};
+
+// A native run has one owner for the entire scheduled band. Web and
+// unsupported configurations keep the whole page band; entering background
+// never starts a second scheduler or changes ownership.
+window._nativeTransport = {
+ state:'page', declined:false, generation:0, token:Date.now()*1000, timer:null, work:null, config:null, last:null,
+ enabled:function(){return _inNativeApp() && !!MODGRAPH.on;},
+ suppresses:function(){return this.state!=='page';},
+ claim:function(){
+  if(this.suppresses()) return true;
+  if(this.declined || !this.enabled() || !_clockShouldRun()) return false;
+  var ctx=getCtx();if(ctx && CLOCK_EPOCH<ctx.currentTime-.001){this.declined=true;this.last={ok:false,why:'native ownership waits for a fresh Play'};return false;}
+  this.state='preparing';window._nsEvents.outputBlocked=true;var me=this,gen=++me.generation;
+  clearTimeout(clockTimer);_clockArmedAt=0;
+  me.work=new Promise(function(r){setTimeout(r,0);}).then(function(){return me.launch(gen);}).catch(function(e){return me.fallback(gen,e);});
+  return true;
+ },
+ snapshot:function(){
+  if(typeof modParamsSync==='function') modParamsSync();
+  var song=!!songLoopActive, bass=!!window._blPlaying(), mel=!!window._mlPlaying(),arp=!!(arpOn&&arpSounding),drum=!!sqPlaying;
+  var unsupported=[];
+  if(rhythmOn) unsupported.push('rhythm clock');
+  if(metronomeOn) unsupported.push('metronome');
+  if(PS.patOn) unsupported.push('sampler pattern');
+  if(crActive()) unsupported.push('standalone chord rhythm');
+  if(sqChain.length || sqPendPat!==null || sqPendMach || sqPendTpl || sqPendGroove!==null) unsupported.push('queued drum patterns');
+  if(prac && (prac.key.on || prac.ramp.on)) unsupported.push('practice key or tempo steps');
+  ['drum','auxperc','bass','melgen','arp','chord'].forEach(function(p){if(!MODGRAPH.parts[p])unsupported.push(p+' is not native');});
+  [['bass',bass],['melgen',mel],['arp',arp],['chord',song]].forEach(function(x){if(x[1]&&_wp(x[0]+'.voice')==='sampler')unsupported.push('custom sampler voice');});
+  var bs=window._blNativeScore(),ms=window._mlNativeScore(),as=window._arpNativeScore();
+  if(bass&&!bs.ok)unsupported.push(bs.why.join(', '));if(mel&&!ms.ok)unsupported.push(ms.why.join(', '));if(arp&&!as.ok)unsupported.push(as.why.join(', '));
+  var sc=song?window._songNativeScore({chords:true}):null;if(sc&&!sc.ok)unsupported.push(sc.why.join(', '));if(sc&&sc.chordWhy&&sc.chordWhy.length&&chordsEnabled)unsupported.push(sc.chordWhy.join(', '));
+  var d=window._sqNativeScore({sounding:drum});
+  var out={drum:drum,bass:bass,mel:mel,arp:arp,song:song,ds:d.score,bs:bs.score,ms:ms.score,as:as.score,ss:sc&&sc.score,
+   bpm:sqBpm(),drumRate:sqRateMul,bassRate:blRateMul,melRate:mlRateMul,unsupported:unsupported,
+   bank:[window._nsBank.signatureBass(),window._nsBank.signatureMel(),window._nsBank.signatureArp(),window._nsBank.signatureChord(),JSON.stringify(sqShapes),_wp('mix.drum'),_wp('mix.auxperc')]};
+  out.songSig=JSON.stringify(out.ss);out.signature=JSON.stringify(out);return out;
+ },
+ rememberEngine:function(head){
+  var instance=head.instance||'legacy',id=instance+':'+(head.bankEpoch||0);if(this.bankIdentity===id)return;
+  window._nsBank.have={};window._nsBank.bad={};
+  if(this.engineInstance!==instance){
+   if(window.GraphRec)GraphRec.forgetBuffers();
+   if(this.engineInstance){if(_midiRecOn)_midiRecNativeCut=true;window._nsEvents.suspendOutput();}
+   window._nsEvents.cursor=null;window._nsEvents.offset=null;window._nsEvents.routesSig='';
+  }
+  this.engineInstance=instance;this.bankIdentity=id;
+ },
+ check:function(r){if(!r || r.ok===false || (r.failed&&r.failed.length))throw new Error((r&&(r.why||(r.failed&&r.failed[0]&&r.failed[0].why)))||'native preparation refused');return r;},
+ prepare:function(c,initial){
+  var me=this,gen=me.generation;
+  var job=(me.bankWork||Promise.resolve()).catch(function(){}).then(function(){if(gen!==me.generation)throw new Error('cancelled preparation');return me._prepare(c,initial,gen);});
+  me.bankWork=job.catch(function(){});return job;
+ },
+ _prepare:async function(c,initial,gen){
+  var me=this,P=window._nsDrum.plugin();if(c.unsupported.length)throw new Error(c.unsupported.join(', '));
+  me.check(await window._nsEvents.prepare());me.check(await window._nsIntonation.sync());
+  if(gen!==me.generation)throw new Error('cancelled preparation');
+  window._nsBank.isolated=true;
+  try{
+   me.check(await window._nsBank.ensure());if(gen!==me.generation)throw new Error('cancelled preparation');me.check(await P.seqScore({score:_mgB64(Float64Array.from(c.ds))}));
+   if(c.bass){me.check(await window._nsBank.ensureBass());me.check(await P.seqBassScore({score:_mgB64(Float64Array.from(c.bs))}));if(initial&&!c.song)me.check(await window._nsBass.sync());}
+   if(c.arp){me.check(await window._nsArp.prepare());if(initial&&!c.song)me.check(await window._nsArp.notes());}
+   if(c.mel){me.check(await window._nsMel.prepare());if(initial&&!c.song)me.check(await window._nsMel.chords());}
+   if(c.song && (initial || !me.config || c.songSig!==me.config.songSig || c.bank[3]!==me.config.bank[3])){
+    var song=me.check(await window._nsSong.sync());if(chordsEnabled && song.chords===false)throw new Error((song.chordWhy||[]).join(', ')||'native chord preparation refused');
+   }
+  }finally{window._nsBank.isolated=false;}
+ },
+ launch:async function(gen){
+  var me=this,P=window._nsDrum.plugin();
+  if(!P || !P.seqTransportStart || !P.seqTransportStop)throw new Error('native transport unavailable');
+  var head=await P.seqMirror();if(!head || !head.transport)throw new Error('native transport unavailable');
+  me.token=Math.max(me.token,head.transport.token||0)+1;me.rememberEngine(head);
+  if(head.running || (head.bass&&head.bass.running) || (head.arp&&head.arp.running) || (head.mel&&head.mel.running) || (head.song&&head.song.running) || (head.chord&&head.chord.running))me.check(await P.seqTransportStop({token:++me.token}));
+  var c,stable=false;for(var attempt=0;attempt<3;attempt++){c=me.snapshot();await me.prepare(c,true);if(gen!==me.generation)return;if(me.snapshot().signature===c.signature){stable=true;break;}}
+  if(!stable)throw new Error('instruments changed during preparation');
+  var cue=_songHeldAt||{section:songLoopSection||0,slot:songLoopSlot||0};
+  var options=[1,c.bpm,c.drumRate,c.bassRate,c.melRate,+c.bass,+c.arp,+c.mel,0,+c.song,
+   window._nsKitCode('bass:'+_wp('bass.voice')),window._nsKitCode('arp:'+_wp('arp.voice')),window._nsKitCode('mel:'+_wp('melgen.voice')),0,cue.section,cue.slot];
+  if(c.song) stopAll();
+  me.attempted=true;me.check(await P.seqTransportStart({options:_mgB64(Float64Array.from(options)),token:++me.token}));
+  if(gen!==me.generation)return;
+  me.state='native';window._nsEvents.outputBlocked=false;me.config=c;me.last={ok:true};
+  if(c.song){window._nsSong.driving=true;window._songMirror.seen=0;window._songMirror.chorusSeen=0;window._nsSong.watch(true);}
+  _bgSyncNative();me.timer=setInterval(function(){var generation=me.generation;me.poll().catch(function(e){me.fallback(generation,e);});},80);
+  await me.poll();
+ },
+ poll:function(){var me=this;if(me.pollWork)return me.pollWork;me.pollWork=me._poll().finally(function(){me.pollWork=null;});return me.pollWork;},
+ _poll:async function(){
+  var me=this;if(me.state!=='native' || me.updating)return;
+  var P=window._nsDrum.plugin(),gen=me.generation,m=await P.seqMirror();if(gen!==me.generation || me.state!=='native')return;
+  if(!m.transport || !m.transport.owned)throw new Error('native transport lost ownership');
+  me.mirror(m);
+  if(m.song && m.song.ending && m.song.ending.phase>0){if(m.song.ending.phase===2 && !m.song.ending.timers)stopEverything();return;}
+  var c=me.snapshot();if(!c.drum&&!c.bass&&!c.mel&&!c.arp&&!c.song){await me.stop();return;}if(c.signature===me.config.signature)return;
+  me.updating=true;
+  try{
+   await me.prepare(c,false);if(gen!==me.generation || me.state!=='native')return;
+   if(c.bpm!==me.config.bpm || c.drumRate!==me.config.drumRate)me.check(await P.seqTempo({bpm:c.bpm,rate:c.drumRate}));
+   if(c.bass){if(c.bpm!==me.config.bpm || c.bassRate!==me.config.bassRate)await P.seqBassTempo({bpm:c.bpm,rate:c.bassRate});if(!m.bass.running)me.check(await P.seqBassStart({bpm:c.bpm,rate:c.bassRate,align:true,leadMs:500,kit:window._nsKitCode('bass:'+_wp('bass.voice'))}));}else if(m.bass.running)await P.seqBassStop();
+   await P.seqArpArm({on:c.arp,kit:window._nsKitCode('arp:'+_wp('arp.voice'))});await P.seqMelArm({on:c.mel,kit:window._nsKitCode('mel:'+_wp('melgen.voice')),rate:c.melRate});
+   if(c.mel && (c.bpm!==me.config.bpm || c.melRate!==me.config.melRate))await P.seqMelTempo({bpm:c.bpm,rate:c.melRate});
+   if(c.song && !m.song.running){window._nsSong.driving=true;window._nsSong.watch(true);me.check(await P.seqSongStart({align:true,leadMs:500,section:songCurrentSection>=0?songCurrentSection:0,slot:Math.max(0,songCurrentSlot),pass:0}));}
+   if(!c.song){
+    if(m.song.running){await P.seqSongStop();window._nsSong.driving=false;window._nsSong.watch(false);}
+    if(c.arp && (!m.arp.running || m.arp.bySong)){await window._nsArp.notes();me.check(await P.seqArpStart({bpm:c.bpm,align:true,leadMs:500,kit:window._nsKitCode('arp:'+_wp('arp.voice'))}));}
+    if(c.mel && (!m.mel.running || m.mel.bySong))me.check(await P.seqMelStart({bpm:c.bpm,rate:c.melRate,align:true,leadMs:500,kit:window._nsKitCode('mel:'+_wp('melgen.voice'))}));
+   }
+   if(!c.arp && m.arp.running)await P.seqArpStop();if(!c.mel && m.mel.running)await P.seqMelStop();
+   me.config=c;
+  }finally{me.updating=false;}
+ },
+ mirror:function(m){
+  if(!m)return;var c=getCtx(),sr=m.sampleRate||48000;if(!c)return;
+  sqNextT=c.currentTime+(m.nextFrame-m.frame)/sr;sqSeqStep=m.nextStep;
+  if(window._blNativeDisplay)window._blNativeDisplay(m.bass,m.frame,sr);if(window._mlNativeDisplay)window._mlNativeDisplay(m.mel,m.frame,sr);
+  if(this.config&&this.config.song)window._songMirror.apply(m);
+ },
+ rebasePage:function(){
+  var c=getCtx();if(!c)return;clockSetEpoch(c);sqNextT=CLOCK_EPOCH;sqSeqStep=0;
+  window._blNativeRebase(CLOCK_EPOCH);window._mlNativeRebase(CLOCK_EPOCH);arpNextBeat=CLOCK_EPOCH;arpIdx=0;arpDir=1;arpGateIdx=0;
+  if(songLoopActive){clearTimeout(songLoopTimer);songLoopTimer=null;_playLoopSlot(CLOCK_EPOCH);}
+  clearTimeout(clockTimer);tickClock();
+ },
+ fallback:async function(gen,e){
+  var me=this;if(gen!==me.generation)return;gen=++me.generation;
+  me.last={ok:false,why:String(e&&e.message||e)};clearInterval(me.timer);me.timer=null;
+  window._nsSong.driving=false;window._nsSong.watch(false);window._songMirror.live=false;
+  me.state='stopping';window._nsEvents.outputBlocked=true;window._nsEvents.suspendOutput();
+  if(me.attempted){try{me.check(await window._nsDrum.plugin().seqTransportStop({token:++me.token}));}catch(err){me.state='failed';me.last.why+='; stop unconfirmed';_bgSyncNative();return;}}
+  if(gen!==me.generation)return;me.state='page';me.declined=true;me.attempted=false;_bgSyncNative();me.rebasePage();
+ },
+ stop:function(){
+  var me=this;me.declined=false;++me.generation;clearInterval(me.timer);me.timer=null;
+  if(me.state==='page')return Promise.resolve();
+  me.state='stopping';window._nsEvents.outputBlocked=true;window._nsSong.driving=false;window._nsSong.watch(false);
+  if(window._nsEvents)window._nsEvents.suspendOutput();_bgSyncNative();
+  var P=window._nsDrum.plugin(),token=++me.token;
+  return (P&&P.seqTransportStop?P.seqTransportStop({token:token}):Promise.resolve({ok:!me.attempted})).then(function(r){
+   if(token!==me.token)return;me.check(r);me.state='page';me.attempted=false;me.config=null;
+  }).catch(function(e){me.state='failed';me.last={ok:false,why:'native stop unconfirmed: '+String(e)};});
+ }
 };
 
 // Expose a state snapshot for the top-level autosave (sqGrid etc. are local
@@ -63056,6 +63377,13 @@ var _blPrevFreq=0, _blPrevSlide=false, _blPrevGain=null, _blPrevEnd=0;
 // eight seconds on top of the next. Its stand-in oscillator's stop() moves
 // the engine's release, so the same cut reaches it through here.
 var _blPrevVoice=null;
+window._blProbeSwap=function(next){
+ var old={freq:_blPrevFreq,slide:_blPrevSlide,gain:_blPrevGain,end:_blPrevEnd,voice:_blPrevVoice};next=next||{};
+ _blPrevFreq=next.freq||0;_blPrevSlide=!!next.slide;_blPrevGain=next.gain||null;_blPrevEnd=next.end||0;_blPrevVoice=next.voice||null;return old;
+};
+window._blNativeDisplay=function(m,frame,sr){var c=getCtx();if(c && m){blNextT=c.currentTime+(m.nextFrame-frame)/sr;blSeqStep=m.nextStep;}};
+window._blNativeRebase=function(at){blNextT=at;blSeqStep=0;};
+
 function _blStopMsx(at){
   var vs=_blPrevVoice; _blPrevVoice=null;
   (vs||[]).forEach(function(o){ if(o && o._msx){ try{ o.stop(at); }catch(e){} } });
@@ -65088,8 +65416,7 @@ window._blGenStyle = function(){ return blGenStyle; };
 // follow, as this scheduler does. A chord's locked phrase rides with the chart, window._blNativeChords, since 6.9.9.9.7.)
 window._blNativeScore = function(){
   var why = [], hs = window._humanState();
-  try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
-  var scale = _blScalePcs();
+   var scale = _blScalePcs();
   var d = [1, blSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, blFollow ? 1 : 0, _blGridRootPc, _blGridIntvs.length];
   _blGridIntvs.forEach(function(x){ d.push(x); });
   d.push(scale.length); scale.forEach(function(x){ d.push(x); });
@@ -65859,6 +66186,8 @@ function mlStop(){
   if(!rhythmOn && !_arpSounding() && !sqStillOn && !blStillOn) clearTimeout(clockTimer);
 }
 
+window._mlNativeDisplay=function(m,frame,sr){var c=getCtx();if(c && m){mlNextT=c.currentTime+(m.nextFrame-frame)/sr;mlSeqStep=m.nextStep;}};
+window._mlNativeRebase=function(at){mlNextT=at;mlSeqStep=0;};
 window.mlPlay = window._mlPlayImpl = mlPlay;
 
 // ── render grid — reuses bl-* CSS classes for identical piano-roll styling ──
@@ -66552,7 +66881,6 @@ window._mlPushCell = _mlPushCell;
 window._mlNativeScore = function(){
  var why = [], hs = window._humanState();
  try{ var mv = _wp('melgen.voice'); if(mv === 'sampler') why.push('a custom sampler melody voice'); }catch(e){}
- try{ if(tuningOn()) why.push('Pure tuning'); }catch(e){}
  var scale = (typeof window._songScalePcs==='function') ? (window._songScalePcs() || []) : [];
  var d = [1, mlSteps, window._sqSwingVal(), window._sqSwing8() ? 1 : 0, mlFollow ? 1 : 0, _mlGridRootPc, _mlGridIntvs.length];
  _mlGridIntvs.forEach(function(x){ d.push(x); });

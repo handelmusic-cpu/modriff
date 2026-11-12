@@ -46,6 +46,11 @@ struct BankChoke {
 };   // basis 0: linear in the quantity, 1: linear in the semitones (pitch only)
 
 struct BankEntry {
+  struct TuneSlot { int i, mode; }; // 0 additive cents, 1 multiplicative frequency
+  struct GlideNode { int node, param, base; };
+  std::vector<TuneSlot> tuning;
+  std::vector<GlideNode> glide;
+  double synthAttack = 0;    // chord patch note lifetime includes its Attack
   bool processor = false;     // v2 descriptor: the part's live Processor, never a graph
   int part = 0, kit = 0, lane = 0;
   double generation = 0;     // the page's counter: which settings this voice was recorded under
@@ -93,7 +98,7 @@ struct BankEntry {
   std::vector<BankSlot> gtime;
 
   // The flat layout (all doubles), written by the page (window._nsBank):
-  //   Version 2 is [2, part (2 bass, 5 arp, 6 melody), kit, -1, generation].
+  //   Version 2 is [2, part (2 bass, 3 chord, 5 arp, 6 melody), kit, -1, generation], with attack appended for chord.
   //   It refers to the live Processor; patch controls keep their existing path.
   //   [0] 1 version  [1] part  [2] kit  [3] lane  [4] generation  [5] refAt  [6] lead  [7] refVel  [8] n
   //   [9 .. 9+n) the program, then three lists (vel, accent, pitch) each `count, (index, b, basis) x count`,
@@ -185,7 +190,7 @@ class DrumBank {
   // `durSec` and `fromMidi` are the bass's length and the note it glides from; the drums leave them out.
   // `level` is the arp's dynamic level, `pan` where it is struck in the field (part 5 only) and `gtime` the melody's slide time (part 6 only); the others have no slots for them.
   bool patch(const BankEntry &e, double vel, bool accent, double pitchSemis, int64_t onsetFrame, double sampleRate,
-             uint64_t notBefore, PatchedVoice &out, double durSec = -1, double fromMidi = -1, double level = 1, double pan = 0, double gtime = 0) const {
+             uint64_t notBefore, PatchedVoice &out, double durSec = -1, double fromMidi = -1, double level = 1, double pan = 0, double gtime = 0, double tune = 0) const {
     const size_t n = e.prog.size();
     out.prog = e.prog;
     std::vector<unsigned char> cnt(n, 0);
@@ -212,6 +217,12 @@ class DrumBank {
     if (!e.gtime.empty()) apply(e.gtime, gtime, e.refGtime, gtime, e.refGtime);
     if (!e.from.empty() && fromMidi >= 0) apply(e.from, std::pow(2.0, fromMidi / 12.0), std::pow(2.0, e.refFrom / 12.0), fromMidi, e.refFrom);
     for (const DurSlot &c : e.velCurve) if (c.i >= 0 && (size_t)c.i < n) out.prog[(size_t)c.i] = c.at(vel);
+    // Tune before pitch clamps: the bass pluck's noise rate follows frequency
+    // and is then held to its limits, exactly as its page voice constructs it.
+    for (const auto &t : e.tuning) {
+      if (t.mode == 0) out.prog[(size_t)t.i] += tune;
+      else out.prog[(size_t)t.i] *= std::pow(2.0,tune / 1200.0);
+    }
     for (const auto &h : e.held) out.prog[(size_t)h.i] = std::min(std::max(out.prog[(size_t)h.i], h.lo), h.hi);
     if (!e.dur.empty() && durSec >= 0) for (const DurSlot &d : e.dur) if (d.i >= 0 && (size_t)d.i < n) out.prog[(size_t)d.i] = d.at(durSec);
     // Begin on the grid, a lead before the onset; the few frames the grid cannot reach go into the time slots.

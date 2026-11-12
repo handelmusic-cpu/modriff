@@ -1,6 +1,6 @@
 # Native scheduling: the sequencers move to the engine
 
-Design written at 6.9.4. The implementation log (spike findings, chord investigation, every slice and migration step with its measurements) is in `docs/archive/native-scheduling-log.md`: `grep -n` it, never read it through. The engine now schedules drums, bass, chord rhythm, songs, arp and melody through developer entries. Migration A supplies generated melody lines; B1 and B2 add per-pitch factory voices. The public app still uses the page scheduler. See the current checkpoint at the end before beginning the cutover. It is the "then the clock" of step 7 in
+Design written at 6.9.4. The implementation log (spike findings, chord investigation, every slice and migration step with its measurements) is in `docs/archive/native-scheduling-log.md`: `grep -n` it, never read it through. The engine now schedules drums, bass, chord rhythm, songs, arp and melody through developer entries. Migration A supplies generated melody lines; B1 and B2 add per-pitch factory voices. Supported native-app runs now use one automatic native owner; unsupported configurations use the whole page band. The web page retains its JavaScript schedulers. See the current checkpoint at the end before beginning the cutover. It is the "then the clock" of step 7 in
 `docs/v5-architecture.md`, and the reason is background play: every part already *plays* on the
 native engine, but *when* a note plays is still decided by page JavaScript on a `setTimeout` chain, so
 the music lasts only as long as the web view runs and the look-ahead reaches. Read the section
@@ -171,14 +171,11 @@ v1; say so, don't half-do them.
 
 ## Current migration checkpoint
 
-- **A:** done, including both Follow settings and last-line repetition when no page answer arrives.
-- **B1 / B2:** Piano, Organ and factory recorded instruments are banked as above. Custom clips are deliberately refused until slot/slice/asset invalidation is represented.
-- **B3:** bass, arp and melody-generator patches use Processor-backed entries (6.9.9.9.9.9.9.7c), measured below. Chord patches remain refused until their separate sub voice shares the correct native gain, effects and release path. Treating patches as graph programs loses notes.
-- **B4:** pending. Pure tuning and chord glide remain explicit refusals; the event data and parameter maps do not yet carry those cents/ramps.
-- **B5:** implemented for hand chords with native followers running (6.9.9.9.9.9.9.7b), measured below. Public transport ownership remains pending; phone check 39 is listed, not yet heard.
-- **C:** pending. Interactive strip voices already use the native graph path, and native buses already feed meters, effects and stems. Sequenced MIDI output/recording still needs a retained native event stream and a recording-clock mapping; polling the last note alone loses events.
-- **D:** repeating the last supplied line is already implemented. The chosen chart-edit policy is the next bar line; staging the changed score there remains to be built.
-- **E:** pending. The public transport still uses the page timers. Do not turn background scheduling on before the unsupported voices, observers, edits, fallback and one-flag transport ownership are verified on the Mac (a phone pass is listed in the checklist, not waited for). The web page must retain its JavaScript schedulers. 
-- **F:** the implementation log and phone checks are current for the verified changes above.
-
-
+- **A:** generated lines, both Follow settings and last-line repetition are implemented.
+- **B1/B2:** factory instruments are banked per pitch. Custom sampler instruments still use whole-band page fallback.
+- **B3/B4/B5:** all four patch parts, the chord's separate sub, Pure tuning, chord glide and live hand-chord forwarding are implemented.
+- **C:** retained fractional-frame note/cut events feed foreground MIDI and Bounce MIDI, with cursors, native recording-clock mapping and explicit overflow reporting. Background MIDI out/external clock remain outside v1.
+- **D:** live chart revisions apply at the next uncommitted bar. Commands/pass/trainer state and old/new locks survive; stale generated-line replies are rejected by revision.
+- **E:** public Play prepares and claims one native owner by default when Native sound is on and the configuration is supported. Page schedulers/song timers are suppressed for that run. Five clocks share a first bar; monotonic tokens cancel stale starts/stops. Native mirrors drive displays. Host/bank identities invalidate stale caches. Probes preserve live manual voices. Background permission requires a completed native claim; there is no foreground/background scheduler handover.
+- **Whole-band fallback:** custom sampler voices, sampler patterns, metronome/simple rhythm, standalone chord rhythm, queued/chained drum patterns and practice key/tempo automation currently use the page. Chart-position jumps also return the run to the page. Loading/refused banks and older/unavailable hosts use the same fallback. These runs pause on leaving and do not claim background support.
+- **Verification:** Mac event/audio comparisons, real-page ownership/race/fallback tests, the full host suite and iOS Simulator build pass. Not heard on device: checklist 45–49. Those checks are a to-do, not a gate. Handoff: `docs/native-audio-handoff.md`.
