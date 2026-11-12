@@ -8,16 +8,17 @@ verification, App Store Connect, screenshots. New features wait unless asked.
 ## Reading the docs (they are big — search, don't read whole)
 
 `grep -n` for the topic, then read that range. Never open these end to end:
-`docs/v5-architecture.md` (2.8k lines), `docs/layout-5.0.md` (1.2k),
-`index.html` (~70k lines).
+`docs/v5-architecture.md` (~800 lines), `docs/layout-5.0.md` (~570), `index.html` (~70k lines).
+`docs/archive/` is shipped history (old logs, measurements, the full checklist): never read it
+unless asked; `grep -n` it only when you need the old reasoning for one specific thing.
 
 | for | read |
 |---|---|
 | launch: listing text, IAP table, review notes, screenshots, account steps | `docs/app-store.md` |
-| what to check on a phone | `docs/phone-test-checklist.md` |
+| what the owner still has to try on a phone | `docs/phone-test-checklist.md` (a short to-do, not a gate) |
 | Dynamic Island light | `docs/dynamic-island.md` |
-| plan, native steps, open problems | `docs/v5-architecture.md` (keep current when a step lands or a decision changes) |
-| background audio: moving the sequencers to the engine | `docs/native-scheduling.md` |
+| decisions, open problems, purchase plan | `docs/v5-architecture.md` (update only when a decision or an open problem changes) |
+| background audio: moving the sequencers to the engine (design + checkpoint) | `docs/native-scheduling.md` |
 | the free web page at modriff.com/play: build, what is off, wiring | `docs/web-play.md` |
 
 ## Shipping
@@ -28,17 +29,29 @@ per logical change, usual trailers, version label if it bumps one), then open
 **one** PR for everything asked for in that request or session and merge it.
 Never wait for a person to say "merge", and never wait for a bigger batch.
 
+**Phone checks never gate anything.** "Verified" means measured on the Mac (tests, simulator,
+browser, a clean xcodebuild). The owner tries things on a phone as they go and reports problems;
+you do not wait for, ask about, or block the next change, the PR, the merge or a native cutover on
+a phone check. Add the line to `docs/phone-test-checklist.md`, ship, move on. When the owner says
+something is wrong, fix it in the next batch.
+
+**Docs stay small.** A change's record is its commit message and PR body, not a new section in a
+doc. Do not append a "Slice N, part M" / "Landed as…" log entry to `docs/native-scheduling.md`,
+`docs/v5-architecture.md` or `docs/layout-5.0.md`; edit them only when a decision, a design or an
+open problem changes, and replace the stale text instead of adding next to it. The checklist gets
+one line per change (two at most), never a table or a section.
+
 - PR title names the range (`v5.0 – 5.0c: …`); body lists commits, one line each.
 - Merge commit, not squash: per-change commits and their labels are the record.
-- Unverified work stays out of the batch (own branch, say so). Broken production
+- Unverified work (not measured on the Mac; a pending phone check does not count) stays out of the batch (own branch, say so). Broken production
   is not a batch: fix, verify, ship alone.
 - Swift and the C++ engine compile on this Mac: run
   `xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build`
   (DerivedData in the scratchpad) before a native change counts as done. Never call
   it "unbuilt". What only a phone shows (crackle, timing, behaviour on leaving the
-  app) is "not heard on device": say so in the PR body with a short checklist
-  (`docs/phone-test-checklist.md`), one line per change, so the owner checks the
-  whole batch in one pass. `npm run ios:device` installs on the paired iPhone.
+  app) is "not heard on device": add one line per change to
+  `docs/phone-test-checklist.md` and list the same lines in the PR body, so the owner
+  can check the whole batch in one pass whenever they get to it. `npm run ios:device` installs on the paired iPhone.
 
 **Is Xcode building main?** `ios/App/App/public` is generated and gitignored, so it is only as new
 as the last `npm run ios`, and the checkout may lag `origin/main` after other sessions merge. Every app
