@@ -662,3 +662,11 @@ Use the developer entries with the corresponding page schedulers stopped and Nat
 - Pick a melody-generator patch and start `_nsMel`: single notes and polyphonic steps play; switch patches, turn macros and move the channel fader while it runs. Repeat after another native part has already advanced the engine clock.
 - Run a native song with these patch parts and a supported graph chord voice: Finish/Cold landings cut the previous patch notes, the tonic bass landing sounds, Fade reaches silence, and Stop leaves no queued start sounding afterward.
 - Return to the ordinary page transport after stopping developer sequencers: its tempo and sound controls still work. Check the free web page continues to use its worklet and page clock.
+
+## 41. Long bounce, held notes, Song on resume (6.9.9.9.9.9.9.7f; not heard on device)
+
+- Bounce a long take (15 minutes or more, Stems on, Native sound on): the app stays up after Stop, the files are in Files > mõdRïff > Bounces, the mix has the native parts in it, and each stem is the length of the mix. Before this, the page was ended for memory after the files were saved.
+- The transport sheet's Export row now has MIDI as a switch (lit = on, on by default), not a download. Bounce with it lit: the folder holds the mix, the `-live.mid` and any stems; the .mid has chords, melody, bass, arp, Melody Seq, drums, Aux and a Pads track. Switch it off, Bounce again: no .mid. Settings > Recording has the same switch.
+- Play a pad pattern while bouncing: the .mid's Pads track has one note per hit (bank A pad 1 = note 36).
+- Hold a chord, then force the web view to reload (or run `location.reload()` from a remote inspector) while the chord rings: after the page is back the chord is gone within a moment. Press Panic with a held chord that has no finger on it: it fades out.
+- Turn Song on, leave the app, come back with Resume: Song is lit and Play starts the chart. Turn Song off, Resume again: it is off.
