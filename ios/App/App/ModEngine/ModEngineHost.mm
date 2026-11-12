@@ -232,7 +232,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   std::function<void(double)> synthTempo;
   void setTempoNow(double bpm) { tmap.jump((double)frames->load(std::memory_order_relaxed), bpm); }
   HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate), aseq(rate), mseq(rate), sseq(rate), svoice(rate), tmap(rate) {
-    sr = rate; bplay.synth.sr = aplay.synth.sr = mplay.synth.sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank; aplay.sr = rate; aplay.bank = &bank; mplay.sr = rate; mplay.bank = &bank;
+    sr = rate; bplay.synth.sr = cplay.synth.sr = aplay.synth.sr = mplay.synth.sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank; aplay.sr = rate; aplay.bank = &bank; mplay.sr = rate; mplay.bank = &bank;
     seq.setTempoMap(&tmap); bseq.setTempoMap(&tmap); cseq.setTempoMap(&tmap); sseq.setTempoMap(&tmap); aseq.setTempoMap(&tmap); mseq.setTempoMap(&tmap);
   }
   // The page's chord windows, shifted onto the clock. Under `lock`.
@@ -572,6 +572,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
           return ok;
         };
       };
+      _hostSeq->cplay.synth.send = synthSink(0);
       _hostSeq->bplay.synth.send = synthSink(3);
       _hostSeq->aplay.synth.send = synthSink(4);
       _hostSeq->mplay.synth.send = synthSink(2);
@@ -838,7 +839,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   if (n && d[0] == 2) {
     modsynth::BankEntry probe;
     if (!probe.fromDoubles(d.data(), n)) return NO;
-    const int slot = probe.part == 2 ? 3 : probe.part == 5 ? 4 : 2;
+    const int slot = probe.part == 3 ? 0 : probe.part == 2 ? 3 : probe.part == 5 ? 4 : 2;
     if (!_live[slot].load(std::memory_order_acquire)) return NO;
   }
   os_unfair_lock_lock(&_hostSeq->lock);
@@ -1261,6 +1262,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 - (void)seqChordStop {
   os_unfair_lock_lock(&_hostSeq->lock);
   _hostSeq->cseq.stop();
+  _hostSeq->cplay.stopAt((double)_frames.load(std::memory_order_relaxed));
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
 
@@ -1653,6 +1655,13 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     // meter, which on the web reads the chain's output, then the pan.
     modsynth::Strip *strip = _strips[part].get();
     if (strip) strip->gain(_scratchL.data(), _scratchR.data(), frames);
+    // The patch's trim and fader have already been applied to its Processor.
+    // Its separate chord sub is banked at the web's own level, so adding it
+    // before that trim would scale it twice (or with each patch's calibration).
+    if (part == 0 && graphOn) for (int i = 0; i < frames; i++) {
+      _scratchL[i] += gl[modsynth::GraphPool::kChordSubBus][i];
+      _scratchR[i] += gr[modsynth::GraphPool::kChordSubBus][i];
+    }
     if (modsynth::MixFx *fx = _mixfx[part].get())
       fx->process(_scratchL.data(), _scratchR.data(), frames);
     if (strip) strip->measure(_scratchL.data(), _scratchR.data(), frames);

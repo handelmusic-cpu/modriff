@@ -44,7 +44,7 @@ class ChordComposer {
   // `hold`: the chord a gated hit plays (bank part 4: no decay, let go of by a release) in place of the decaying one (part 3); `durSec` is then unused.
   static bool compose(const DrumBank &bank, int kit, const std::vector<int> &notes, int rootNote, double vel, double durSec,
                       double onsetExact, const ChordSettings &cs, double sampleRate, uint64_t notBefore, std::vector<ComposedVoice> &out,
-                      bool hold = false) {
+                      bool hold = false, bool subOnly = false) {
     out.clear();
     const int part = hold ? 4 : 3;
     const int n = (int)notes.size();
@@ -64,6 +64,7 @@ class ChordComposer {
       c.exact = onsetExact; c.relMin = e->relMin; c.releaseOps = cutWithout(e->releaseOps, e->toneStops);
       out.push_back(std::move(c));
     }
+    if (subOnly) return true;
     for (int i = 0; i < n; i++) {
       const BankEntry *e = bank.find(part, kit, notes[(size_t)i]);
       if (!e) return false;

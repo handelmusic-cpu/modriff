@@ -20,6 +20,7 @@ catch (e) { try { ({ chromium } = require('playwright-core')); }
   catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); } }
 const root = path.join(__dirname, '..', '..');
 const PASS_DB = parseFloat(process.env.PASS_DB || '90');
+const SUB_ONLY = process.env.SUB_ONLY === '1';
 const VOICES = (process.env.VOICES || 'sine,triangle,sawtooth,square,piano,pad,pianoreal2,jazzgtr,flute').split(',');
 let fail = 0;
 const ok = (c, label, detail) => { if (!c) fail++; console.log((c ? 'ok   ' : 'FAIL ') + label + (c ? '' : '  -> ' + detail)); };
@@ -58,7 +59,7 @@ const ONSETS = [2304 + 128 * 400, 2304 + 128 * 400 + 77, 2304 + 128 * 523 + 5];
   const bin = path.join(root, 'native', 'modsynth', 'chordtest');
   if (!fs.existsSync(bin)) { console.error('build it first: make -C native/modsynth chordtest'); process.exit(2); }
 
-  await page.evaluate(() => {
+  await page.evaluate(subOnly => {
     const sr = 48000;
     const offline = new OfflineAudioContext(2, sr * 8, sr);
     audioCtx = offline;
@@ -71,15 +72,16 @@ const ONSETS = [2304 + 128 * 400, 2304 + 128 * 400 + 77, 2304 + 128 * 523 + 5];
     modGraphEnable(stub, ['drum', 'auxperc', 'bass', 'chord', 'mel', 'melgen', 'arp']);
     _ensureAllPartBuses(offline);
     Object.assign(window._webParams, { 'chord.reverb': 0.4 });
+    if(subOnly) window._nsBank.ensureSynth = async () => ({built:0,kept:0,failed:[]});
     window._test = { BUFS };
-  });
+  }, SUB_ONLY);
 
   const NEED = [...new Set(CHORDS.flatMap(([r, ns, b]) => [...ns, ...(b != null ? [b] : []), b != null ? b : r]))].sort((a, b) => a - b);
   const total = { n: 0, ok: 0, exact: 0, worst: 1e9 };
   for (const voice of VOICES) {
     console.log('\n── chord voice: ' + voice + ' ──');
     for (const S of SETTINGS) {
-      const out = await page.evaluate(async ({ voice, S, CHORDS, LEVELS, ONSETS, NEED }) => {
+      const out = await page.evaluate(async ({ voice, S, CHORDS, LEVELS, ONSETS, NEED, subOnly }) => {
         const sr = 48000;
         wave = voice;
         if(SAMPLED_WAVES[voice]){
@@ -92,7 +94,7 @@ const ONSETS = [2304 + 128 * 400, 2304 + 128 * 400 + 77, 2304 + 128 * 523 + 5];
         window.modParamsSync && window.modParamsSync();
         const entries = [], why = {};
         for (const p of NEED) {
-          const r = await window._nsBank.buildChordNote(voice, p);
+          const r = await window._nsBank.buildChordNote(voice, p, false, subOnly);
           if (r.ok) entries.push(Array.from(r.entry)); else why[p] = r.why;
         }
         if (Object.keys(why).length) return { refused: why, entries: entries.length };
@@ -103,7 +105,7 @@ const ONSETS = [2304 + 128 * 400, 2304 + 128 * 400 + 77, 2304 + 128 * 523 + 5];
           for (const L of LEVELS) {
             const onset = ONSETS[ci++ % ONSETS.length];
             window._chokeReset();
-            const r = await window._nsBank.record({ kind: 'chord', part: 'chord', id: 1, root: rootN, notes, bass, vel: L.vel, dur: L.dur, at: (onset - 1e-6) / sr });
+            const r = await window._nsBank.record({ kind: 'chord', part: 'chord', id: 1, subOnly:subOnly, root: rootN, notes, bass, vel: L.vel, dur: L.dur, at: (onset - 1e-6) / sr });
             const all = (bass != null ? [bass] : []).concat(notes);
             cases.push({ notes: all, subNote: bass != null ? bass : rootN, vel: L.vel, dur: L.dur, onset, prog: r ? Array.from(r.prog) : null });
           }
@@ -111,7 +113,7 @@ const ONSETS = [2304 + 128 * 400, 2304 + 128 * 400 + 77, 2304 + 128 * 523 + 5];
         window._nsBank.constRandom = false;
         const BUFS = window._test.BUFS;
         return { entries, kit, cases, bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })) };
-      }, { voice, S, CHORDS, LEVELS, ONSETS, NEED });
+      }, { voice, S, CHORDS, LEVELS, ONSETS, NEED, subOnly: SUB_ONLY });
       if (out.refused) {
         console.log('  ' + S.name.padEnd(34) + 'REFUSED: ' + JSON.stringify(out.refused).slice(0, 200));
         ok(false, voice + ' / ' + S.name + ': the chord voice is banked', JSON.stringify(out.refused).slice(0, 200));
@@ -125,7 +127,7 @@ const ONSETS = [2304 + 128 * 400, 2304 + 128 * 400 + 77, 2304 + 128 * 523 + 5];
       buf.push(list.length);
       list.forEach(c => { buf.push(c.notes.length, ...c.notes, c.subNote, c.vel, c.dur, c.onset, S.strum ? 1 : 0, S.spread, S.width, 1, c.prog.length); c.prog.forEach(x => buf.push(x)); });
       fs.writeFileSync(path.join(tmp, 'cases.f64'), Buffer.from(Float64Array.from(buf).buffer));
-      const run = spawnSync(bin, [path.join(tmp, 'cases.f64')], { encoding: 'utf8', maxBuffer: 1 << 28 });
+      const run = spawnSync(bin, [path.join(tmp, 'cases.f64'), ...(SUB_ONLY ? ['--sub-only'] : [])], { encoding: 'utf8', maxBuffer: 1 << 28 });
       if (run.status !== 0) { console.error(run.stderr); process.exit(2); }
       const rows = run.stdout.trim().split('\n').map(l => l.split(' '));
       let nOk = 0, exact = 0, worst = 1e9; const bad = [];

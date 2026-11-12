@@ -662,3 +662,13 @@ Use the developer entries with the corresponding page schedulers stopped and Nat
 - Pick a melody-generator patch and start `_nsMel`: single notes and polyphonic steps play; switch patches, turn macros and move the channel fader while it runs. Repeat after another native part has already advanced the engine clock.
 - Run a native song with these patch parts and a supported graph chord voice: Finish/Cold landings cut the previous patch notes, the tonic bass landing sounds, Fade reaches silence, and Stop leaves no queued start sounding afterward.
 - Return to the ordinary page transport after stopping developer sequencers: its tempo and sound controls still work. Check the free web page continues to use its worklet and page clock.
+
+
+## 41. Native patch chords and sub (6.9.9.9.9.9.9.7d; not heard on device)
+
+Use native developer song/chord entries with page schedulers stopped. Choose a chord patch and leave Pure tuning and chord glide off for this check.
+
+- Start a chord rhythm or native song with a patch: every tone sounds. Test Strum off/on, slash basses, short gates and Sustain. A gate shorter than a strum must not leave a late note playing after release.
+- Turn the separate Sub on/off; change its level and wave. Compare two patches with different patch trims: the sub keeps its intended balance, reaches the chord meter/effects and appears in the chord stem.
+- Run sustained patch chords, then use `_nsChord.stop()`: both patch and sub stop. Test a new chord, a rest and a Finish/Cold ending; none leaves the previous chord ringing.
+- Switch back to a factory recorded chord voice and repeat the rhythm; gates, strums and the sub continue to work. Confirm the free web page keeps its existing chord behavior.

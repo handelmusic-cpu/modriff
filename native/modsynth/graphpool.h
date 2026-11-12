@@ -43,7 +43,8 @@ class GraphPool {
   static constexpr int kMasterBus = 8;      // code 8: straight into the master (the click)
   static constexpr int kChordRoom = 9;      // code 9: what the chord voices send to the chord's own reverb
   static constexpr int kRoom = 10;          // code 10: what the other voices send to the shared reverb
-  static constexpr int kBuses = 11;
+  static constexpr int kChordSubBus = 11; // after the patch trim, before chord effects/meters
+  static constexpr int kBuses = kChordSubBus + 1;
   static constexpr int kEditCap = 256;      // pending edit records per voice
   GraphPool();
   ~GraphPool();

@@ -24,6 +24,7 @@ catch (e) { try { ({ chromium } = require('playwright-core')); }
   catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); } }
 const root = path.join(__dirname, '..', '..');
 const PASS_DB = parseFloat(process.env.PASS_DB || '90');
+const SUB_ONLY = process.env.SUB_ONLY === '1';
 const VOICES = (process.env.VOICES || 'sine,sawtooth,piano,pad,pianoreal2,jazzgtr,flute').split(',');
 const MODES = (process.env.MODES || 'decay,hold').split(',');
 // seconds each chord is held for in the hold run (0: the chord decays, as a plain hit does): shorter than the attack, a gate, past the next chord
@@ -97,7 +98,7 @@ const SETTINGS = [
   const NEED = [...new Set(PROG.flatMap(([r, ns, b]) => [...ns, ...(b != null ? [b] : []), b != null ? b : r]))].sort((a, b) => a - b);
   for (const voice of VOICES) for (const S of SETTINGS) for (const MODE of MODES) {
     const holds = PROG.map((_, i) => MODE === 'hold' ? HOLDS[i] : 0);
-    const out = await page.evaluate(async ({ voice, S, PROG, NEED, holds }) => {
+    const out = await page.evaluate(async ({ voice, S, PROG, NEED, holds, subOnly }) => {
       const sr = 48000;
       wave = voice;
       if(SAMPLED_WAVES[voice]){
@@ -109,8 +110,8 @@ const SETTINGS = [
       document.getElementById('strum-spread').value = S.spread;
       const entries = [], why = {};
       for (const p of NEED) {
-        const r = await window._nsBank.buildChordNote(voice, p); if (r.ok) entries.push(Array.from(r.entry)); else why[p] = r.why;
-        if (holds.some(h => h > 0)) { const q = await window._nsBank.buildChordNote(voice, p, true); if (q.ok) entries.push(Array.from(q.entry)); else why['hold ' + p] = q.why; }
+        const r = await window._nsBank.buildChordNote(voice, p, false, subOnly); if (r.ok) entries.push(Array.from(r.entry)); else why[p] = r.why;
+        if (holds.some(h => h > 0)) { const q = await window._nsBank.buildChordNote(voice, p, true, subOnly); if (q.ok) entries.push(Array.from(q.entry)); else why['hold ' + p] = q.why; }
       }
       if (Object.keys(why).length) return { refused: why };
       const kit = window._nsKitCode('chord:' + voice), chords = [];
@@ -119,7 +120,7 @@ const SETTINGS = [
       for (const [rootN, notes, bass, vel] of PROG) {
         const onset = 2304 + 128 * 400 + 24000 * k + [0, 77, 5, 31, 101, 12][k], dur = 1.4, hold = holds[k];
         const at = (onset - 1e-6) / sr;
-        const r = await window._nsBank.record({ kind: 'chord', part: 'chord', id: 1, root: rootN, notes, bass, vel, dur: hold > 0 ? null : dur, at });
+        const r = await window._nsBank.record({ kind: 'chord', part: 'chord', id: 1, subOnly:subOnly, root: rootN, notes, bass, vel, dur: hold > 0 ? null : dur, at });
         if (hold > 0) {
           // rhyStrike: the chord is held and let go of atTime + the gate; the recorder's clock reads zero while a release is sent, as for a recording
           MODGRAPH.capture = []; MODGRAPH.captureClock = 0;
@@ -132,7 +133,7 @@ const SETTINGS = [
       window._nsBank.recs.forEach((rec, i) => { chords[i].edits = (rec.capturedInc || []).slice(); });
       window._nsBank.keepRecs = false; window._nsBank.constRandom = false;
       return { entries, kit, chords, bufs: Array.from(window._test.BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })) };
-    }, { voice, S, PROG, NEED, holds });
+    }, { voice, S, PROG, NEED, holds, subOnly: SUB_ONLY });
     if (out.refused) { ok(false, voice + ' / ' + S.name + ' / ' + MODE + ': the chord voice is banked', JSON.stringify(out.refused).slice(0, +process.env.WHY_LEN || 200)); continue; }
     if (process.env.EDITS_DEBUG) { for (const c of out.chords.slice(0, 2)) { const e = []; for (let i = 0; i < c.edits.length; i += 6) e.push(c.edits.slice(i, i + 6).map(x => +x.toFixed(5)).join(',')); console.log('edits of chord at ' + c.onset + ' (' + c.notes + '): ' + e.join(' | ')); } }
     const buf = [];

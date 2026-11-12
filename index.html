@@ -13882,7 +13882,7 @@ var _mgRpwOwner = {};
 var MODGRAPH = { on:false, plugin:null, parts:{}, capture:null, captureClock:null, gid:0, flushing:false, pending:[], bypass:false,
                  sent:0, fellBack:0, edits:0, empty:0, why:{},
                  // The host's part slots: a graph names a bus by one of these.
-                 CODE:{chord:0, mel:1, melgen:2, bass:3, arp:4, drum:5, auxperc:6, sampler:7, master:8, chordRoom:9, room:10} };
+                 CODE:{chord:0, mel:1, melgen:2, bass:3, arp:4, drum:5, auxperc:6, sampler:7, master:8, chordRoom:9, room:10, chordSub:11} };
 // Which messages make a new sound (the rest only change one that exists, and
 // reach the host through the recorder's own edits).
 var _MG_KINDS = { hit:1, note:1, chord:1, clip:1, glide:1 };
@@ -28298,6 +28298,9 @@ function _webChordOn(msg){
  reapVoice([bo],[bg],atk+dec,sustain);
  }
 
+ // The native patch bank records only this separate sub. Recording its
+ // silent Processor handle as a tone would silently lose every patch note.
+ if(msg.subOnly) return;
  // Chord tones
  const offsets=strumOffsets(intvs.length);
  // A strum whose notes all fall after the beat drags: the chord's perceived
@@ -28379,7 +28382,7 @@ function _webEngineSend(msg){
  const kind = msg && msg.kind, part = msg && msg.part;
  // A part the native host plays through recorded graphs: the voice is built on a recorder.
  // (A part on a mõdSynth patch is built from an AudioWorklet, which a recorder does not hold: the native engine's own Processor plays those.)
- if(MODGRAPH.on && !_mgScope && !MODGRAPH.bypass && msg && msg.v === 1 && MODGRAPH.parts[part] && _MG_KINDS[kind] && msg.voice !== 'modsynth' && !(part !== 'drum' && part !== 'auxperc' && _wp(part + '.voice') === 'modsynth')) return _mgRun(msg, function(){ _webEngineSend(msg); });
+ if(MODGRAPH.on && !_mgScope && !MODGRAPH.bypass && msg && msg.v === 1 && MODGRAPH.parts[part] && _MG_KINDS[kind] && (msg.subOnly || (msg.voice !== 'modsynth' && !(part !== 'drum' && part !== 'auxperc' && _wp(part + '.voice') === 'modsynth')))) return _mgRun(msg, function(){ _webEngineSend(msg); });
  if(msg && msg.v === 1 && kind === 'state' && msg.params){ Object.assign(window._webParams, msg.params); return; }
  // A part-level param that is not one of the live controls below (bend,
  // accent) is standing state: kept, and read when the next voice is built.
@@ -51517,7 +51520,6 @@ window._songNativeScore = function(opts){
  var voice = _wp('chord.voice');
  if(opts && opts.chords){
   try{ if(voice === 'sampler') chordWhy.push('a custom sampler chord voice'); }catch(e){}
-  try{ if(voice === 'modsynth') chordWhy.push('a mõdSynth chord voice'); }catch(e){}
   try{ if(_wp('chord.glide')) chordWhy.push('chord glide'); }catch(e){}
   try{ if(tuningOn()) chordWhy.push('Pure tuning'); }catch(e){}
  }
@@ -61616,15 +61618,22 @@ window._nsBank = {
  },
  // hold: the chord as a gated rhythm hit plays it (playChord's `sustain`: no decay, held until a release), part 4 in the bank, with the edits
  // the page's release makes (_webChordReleaseAt) beside the stop of the chord before. A decaying chord is part 3.
- buildChordNote: async function(voice, pitch, hold){
+ buildChordNote: async function(voice, pitch, hold, subOnly){
   if(!MODGRAPH.on || !MODGRAPH.parts.chord) return {ok: false, why: 'the chord part is not on the graph path (Native sound)'};
   var self = this, sr = audioCtx.sampleRate, LEAD = this.LEADF / sr, AT0 = LEAD, REFV = 0.8, REFD = 1.0;
   if(voice === 'sampler') return {ok: false, why: 'a custom sampler voice (slot and slice invalidation is not banked yet)'};
+  if(voice === 'modsynth' && !subOnly) return {ok:false, why:'a patch tone uses the Processor; only its separate sub is a graph'};
   if(SAMPLED_WAVES[voice] && SAMPLE_STATE[SAMPLED_WAVES[voice]] !== 'ready') return {ok: false, why: 'the instrument recordings are still loading'};
-  var base = {kind: 'chord', part: 'chord', id: 1, root: pitch, notes: [pitch], bass: null, vel: REFV, dur: hold ? null : REFD, at: AT0};
+  var base = {kind: 'chord', part: 'chord', id: 1, subOnly: !!subOnly, root: pitch, notes: [pitch], bass: null, vel: REFV, dur: hold ? null : REFD, at: AT0};
   var keep = this.constRandom; this.constRandom = true;
   try {
-   var R = async function(o){ window._chokeReset(); return self.record(Object.assign({}, base, o)); };
+   var R = async function(o){
+    window._chokeReset(); var r = await self.record(Object.assign({}, base, o));
+    if(subOnly && r) self.parseProgram(r.prog).nodes.forEach(function(n){
+     if(n.type === 8 && n.code === MODGRAPH.CODE.chord) r.prog[n.start + 1] = MODGRAPH.CODE.chordSub;
+    });
+    return r;
+   };
    await R({});
    var ref = await R({});
    if(!ref) return {ok: false, why: 'makes no voice'};
@@ -61638,7 +61647,7 @@ window._nsBank = {
    var comp = {}; G.nodes.forEach(function(nd, k){ if(nd.type === T.ext) return; var r = find(k); (comp[r] = comp[r] || []).push(k); });
    var comps = Object.keys(comp).map(function(r){ return comp[r]; }).sort(function(a, b){ return Math.min.apply(null, a) - Math.min.apply(null, b); });
    if(comps.length > 2) return {ok: false, why: 'the one-note chord has ' + comps.length + ' separate parts (a sub and a tone are expected)'};
-   var subNodes = comps.length === 2 ? comps[0] : [], toneNodes = comps[comps.length - 1];
+   var subNodes = subOnly ? (comps[0] || []) : comps.length === 2 ? comps[0] : [], toneNodes = subOnly ? [] : comps[comps.length - 1];
    var ownerOf = new Array(P0.length).fill(0);   // 1 sub, 2 tone
    var mark = function(list, who){ list.forEach(function(k){ for(var q = G.nodes[k].start; q < G.nodes[k].end; q++) ownerOf[q] = who; }); };
    mark(subNodes, 1); mark(toneNodes, 2);
@@ -61746,12 +61755,17 @@ window._nsBank = {
   if(!P) return rep;
   if(typeof modParamsSync==='function') modParamsSync();
   var voice = _wp('chord.voice'), sig = this.signatureChord();
+  if(voice === 'modsynth') {
+   rep = await this.ensureSynth('chord');
+   if(rep.failed.length || !_webChordSubOn()) return rep;
+  }
   for(var i = 0; i < pitches.length; i++){
    var key = 'chord:' + voice + ':' + pitches[i] + (hold ? ':hold' : '');
    if(this.have[key] === sig){ rep.kept++; continue; }
    if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings'}); continue; }
-   var r = await this.buildChordNote(voice, pitches[i], hold);
-   if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
+   var r = await this.buildChordNote(voice, pitches[i], hold, voice === 'modsynth');
+   if(r.ok){ var sent = await P.seqBank({entry: _mgB64(r.entry)}); if(sent && sent.ok === false) r = {ok:false, why:'the engine refused the chord bank entry'}; }
+   if(r.ok){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
    else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: pitches[i], why: r.why}); }
   }
   return rep;
@@ -61761,7 +61775,7 @@ window._nsBank = {
  // older binary refuses v2 instead of reporting a silent prepared voice.
  ensureSynth: async function(part){
   var rep = {built: 0, kept: 0, failed: []}, P = window._nsDrum.plugin();
-  var codes = {bass:2, arp:5, melgen:6}, key = 'processor:' + part;
+  var codes = {bass:2, chord:3, arp:5, melgen:6}, key = 'processor:' + part;
   var fail = function(why){ rep.failed.push({voice:'modsynth', why:why}); return rep; };
   if(!P || codes[part] == null) return fail('no native Processor bank');
   try {
@@ -61769,11 +61783,14 @@ window._nsBank = {
    var eng = await msxEnsure(part);
    if(!eng || !eng.ready || !await _modNativeEnsureProc(part)) return fail('the patch Processor is not ready');
    _modNativeAttach(part, eng); msxApply(part); _modNativeStripSync(part); _modNativeFlush();
-   var sig = 'processor-v2';
+   var attack = part === 'chord' ? (_wp('chord.attack') || 0.025) : 0;
+   var sig = 'processor-v2:' + attack;
    // The descriptor refers to the live patch. Knobs, matrix, motion, effects,
    // fader and tuning keep their existing native message path while it runs.
    if(this.have[key] === sig){ rep.kept++; return rep; }
-   var entry = Float64Array.from([2, codes[part], window._nsKitCode((part === 'melgen' ? 'mel' : part) + ':modsynth'), -1, 1]);
+   var values = [2, codes[part], window._nsKitCode((part === 'melgen' ? 'mel' : part) + ':modsynth'), -1, 1];
+   if(part === 'chord') values.push(attack);
+   var entry = Float64Array.from(values);
    var r = await P.seqBank({entry: _mgB64(entry)});
    if(!r || r.ok !== true) return fail('the engine does not support Processor bank entries');
    this.have[key] = sig; rep.built++; return rep;

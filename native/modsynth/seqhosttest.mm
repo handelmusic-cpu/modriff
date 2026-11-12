@@ -32,10 +32,10 @@ static NSData *bytes(const std::vector<double> &d) { return [NSData dataWithByte
 
 // A synthetic one-note chord for a pitch (part 3: a tone that is one oscillator and a gain, no sub; part 4, the same held, with its release).
 // `life`: seconds the voice would sound if nothing stopped it.
-static std::vector<double> chordNoteEntry(int pitch, bool hold, double life = 1.5) {
+static std::vector<double> chordNoteEntry(int pitch, bool hold, double life = 1.5, bool subOnly = false) {
   std::vector<double> p = {0x6d6f6467, SR, 3, 0};
   const double stop = 0.048 + life, amp = 0.5;
-  p.insert(p.end(), {8, 5, 2, 0, 0, stop, 220, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
+  p.insert(p.end(), {8, subOnly ? 11.0 : 5.0, 2, 0, 0, stop, 220, 0, 0, 0, 1, amp, 0, 2, 1, 2, -1, 2, 0, -1});
   size_t amp_i = 0, stop_i = 0; for (size_t i = 0; i < p.size(); i++) { if (p[i] == amp) amp_i = i; if (std::fabs(p[i] - stop) < 1e-12) stop_i = i; }
   std::vector<double> e = {1, hold ? 4.0 : 3.0, 9, (double)pitch, 1, 0.048, 0.048, 0.8, (double)p.size()};
   e.insert(e.end(), p.begin(), p.end());
@@ -43,7 +43,8 @@ static std::vector<double> chordNoteEntry(int pitch, bool hold, double life = 1.
   e.insert(e.end(), {0, 0});                                                            // no chokes, no floors
   e.insert(e.end(), {(double)pitch, life, 0, 0, 0, 0});                                  // refPitch, refDur, refFrom, no length, glide or held slots
   e.insert(e.end(), {12, 2, 0, 5, 0, 0, 0,  2, 0, 1, 0, 0.022, 0});                     // the stop of the chord before: hold the gain, fade it
-  e.insert(e.end(), {1, (double)amp_i, 0, -1, 0, 1, (double)stop_i, (double)stop_i, 1}); // chord block: level slot; no times; no panner; no sub; the tone's source
+  if (subOnly) e.insert(e.end(), {0, 0, -1, 1, (double)stop_i, (double)stop_i, 1, 0});
+  else e.insert(e.end(), {1, (double)amp_i, 0, -1, 0, 1, (double)stop_i, (double)stop_i, 1}); // chord block: level slot; no times; no panner; no sub; the tone's source
   e.insert(e.end(), {0});                                                               // no velocity curve
   // the release of a held chord: no sooner than 45 ms after the voice began; hold the gain, fall in 100 ms
   if (hold) e.insert(e.end(), {0.045, 12, 2, 0, 5, 0, 0, 0,  2, 0, 1, 0, 0.1, 0});
@@ -242,8 +243,36 @@ static void testSynthSequencers() {
 
 }
 
+static void testChordPatch() {
+  ModEngineHost *a = fresh(), *b = fresh();
+  for (ModEngineHost *g in @[a,b]) {
+    [g ensurePart:0]; [g ensureGraphPart:0];
+    // Leave the Processor alive and accepting patch notes, with its oscillators
+    // silent so the separate sub's trim routing can be compared sample for sample.
+    for (int index : {13,29,45,69,72,75}) [g post:@{@"t":@"p", @"part":@0, @"i":@(index), @"v":@0}];
+    CHECK([g seqPutBankEntry:bytes(std::vector<double>{2,3,9,-1,1,0.025})], "a chord Processor descriptor carries its attack");
+    CHECK([g seqPutBankEntry:bytes(chordNoteEntry(60,false,1.5,true))], "the separate sub is banked without any patch-tone graph");
+    const std::vector<double> score = {1,16,-1,0,1,1,0.8,0.3,0,0,0,1,60,3,60,64,67,1,0,1,0};
+    [g seqSetChordScore:bytes(score)];
+    [g post:@{@"t":@"strip", @"part":@0, @"i":@0, @"v":g == a ? @0.15 : @1}];
+    CHECK([g seqChordStartWithBpm:120 leadMs:300 alignToDrums:NO kit:9], "the hybrid chord starts with only its sub pitch banked");
+  }
+  std::vector<float> al(240), ar(240), bl(240), br(240); double error = 0, peak = 0;
+  for (int t = 0; t < 1000; t += 5) {
+    [a renderInto:al.data() right:ar.data() frames:240]; [b renderInto:bl.data() right:br.data() frames:240];
+    for (int i = 0; i < 240; i++) { error = std::max(error,std::fabs((double)al[i]-bl[i])); error = std::max(error,std::fabs((double)ar[i]-br[i])); peak = std::max(peak,(double)std::fabs(al[i])); }
+    usleep(5000);
+  }
+  CHECK(peak > 0.01 && error < 1e-7, "the sub bypasses patch calibration before chord effects/meters (peak %.4f, trim comparison error %.9f)", peak,error);
+  CHECK([[a seqMirror][@"chord"][@"voices"] intValue] == 4 && a.notesOn == 3, "one graph sub and three Processor tones start together, with no missing tone bank");
+  [a seqChordStop]; [b seqChordStop]; run(a,500); run(b,500);
+  CHECK([[a seqMirror][@"chord"][@"stops"] intValue] >= 1 && [a renderOfflinePeakForPart:0 frames:4096] < 0.00001,
+    "chord Stop cuts its graph sub and cancels/releases the patch voices");
+}
+
 int main() {
   @autoreleasepool {
+    if (getenv("MODRIFF_CHORD_PATCH_ONLY")) { testChordPatch(); return failed ? 1 : 0; }
     if (getenv("MODRIFF_SYNTH_ONLY")) { testSynthSequencers(); return failed ? 1 : 0; }
     if (getenv("MODRIFF_LIVE_ONLY")) { testLiveChords(); return failed ? 1 : 0; }
     ModEngineHost *h = fresh();
@@ -861,6 +890,7 @@ int main() {
 
     testLiveChords();
     testSynthSequencers();
+    testChordPatch();
 
     // The melody generator through the host: the same thread and bank, no page. A synthetic melody voice (part 6), a line of a note every step with a chord on the first, started with the
     // drums' bar line. Then in a song: armed, it starts with the song on the same bar line and, with Follow on, plays each chord's tones (the line is written over C: over F it is F) and

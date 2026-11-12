@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 #include "chordcomp.h"
 #include "graphpool.h"
@@ -64,7 +65,7 @@ int main(int argc, char **argv) {
     const size_t len = (size_t)d[k++];
     std::vector<double> truth(d.begin() + (long)k, d.begin() + (long)(k + len)); k += len;
     std::vector<modsynth::ComposedVoice> vs;
-    if (!modsynth::ChordComposer::compose(bank, kit, notes, subNote, vel, dur, (double)onset, cs, SR, 0, vs)) { printf("%d miss 0 0 0 0\n", c); continue; }
+    if (!modsynth::ChordComposer::compose(bank, kit, notes, subNote, vel, dur, (double)onset, cs, SR, 0, vs, false, argc > 2 && std::strcmp(argv[2], "--sub-only") == 0)) { printf("%d miss 0 0 0 0\n", c); continue; }
     modsynth::GraphPool a, b;
     for (auto &bf : bufs) for (auto *p : {&a, &b}) p->buffers().put(bf.id, bf.sr, bf.nch, bf.len, bf.c[0].data(), bf.nch > 1 ? bf.c[1].data() : nullptr);
     uint64_t minStart = ~0ull, maxStart = 0;

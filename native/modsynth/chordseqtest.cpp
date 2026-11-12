@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <string>
 #include <cstdlib>
 #include <vector>
 #include "chordplay.h"
@@ -55,6 +56,11 @@ int main(int argc, char **argv) {
   }
   modsynth::ChordPlayer pl;
   pl.sr = SR; pl.bank = &bank; pl.kit = (int)d[k++];
+  const bool subOnly = getenv("SUB_ONLY") && std::string(getenv("SUB_ONLY")) == "1";
+  if (subOnly) {
+    const double desc[] = {2,3,(double)pl.kit,-1,1,0.025}; if (!bank.put(desc,6)) return 2;
+    pl.synth.send = [](const modsynth::SynthEvent &){ return true; };
+  }
   pl.begin = [&](const double *prog, size_t n, double base, uint64_t start) { return b.begin(prog, n, base, start); };
   pl.edit = [&](int h, const double *inc, size_t n) {
     if (getenv("OPS_DEBUG")) { printf("engine edit on %d:", h); for (size_t i = 0; i < n; i += 6) printf(" [%g,%g,%g,%g,%.5f,%g]", inc[i], inc[i+1], inc[i+2], inc[i+3], inc[i+4], inc[i+5]); printf("\n"); }
@@ -73,7 +79,7 @@ int main(int argc, char **argv) {
     const double *ed = d.data() + k; k += ned;
     // the earliest voice the engine will begin for it: the truth is begun there
     std::vector<modsynth::ComposedVoice> vs;
-    if (!modsynth::ChordComposer::compose(bank, pl.kit, e.notes, e.subNote, e.vel, e.durSec, e.onsetExact, e.settings, SR, 0, vs, e.hold)) { printf("SEQ miss 0 0 0 0 0 0\nWORST 0 0\n"); return 0; }
+    if (!modsynth::ChordComposer::compose(bank, pl.kit, e.notes, e.subNote, e.vel, e.durSec, e.onsetExact, e.settings, SR, 0, vs, e.hold, subOnly)) { printf("SEQ miss 0 0 0 0 0 0\nWORST 0 0\n"); return 0; }
     uint64_t minStart = ~0ull, maxStart = 0;
     for (auto &v : vs) { minStart = std::min(minStart, v.v.startFrame); maxStart = std::max(maxStart, v.v.startFrame); }
     const int ha = a.begin(prog, len, (double)minStart / SR, minStart);

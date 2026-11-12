@@ -5,9 +5,11 @@ namespace modsynth {
 
 bool BankEntry::fromDoubles(const double *d, size_t total) {
   if (total && d[0] == 2) {
-    if (total != 5) return false;
+    if (total < 5 || total != (d[1] == 3 ? 6u : 5u)) return false;
     for (size_t i = 0; i < total; i++) if (!std::isfinite(d[i])) return false;
-    if ((d[1] != 2 && d[1] != 5 && d[1] != 6) || d[2] < 0 || d[2] > 0xffffff || d[2] != std::floor(d[2]) || d[3] != -1) return false;
+    if ((d[1] != 2 && d[1] != 3 && d[1] != 5 && d[1] != 6) || d[2] < 0 || d[2] > 0xffffff || d[2] != std::floor(d[2]) || d[3] != -1) return false;
+    if (d[1] == 3 && (d[5] < 0 || d[5] > 60)) return false;
+    synthAttack = d[1] == 3 ? d[5] : 0;
     processor = true; part = (int)d[1]; kit = (int)d[2]; lane = -1; generation = d[4];
     return true;
   }
