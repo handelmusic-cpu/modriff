@@ -61,7 +61,7 @@ groovebox,chord,drum machine,synth,sequencer,music theory,midi,sampler,beat make
 (97.) Do not repeat words already in the name or subtitle ("key", "every"), do not use the category
 name, and do not use another product's name: an `iReal` keyword would be a trademark rejection.
 
-**Description** (2055 of 4000). One line per paragraph on purpose: App Store Connect keeps every line
+**Description** (2167 of 4000). One line per paragraph on purpose: App Store Connect keeps every line
 break you paste, so a description wrapped to 85 columns shows a break mid-sentence. It names no other product
 (no iReal, 808 or Linn: those are trademarks) and no price (prices are per storefront). It does not promise
 playback with the screen locked: background scheduling is still being moved to the engine
@@ -99,7 +99,7 @@ FREE TO START, PACKS WHEN YOU WANT MORE
 mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits, five saved songs and 30-second audio exports are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack, including the ones added later. No subscriptions.
 
 PRIVATE BY DESIGN
-No account. No ads. No analytics. No tracking. Works offline. Your songs, patterns and recordings stay on your device.
+No account. No ads. No tracking. No third-party analytics. Works offline. Your songs, patterns and recordings stay on your device. Apple provides aggregate store statistics and, if you opt in to sharing, app usage and diagnostics.
 
 mõdRïff is made by one person, Ben Handel of Dutdut Records. Questions or ideas: support@modriff.com
 ```
@@ -131,16 +131,48 @@ there before it ships; the store listing needs no change.
 ## App Privacy ("nutrition label")
 
 **Data Not Collected.** In App Privacy, answer "No, we do not collect data from
-this app." This is true of the build as it stands: no accounts, no analytics
-(PostHog was removed in 4.0.5), no ads, no third-party SDKs, no server calls.
+this app." This is true of the build as it stands: no accounts, no analytics SDK
+(PostHog was removed in 4.0.5), no ads, and no developer-operated collection server.
 Tracking: **No.**
+
+Apple's own App Store Connect reports do not change that answer or require an
+analytics entry in our privacy manifest. Apple says developers are not responsible
+for disclosing data collected only by Apple. Capacitor and its plugins still have
+their own manifests; "no analytics SDK" does not mean "no third-party code."
 
 If any of that changes, for example an analytics SDK or a sign-in, this answer,
 `PrivacyInfo.xcprivacy` and `privacy.html` all change together.
 
-`privacy.html` was brought up to date on 2026-11-06 (site PR 3): it now names the camera (chord-sheet photo, read on the
-device), the optional iCloud sync, the app's folder in Files, the one-time packs, and iPad; and says the only network use is
-Apple's (App Store, and iCloud when on). The site's iPhone Duo tab shows the three states from `screenshots/v6.9.6/`; the open, wide shot was removed (it showed the old Linn kit name), so retake it from Xcode before the site keeps that state. Still
+### Analytics: App Store Connect only (decided November 12, 2026)
+
+Use Apple's built-in reports. No TelemetryDeck, custom events, per-installation
+identifier, analytics consent switch or analytics server is added to the app.
+The old Vercel script tags are removed from the source for both app and web builds;
+`track()` remains a no-op. There is no SDK, entitlement or developer collection
+toggle to deploy: analytics is included with Developer Program membership and
+requires no technical implementation.
+
+In **App Store Connect > Apps > mõdRïff > Analytics**, check downloads, product-page
+conversion, active devices, sessions, retention and crashes. Use **Sales and Trends**
+for pack/product sales. App usage and diagnostics only represent people who chose
+to share with Apple and developers; check the opt-in rate and selected date range.
+Low volume, privacy thresholds and reporting delays can leave charts empty. An
+Xcode-installed development build is not proof that App Store reports are working.
+These reports do not count particular instruments, kits, effects or button taps.
+
+**Verification:** source, dependencies, bundle ID `Handel.modRiff` and the packaged
+privacy manifest were checked. Live account metrics have not been inspected from
+this session (no App Store Connect connection). After distribution, confirm the app
+appears in Analytics, the release version/date filter is right and reports arrive;
+do not interpret an empty usage chart as an app-side analytics switch being off.
+
+References: [Apple: no technical implementation required](https://developer.apple.com/app-store/get-started/),
+[usage reports and opt-in](https://developer.apple.com/help/app-store-connect-analytics/engagement/app-usage/),
+[privacy disclosure rules](https://developer.apple.com/app-store/app-privacy-details/).
+
+`privacy.html` covers the camera (chord-sheet photo, read on the device), optional iCloud sync, the app's folder in Files,
+one-time packs and iPad. The November 12, 2026 update clarifies Apple's aggregate store reports and optional usage/diagnostic
+sharing, removes the overbroad "no third-party code" claim, and keeps the landing page consistent. The site's iPhone Duo tab shows the three states from `screenshots/v6.9.6/`; the open, wide shot was removed (it showed the old Linn kit name), so retake it from Xcode before the site keeps that state. Still
 open: the site says "for iPhone, iPad and Mac" and has a Mac tab, but there is no Mac build (see Screenshots above).
 
 ## App Review notes
@@ -375,3 +407,5 @@ like hidden purchases:
 6. Add the build to the version, answer App Privacy as above, submit for review.
 7. Once live: put the App Store URL on the landing page button (`#get-app` in
    `index.html` of the site repo) and in the Dutdut Records site's app entry.
+8. Open the app's Analytics dashboard and Sales and Trends; verify reports for the
+   distributed release as described above. No analytics integration/upload is needed.
