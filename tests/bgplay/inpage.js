@@ -1,59 +1,80 @@
-/* Background permission follows one completed native transport claim, as one function that runs inside the real page.
-   probe.js loads it into Chromium; it can also be pasted into any console on the served page. Resolves a list of
-   [ok, what, detail]. It leaves the page as it found it (the switch key removed, the fake bridge taken away). */
+/* Exercise permission and lifecycle handlers in the real page. The bridge and
+   transport counters stand in for iOS; physical lock-screen listening stays on
+   the phone checklist. Restore every replaced function and saved preference. */
 window.__bgprobe = async function(){
   const out = [], chk = (ok, what, d) => out.push([!!ok, what, d === undefined ? '' : String(d)]);
   const run = () => new Promise(r => setTimeout(r, 30));
-  const calls = [], owner=window._nativeTransport, hadCap=window.Capacitor, wasOn=MODGRAPH.on;
-  window._nativeTransport={state:'page',claim:function(){return this.state!=='page';},suppresses:function(){return this.state!=='page';},stop:function(){this.state='page';}};
-  const fakeApp = () => {
-    window.Capacitor = { isNativePlatform: () => true, nativePromise: (p, m, o) => { calls.push([m, o]); return Promise.resolve({}); } };
-    MODNAT.plugin = null;
-  };
+  const calls = [], saved = {owner:window._nativeTransport, cap:window.Capacitor,
+    graph:MODGRAPH.on, plugin:MODNAT.plugin, on:_bgPlayOn, sent:_bgNativeSent,
+    key:localStorage.getItem('modo-bgplay'), debug:localStorage.getItem('modo-bgtest'),
+    playing:isAnythingPlaying, stop:stopEverything, start:startEverything, running:_audioRunning};
+  let playing = true, stops = 0, starts = 0;
   try {
-    localStorage.removeItem('modo-bgtest');
-    // 1. off unless asked, and the old key means nothing
-    localStorage.setItem('modo-bgplay', '1');
-    chk(_bgKeepPlaying() === false, 'a saved modo-bgplay does not turn background play on');
-    localStorage.removeItem('modo-bgplay');
-    // 2. the new switch alone is not enough: it needs the app and the native sound
+    window._nativeTransport={state:'page'};
+    _bgPlayOn = true;
     localStorage.setItem('modo-bgtest', '1');
-    chk(_bgKeepPlaying() === false, 'the switch in a browser (not the app) does nothing', _inNativeApp());
-
-    fakeApp();
-    MODGRAPH.on = false;
-    chk(_bgKeepPlaying() === false, 'in the app but with the native sound off, still no');
+    chk(_bgKeepPlaying() === false, 'a browser cannot grant background permission');
+    window.Capacitor = {isNativePlatform:()=>true, nativePromise:(p,m,o)=>{calls.push([m,o]);return Promise.resolve({});}};
+    MODNAT.plugin = null;
     MODGRAPH.on = true;
     chk(_bgKeepPlaying() === false, 'native sound and an old debug flag cannot grant page-owned background play');
-    window._nativeTransport.state='native';localStorage.removeItem('modo-bgtest');
-    chk(_bgKeepPlaying() === true, 'a completed native owner grants background play without a debug flag');
-    // 3. the engine is told, once per change
-    _bgNativeSent = null; calls.length = 0;
-    _bgSyncNative(); await run();
-    const a = calls.filter(c => c[0] === 'setBackgroundPlay');
-    chk(a.length === 1 && a[0][1].on === true, 'the engine is told on=true', JSON.stringify(a));
-    _bgSyncNative(); await run();
-    chk(calls.filter(c => c[0] === 'setBackgroundPlay').length === 1, 'and not told again while nothing changed');
-    window._nativeTransport.state='page';
-    _bgSyncNative(); await run();
-    const b = calls.filter(c => c[0] === 'setBackgroundPlay');
-    chk(b.length === 2 && b[1][1].on === false, 'page fallback tells the engine on=false', JSON.stringify(b[1]));
-    // 4. leaving the app with the switch off changes nothing about the look-ahead or the log
-    const look0 = LOOK_AHEAD, page0 = _bgPage;
-    window.dispatchEvent(new Event('modriff-background'));
-    chk(!_bgFast && LOOK_AHEAD === look0 && _bgPage === page0, 'switch off: leaving starts neither the long look-ahead nor the log');
-    window.dispatchEvent(new Event('modriff-foreground'));
-    // 5. switch on: leaving starts both, and returning puts them back
+    for (const state of ['preparing','starting','failed']) {
+      window._nativeTransport.state=state;
+      chk(_bgKeepPlaying() === false, state+' transport cannot grant background permission');
+    }
     window._nativeTransport.state='native';
+    localStorage.removeItem('modo-bgtest');
+    chk(_bgKeepPlaying() === true, 'enabled preference and a completed native owner grant permission');
+    MODGRAPH.on=false;
+    chk(_bgKeepPlaying() === false, 'Native sound off denies permission');
+    MODGRAPH.on=true;
+    _bgNativeSent=null;calls.length=0;
+    _bgSyncNative();await run();
+    _bgSyncNative();await run();
+    let sent=calls.filter(c=>c[0]==='setBackgroundPlay');
+    chk(sent.length===1 && sent[0][1].on===true, 'engine receives on=true once per change');
+
+    document.getElementById('background-audio-toggle').click();await run();
+    sent=calls.filter(c=>c[0]==='setBackgroundPlay');
+    chk(!_bgKeepPlaying() && localStorage.getItem('modo-bgplay')==='0', 'user toggle saves OFF and revokes permission during native playback');
+    chk(sent.length===2 && sent[1][1].on===false, 'OFF reaches the native host immediately');
+    chk(document.getElementById('background-audio-toggle').getAttribute('aria-pressed')==='false', 'OFF is exposed to assistive technology');
+
+    isAnythingPlaying=()=>playing;
+    stopEverything=()=>{stops++;playing=false;};
+    startEverything=()=>{starts++;playing=true;};
+    _audioRunning=()=>true;
+    const look0=LOOK_AHEAD, page0=_bgPage;
     window.dispatchEvent(new Event('modriff-background'));
-    chk(_bgFast && LOOK_AHEAD === 3, 'switch on: leaving starts the 3 s look-ahead', LOOK_AHEAD);
-    chk(_bgPage && _bgPage.away === true, 'and the page log');
-    _bgPageNote(); _bgPageNote(); _bgPageNote();
-    chk(_bgPage.ticks === 3 && _bgPage.ctx !== undefined, 'three ticks are logged with the context state', JSON.stringify({ t: _bgPage.ticks, ctx: _bgPage.ctx }));
+    window.dispatchEvent(new Event('modriff-background'));
+    chk(stops===1 && !playing && _bgPaused, 'OFF: repeated leave signals pause the band exactly once', stops);
+    chk(!_bgFast && LOOK_AHEAD===look0 && _bgPage===page0, 'OFF: no background look-ahead or log starts');
     window.dispatchEvent(new Event('modriff-foreground'));
-    chk(!_bgFast && LOOK_AHEAD !== 3 && _bgPage.away === false && typeof _bgPage.secs === 'number', 'returning ends the log and puts the look-ahead back', LOOK_AHEAD);
-    MODGRAPH.on = wasOn; window.Capacitor = hadCap; MODNAT.plugin = null;window._nativeTransport=owner;
-    localStorage.removeItem('modo-bgtest'); _bgNativeSent = null; _bgPage = null;
-  } catch (e) { chk(false, 'threw', e && (e.stack || e)); } finally {MODGRAPH.on=wasOn;window.Capacitor=hadCap;window._nativeTransport=owner;MODNAT.plugin=null;}
+    window.dispatchEvent(new Event('modriff-foreground'));
+    chk(starts===1 && playing && !_bgPaused, 'OFF: repeated return signals resume exactly once', starts);
+
+    document.getElementById('background-audio-toggle').click();await run();
+    chk(_bgKeepPlaying() && localStorage.getItem('modo-bgplay')==='1', 'user toggle saves ON and restores permission without restarting playback');
+    sent=calls.filter(c=>c[0]==='setBackgroundPlay');
+    chk(sent.length===3 && sent[2][1].on===true, 'ON reaches the native host immediately');
+    window.dispatchEvent(new Event('modriff-background'));
+    chk(stops===1 && starts===1 && playing && !_bgPaused, 'ON: leaving does not stop or restart the band');
+    chk(_bgFast && LOOK_AHEAD===3 && _bgPage && _bgPage.away, 'ON: background diagnostics start');
+    _bgPageNote();_bgPageNote();_bgPageNote();
+    chk(_bgPage.ticks===3 && _bgPage.ctx!==undefined, 'three background ticks counted', _bgPage.ticks);
+    window.dispatchEvent(new Event('modriff-foreground'));
+    chk(stops===1 && starts===1 && !_bgFast && !_bgPage.away && LOOK_AHEAD!==3, 'ON: return leaves playback alone and ends diagnostics');
+    window._nativeTransport.state='page';_bgSyncNative();await run();
+    sent=calls.filter(c=>c[0]==='setBackgroundPlay');
+    chk(sent.length===4 && sent[3][1].on===false, 'page fallback revokes permission even with the preference ON');
+  } catch(e) { chk(false,'threw',e && (e.stack || e)); }
+  finally {
+    isAnythingPlaying=saved.playing;stopEverything=saved.stop;startEverything=saved.start;_audioRunning=saved.running;
+    MODGRAPH.on=saved.graph;window.Capacitor=saved.cap;window._nativeTransport=saved.owner;MODNAT.plugin=saved.plugin;
+    _bgPlayOn=saved.on;_bgNativeSent=saved.sent;_bgPaused=false;_bgPage=null;
+    if(saved.key===null)localStorage.removeItem('modo-bgplay');else localStorage.setItem('modo-bgplay',saved.key);
+    if(saved.debug===null)localStorage.removeItem('modo-bgtest');else localStorage.setItem('modo-bgtest',saved.debug);
+    _syncBackgroundAudio();
+  }
   return out;
 };

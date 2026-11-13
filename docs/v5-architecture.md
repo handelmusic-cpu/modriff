@@ -230,10 +230,12 @@ above.
 
 ### Playing on while the app is in the background
 
-**On, whenever the engine owns the whole band.** `_bgKeepPlaying()` is true in the app when Native sound
-is on and `_nativeTransport.state` is `'native'`; the page tells the host through `setBackgroundPlay`. There
-is no setting and no debug flag. A page-owned run (the free web page, or a whole-band recovery to the page
-after an engine or readiness failure) still pauses under the duck on leaving and resumes on coming back,
+**On by default, with a saved toggle in Settings > Sound & response > Background audio.** The preference
+uses `modo-bgplay` (`0` off, `1` on; absent means on). `_bgKeepPlaying()` is true in the app when that
+preference and Native sound are on and `_nativeTransport.state` is `'native'`; the page tells the host
+through `setBackgroundPlay` immediately on a toggle or ownership change. Off pauses on leaving and
+resumes on return; it does not stop foreground playback. A page-owned run (the free web page, or a
+whole-band recovery to the page after an engine or readiness failure) still pauses under the duck on leaving and resumes on coming back,
 because page-scheduled sampled voices drop out in a throttled WebView; that was the open problem that kept
 this parked through 5.x, and moving the sequencers to the engine (`docs/native-scheduling.md`) is what closed
 it. `SceneDelegate` posts `modriff-background` / `modriff-foreground` to the page because `visibilitychange`
