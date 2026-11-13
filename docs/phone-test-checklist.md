@@ -90,6 +90,12 @@ Since 6.2:
 - [ ] 48. Native chart edits (6.9.9.9.9.9.9.7h) — edit repeatedly around a bar with locks, Next/Prev, Hold and an ending → latest edit lands once, old generated replies never replace it.
 - [ ] 49. Native transport owner (6.9.9.9.9.9.9.7h) — supported public Play/rapid Stop, lock/leave/return, interruptions/routes and fallback cases → one clock, no late notes; Copy diagnostics reports native/page ownership correctly.
 
+- [ ] 50. Native sampler voices/patterns (6.9.9.9.9.9.9.7i) — compare trim/tune/loop edits, all instrument lanes, reversed/warped pads, gates/chokes, recording/hold erase and queued patterns through lock/return.
+- [ ] 51. Native click/simple rhythm (6.9.9.9.9.9.9.7i) — compare accents and phase in simple/compound/odd meters; toggle while playing, lock/return and Stop.
+- [ ] 52. Native standalone comp (6.9.9.9.9.9.9.7i) — use Vary/VoiceLead, slash chords, ratchets/gates and repeated taps; no flams or held old chord on a tap or Stop.
+- [ ] 53. Native drum queue/chain (6.9.9.9.9.9.9.7i) — queue kits/templates/grooves/main/Aux patterns, unequal lengths and chains; hear each wrap once through lock/return, including cancellation.
+- [ ] 54. Native practice/steering/voices (6.9.9.9.9.9.9.7i) — auto keys/tempo, repeated chart arrows/taps, hand BPM and live voice switches retain one clock; Stop restores the trainer's changes.
+
 ## Done
 
 - [x] 14. Leaving the app goes quiet (6.9.3) — heard on an iPhone 17 Pro Max, all pass.

@@ -31,7 +31,7 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       globalSongMode=false;metronomeOn=false;rhythmOn=false;PS.patOn=false;CR.run=false;prac.key.on=prac.ramp.on=false;
       blEnabled=true;mlEnabled=true;arpOn=true;arpSounding=false;
       const m={sampleRate:48000,frame:0,nextFrame:24000,nextStep:0,running:false,transport:{owned:false,token:0},bass:{running:false,nextFrame:24000,nextStep:0},arp:{running:false},mel:{running:false,nextFrame:24000,nextStep:0},song:{running:false,ending:{phase:0}}};
-      const P={seqMirror:async()=>JSON.parse(JSON.stringify(m)),setBackgroundPlay:async o=>calls.push(['background',o.on]),seqObserverRoutes:async()=>({ok:true}),seqObserve:async()=>({ok:true,cursor:0,latest:0,clockReady:false,events:''})};
+      const P={seqVoices:async o=>{calls.push(['voices',Array.from(new Float64Array(Uint8Array.from(atob(o.voices),c=>c.charCodeAt(0)).buffer))]);return {ok:true};},seqBank:async()=>({ok:true}),graphBuf:async()=>({ok:true}),seqDrumQueue:async o=>{calls.push(['queue',Array.from(new Float64Array(Uint8Array.from(atob(o.score),c=>c.charCodeAt(0)).buffer))]);return {ok:true};},seqMirror:async()=>JSON.parse(JSON.stringify(m)),setBackgroundPlay:async o=>calls.push(['background',o.on]),seqObserverRoutes:async()=>({ok:true}),seqObserve:async()=>({ok:true,cursor:0,latest:0,clockReady:false,events:''})};
       for(const name of ['seqIntonation','seqScore','seqBassScore','seqBassChords','seqBassPending','seqMelChords','seqMelScore','seqMelPending','seqArpScore','seqArpNotes','seqArpArm','seqMelArm','seqTempo','seqBassTempo','seqMelTempo'])P[name]=async o=>{calls.push([name,o]);return {ok:true};};
       P.seqTransportStart=async o=>{calls.push(['start',Array.from(new Float64Array(Uint8Array.from(atob(o.options),c=>c.charCodeAt(0)).buffer)),o.token]);m.transport={owned:true,token:o.token};m.running=m.bass.running=m.arp.running=m.mel.running=true;return {ok:true};};
       P.seqTransportStop=async o=>{calls.push(['stop',o.token]);m.transport={owned:false,token:o.token};m.running=m.bass.running=m.arp.running=m.mel.running=false;return {ok:true};};
@@ -43,7 +43,17 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       window._nsArp.notes=ready;window._nsMel.chords=ready;
       startEverything();await sleep(350);const native={state:me.state,counts:{...counts},starts:calls.filter(c=>c[0]==='start'),bg:_bgKeepPlaying(),last:me.last};
       tickClock();const suppressed=Object.values(counts).every(x=>x===0);
+      const startsBeforeVoice=calls.filter(c=>c[0]==='start').length;Object.assign(window._webParams,{'bass.voice':'square','arp.voice':'piano','melgen.voice':'sawtooth','chord.voice':'organ'});await me.poll();const liveKits=calls.filter(c=>c[0]==='voices').at(-1)[1];const liveVoices=JSON.stringify(liveKits)===JSON.stringify(['bass:square','arp:piano','mel:sawtooth','chord:organ'].map(window._nsKitCode))&&calls.filter(c=>c[0]==='start').length===startsBeforeVoice&&me.state==='native';
+      const queued=window._sqApplyKitTemplate({mach:'808',steps:12,grid:{0:[{v:1}]}});const beforeQueue=window._sqCaptureState().steps;
+      await window._nsDrumQueue.sync();const queue=calls.filter(c=>c[0]==='queue').at(-1)[1];
+      const prepared=queued==='queued'&&window._sqCaptureState().steps===beforeQueue&&queue[1]===1;
+      m.queueTag=queue[3];m.queueLands=1;me.mirror(m);const adopted=window._sqCaptureState().steps===12;
+      CR.run=true;CR.chord={root:60,intvs:[0,4,7]};PS.patOn=true;metronomeOn=true;rhythmOn=true;prac.key.on=prac.ramp.on=true;
+      const coverage=me.snapshot();const allFeatures=coverage.unsupported.length===0&&coverage.chord&&me.state==='native';
+      CR.run=false;PS.patOn=false;metronomeOn=false;rhythmOn=false;prac.key.on=prac.ramp.on=false;
       stopEverything();await sleep(100);const stopped=me.state==='page'&&!m.transport.owned;
+      let edits=0;window._nsBank.ensure=async()=>{if(++edits<=4)window._webParams['bass.voice']=edits%2?'square':'sine';return {ok:true,failed:[]};};
+      startEverything();await sleep(500);const stableEdits=me.state==='native'&&edits>=5&&me.last.ok;stopEverything();await sleep(100);window._nsBank.ensure=ready;
       // Cancelling while bank preparation is pending must prevent any native
       // claim, even if that asynchronous work completes after the Stop.
       let release;window._nsBank.ensure=()=>new Promise(r=>release=r);
@@ -69,12 +79,16 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       const cleaning=_engineLetGo(true);me.generation++;delayed({...m,transport:{owned:true,token:me.token+20}});await cleaning;P.seqMirror=realMirror;
       const startupRace=stops===calls.filter(c=>c[0]==='stop').length&&kills===calls.filter(c=>c[0]==='graphKill').length;
       if(window._nsEvents.timer)clearInterval(window._nsEvents.timer);
-      return {web,native,suppressed,stopped,cancelled,lateResponse,fallback,before,orphanStopped,startupRace,calls};
+      return {stableEdits,liveVoices,prepared,adopted,allFeatures,web,native,suppressed,stopped,cancelled,lateResponse,fallback,before,orphanStopped,startupRace,calls};
     });
     ok(out.web,'the ordinary web page never claims native scheduling',out);
     ok(out.native.state==='native' && out.native.starts.length===1 && out.native.starts[0][1].slice(5,8).every(x=>x===1),'one native claim starts the enabled bass, arp and melody with the drum clock',out.native);
     ok(out.suppressed && out.native.bg,'native ownership suppresses every page scheduler and grants background permission',out.native);
     ok(out.stopped && out.cancelled && out.lateResponse,'Stop clears ownership and cancels a delayed preparation before it can start',out);
+    ok(out.stableEdits,'repeated instrument edits during preparation keep native ownership and settle on the latest settings');
+    ok(out.liveVoices,'all four live instrument selections reach native players without restarting transport');
+    ok(out.prepared&&out.adopted,'queued kit templates prepare without changing the live grid, then mirror the native landing',out);
+    ok(out.allFeatures,'normal click, rhythm, pads, standalone chords and practice settings never refuse native ownership');
     ok(out.fallback.state==='page' && out.fallback.pageNotes>0 && out.fallback.starts===out.before && !out.fallback.bg,'failed readiness resumes the whole page band without a native start or background grant',out.fallback);
     ok(out.orphanStopped&&out.startupRace,'startup clears orphaned native clocks without a late reply killing a new Play',out);
     ok(errors.length === 0, 'the real page throws no errors', errors);

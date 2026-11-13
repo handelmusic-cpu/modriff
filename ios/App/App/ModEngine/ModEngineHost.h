@@ -107,6 +107,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)seqSongArm:(int)kind;
 /// A Next (+1) or Prev (-1) queued by the player: taken at the end of the pass.
 - (void)seqSongMove:(int)delta;
+- (BOOL)seqSongSeek:(int)section slot:(int)slot;
 /// The live key change, in semitones.
 - (void)seqSongSetCapo:(int)capo;
 /// The tempo moves in a straight line in time from what it is now to `bpm` over `ms`, then holds it (a ritardando; the engine's own tempo changes).
@@ -126,6 +127,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// Whole-band start/stop with a monotonic cancellation token.
 - (BOOL)seqTransportStart:(NSData *)options token:(double)token;
 - (BOOL)seqTransportStop:(double)token;
+- (BOOL)seqSetExtras:(NSData *)data;
+- (BOOL)seqSetDrumQueue:(NSData *)data;
+- (BOOL)seqSetVoices:(NSData *)data;
+- (BOOL)seqExtraTouch:(int)key hold:(BOOL)hold release:(BOOL)release;
 
 /// The page's cents table and chord glide controls. Root is the standalone
 /// arp's current chord root, or -1; songs use their native chord windows.

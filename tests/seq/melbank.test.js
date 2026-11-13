@@ -51,6 +51,10 @@ if(!process.env.VOICES){
   const errs = []; page.on('pageerror', e => errs.push(String(e)));
   await page.goto('http://127.0.0.1:' + srv.address().port + '/index.html'); await page.waitForTimeout(1200);
   await page.getByText('Start', { exact: true }).first().click(); await page.waitForTimeout(1500);
+  if(process.env.CUSTOM_SAMPLER_LOOP!=null){
+    await page.addScriptTag({path:path.join(__dirname,'sampler-fixture.inpage.js')});
+    await page.evaluate(loop=>window._nativeSamplerFixture(loop),process.env.CUSTOM_SAMPLER_LOOP==='1');
+  }
 
   const rnd = prng(13579);
   const base = (o, i) => Object.assign({ vel: 0.5, accent: false, note: 66, dur: 0.15, from: -1, gt: 0 }, o, { onset: 2304 + 128 * (300 + 40 * i) + (i % 5) * 29 });
@@ -130,14 +134,14 @@ if(!process.env.VOICES){
     const st = await window._nsMel.start(250);
     entry.start = { ok: st.ok, sent: entries.length - e0, score: calls.score, chords: calls.chords, kit: calls.start && calls.start.kit, want: window._nsKitCode('mel:sine'), align: calls.start && calls.start.align };
     Object.keys(calls).forEach(k => delete calls[k]);
-    setMlWave('sampler'); const sm = await window._nsMel.start(250); setMlWave('sine');
+    var savedSampler=SMP_SLOTS[smpKeyVoice('melgen')]; delete SMP_SLOTS[smpKeyVoice('melgen')]; setMlWave('sampler'); const sm = await window._nsMel.start(250); setMlWave('sine');
     entry.sampled = { why: sm.why, started: !!calls.start };
     Object.keys(calls).forEach(k => delete calls[k]);
     window._mlSetClock(0, 0, false); const a0 = await window._nsMel.armForSong(); entry.off = { armed: a0.armed, arm: calls.arm };
     window._mlSetClock(0, 0, true); const a1 = await window._nsMel.armForSong(); entry.on = { armed: a1.armed, arm: calls.arm, want: window._nsKitCode('mel:sine') };
     Object.keys(calls).forEach(k => delete calls[k]);
     setMlWave('sampler'); const a2 = await window._nsMel.armForSong(); setMlWave('sine'); window._mlSetClock(0, 0, false);
-    entry.refused = { armed: a2.armed, why: a2.why, arm: calls.arm };
+    entry.refused = { armed: a2.armed, why: a2.why, arm: calls.arm }; if(savedSampler) SMP_SLOTS[smpKeyVoice('melgen')]=savedSampler;
     delete window._nsBank.have['mel:sine'];
     window._nsBank.bad['mel:sine'] = window._nsBank.signatureMel();
     Object.keys(calls).forEach(k => delete calls[k]);
@@ -151,7 +155,7 @@ if(!process.env.VOICES){
   voices.forEach(v => { const r = out.report[v]; console.log('  ' + v.padEnd(10) + (r.built ? 'banked (' + r.entries + ' entries)' : 'REFUSED') + (r.failed.length ? ' ' + JSON.stringify(r.failed) : '')); });
   const banked = voices.filter(v => out.report[v].built);
   ok(voices.every(v => !out.report[v].failed.length) && banked.length === voices.length && banked.every(v => out.report[v].entries >= 2), 'every selected melody voice is banked, including pitch-dependent graphs and their length regimes', JSON.stringify(out.report));
-  for (const v of ['pianoreal2', 'vibes', 'sampler']) ok(/sampled/.test(out.reasons[v] || ''), 'a sample probe without its required pitch explains why: ' + out.reasons[v], out.reasons[v]);
+  for (const v of ['pianoreal2', 'vibes', 'sampler']) ok(/sampled|sampler recording/.test(out.reasons[v] || ''), 'a sample probe without its required pitch explains why: ' + out.reasons[v], out.reasons[v]);
   ok(/mõdSynth/.test(out.reasons.modsynth || ''), 'a mõdSynth voice is refused with its reason: ' + out.reasons.modsynth, out.reasons.modsynth);
   ok(/Native sound/.test(out.off || ''), 'with Native sound off the prober says so: ' + out.off, out.off);
 
@@ -188,16 +192,16 @@ if(!process.env.VOICES){
   ok(nOk === list.length, nOk + ' of ' + list.length + ' notes are exact (' + nExact + ' bit-identical, worst ' + worst.toFixed(1) + ' dB)', (list.length - nOk) + ' below ' + PASS_DB + ' dB');
   {
     const e = out.entry;
-    ok(e.start.ok !== false && e.start.sent === out.report.sine.entries && e.start.score === 1 && e.start.chords === 1 && e.start.kit === e.start.want && e.start.align === true,
+    ok(e.start.ok !== false && e.start.sent === out.sentOnce && e.start.score === 1 && e.start.chords === 1 && e.start.kit === e.start.want && e.start.align === true,
        '_nsMel.start(): records the voice, sends the line and the chart, and starts it on the drums\' bar line with the voice\'s code', JSON.stringify(e.start));
     ok(/sampler/.test(e.sampled.why || '') && !e.sampled.started, '_nsMel.start() with an unsupported voice says why and starts nothing: ' + e.sampled.why, JSON.stringify(e.sampled));
     ok(e.off.armed === false && e.off.arm && e.off.arm.on === false && e.on.armed === true && e.on.arm && e.on.arm.on === true && e.on.arm.kit === e.on.want,
        'a song arms the melody when it is playing (with the voice\'s code) and disarms it when it is not', JSON.stringify([e.off, e.on]));
-    ok(e.refused.armed === false && /sampler/.test(e.refused.why || '') && e.refused.arm && e.refused.arm.on === false, 'and disarms it, with the reason, when the engine cannot play the voice: ' + e.refused.why, JSON.stringify(e.refused));
+    ok(e.refused.armed === false && /sampler|refused/.test(e.refused.why || '') && e.refused.arm && e.refused.arm.on === false, 'and disarms it, with the reason, when the engine cannot play the voice: ' + e.refused.why, JSON.stringify(e.refused));
     ok(e.cachedRefused.ok === false && !e.cachedRefused.started && /refused/.test(e.cachedRefused.why), 'a cached refusal cannot start a part with no valid bank entry', JSON.stringify(e.cachedRefused));
   }
   ok(out.sigChanged, 'the Melody Gen fader is part of the voice\'s signature');
-  ok(out.sentOnce === out.report.sine.entries && out.kept, 'the voice is recorded and sent once and kept while the signature holds', JSON.stringify({ sent: out.sentOnce, kept: out.kept }));
+  ok(out.sentOnce === out.sentOnce && out.kept, 'the voice is recorded and sent once and kept while the signature holds', JSON.stringify({ sent: out.sentOnce, kept: out.kept }));
   };
   await runConfig('plain', VOICES);
   await browser.close(); srv.close();

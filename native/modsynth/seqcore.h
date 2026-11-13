@@ -157,6 +157,9 @@ class DrumSequencer {
   explicit DrumSequencer(double sampleRate = 48000.0) : sr_(sampleRate) {}
 
   void setScore(const DrumScore &s) { score_ = s; if (step_ >= score_.steps) step_ = 0; }
+  void setQueue(std::vector<DrumScore> scores,std::vector<int> tags,int loopAt) {queue_=std::move(scores);tags_=std::move(tags);queuePos_=0;loopAt_=loopAt;}
+  int queueTag() const {return queueTag_;}
+  uint64_t queueLands() const {return queueLands_;}
   const DrumScore &score() const { return score_; }
   void seed(uint64_t s) { rng_.seed(s); }
 
@@ -212,7 +215,13 @@ class DrumSequencer {
       fired++;
       next_ += sd;
       step_++;
-      if (step_ >= score_.steps) step_ = 0;   // the page also flushes its pattern queue here
+      if (step_ >= score_.steps) {
+        step_=0;
+        if(queuePos_<queue_.size()) {
+          score_=queue_[queuePos_];queueTag_=tags_[queuePos_];queueLands_++;queuePos_++;
+          if(queuePos_==queue_.size()&&loopAt_>=0)queuePos_=(size_t)loopAt_;
+        }
+      }
       // A bar is the meter's, announced at its line: the pattern's wrap, or every barSteps inside a pattern that
       // is a whole number of bars (a 64-step pattern in 4/4 announces four times).
       const int mBar = score_.barSteps;
@@ -232,6 +241,10 @@ class DrumSequencer {
   }
 
  private:
+  std::vector<DrumScore> queue_;
+  std::vector<int> tags_;
+  size_t queuePos_=0;int loopAt_=-1,queueTag_=0;
+  uint64_t queueLands_=0;
   // _sqSwingOffset, in frames.
   double swingOffset(int s, double sd) const {
     const int unit = score_.swing8 ? 4 : 2;                      // sixteenth steps per swung pair

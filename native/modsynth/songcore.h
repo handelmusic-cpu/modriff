@@ -219,6 +219,17 @@ class SongSequencer {
   int armedEnding() const { return armed_ ? armed_ : queued_; }
   bool endingRunning() const { return endingRunning_ || landPending_; }
   int keyShift() const { return keyShift_; }
+  int keysDone() const { return keysDone_; }
+  double trainerBpm() const {return lastSetBpm_;}
+  // Steering discards a queued section move, but keeps the trainer and the pass
+  // within the same section. The host flushes the old prefix before this call.
+  bool seek(double frame,int section,int slot) {
+    if(!running_ || !score_.playable((size_t)section) || slot<0 || slot>=(int)score_.sections[(size_t)section].slots.size())return false;
+    if(section!=section_)pass_=0;
+    section_=section;slot_=slot;pending_=0;curStart_=frame;began_=false;haveNext_=false;counter_=0;
+    while(!marks_.empty()&&marks_.front()<=frame+1e-6)marks_.pop_front();
+    return true;
+  }
   // _pracRestore, at a stop: the tempo goes back to where the run began, but only if it is still the one the trainer set (a tempo the player moved is theirs); the key
   // goes back (the shift is dropped). Returns the tempo to put back, or 0.
   double restore(double bpmNow) {

@@ -14,7 +14,7 @@ are cheaper to make before code than after.
 |---|---|---|
 | 1 | General chord model | **landed** — model, parser, playback reads exact notes, chord-sheet import (4.9.3) |
 | 2 | MIDI Mapping Mode | **built (4.9.9.9.9.8.9k)**: bindings, learn by tapping, notes and buttons, channels, pickup, storage and Setups; feedback out not built ("What was built", below) |
-| 3 | Native wrapper, audio, haptics | **Runs on an iPhone** (`ios/`, Capacitor 8.5.2, Xcode 27). The C++ engine is in the target (`-ffp-contract=off`, null test 516/516) and the chord part is heard from it: `AppDelegate` owns the audio session, which cleared the old 0.73 s stop ("The native host, and where it stops", kept for its measurements). Native steps landed: the effects rack, the part strip with pan (N1), mõdFX (N3, N4), the master bus (N2) and capture for Bounce and stems (N5); **still open** is the rest of the parts going native (the offset once reported for the native chord in a bounced file was the checker's, see N5). Every part's notes already go through `modEngine`: chords (4.9.9.6), live melody (.7), melody sequencer (.8), bass (.9), arp (4.9.9.9.1), drums and Aux (.2), legacy Rhythm and click (.3), the knobs (4.9.9.9.4–.7), the sampler (4.9.9.9.9). Patches a native engine cannot resolve by name travel as values in the same message (4.9.9.9.9.7). Haptics, MIDI, picture import and iCloud sync are written; what a Mac has not compiled is marked unbuilt where it is described |
+| 3 | Native wrapper, audio, haptics | **Implemented.** Swift/AVAudioEngine hosts the C++ DSP, graph voices, effects, capture and native scheduling for every band part, click, rhythm and sampler patterns. Public Play claims one owner; only engine/readiness failure uses page recovery. See `docs/native-scheduling.md` and device checks 45–54. |
 | 4 | In-app purchase | **built, not run (4.9.9.9.9.9.7)**: seven modules and a bundle, eleven StoreKit products (section 4). The page side is measured; the Swift builds for the simulator (6.9.9.3, no errors) and the purchase flow is unrun |
 | 5 | Phase 2 | key colours, master EQ and iCloud sync **built** (4.9.9.9.9.8.9o to 9q); see "After launch". Extra themes and melody density not built |
 
@@ -118,14 +118,7 @@ one of the 344 factory patches can be checked, not a handful.
    `modEngine` plugin. This step needs a Mac with Xcode to build and a phone
    to run — the code is written here, the build is yours.
 
-   **Half done, and the unfinished half is documented below ("The native
-   host, and where it stops").** On the Mac: the app builds and runs on an
-   iPhone, the C++ engine compiles into the target with `-ffp-contract=off`
-   proved in the build log *and* in the generated instructions, the null test
-   passes there (516/516 bit-identical, 24.2M samples, Apple clang on
-   arm64), and the `ModEngine` plugin registers and takes messages. What does
-   not work yet is the audio graph staying alive; no sound has come out of
-   the native engine.
+   **Implemented.** The host builds for iOS Simulator and runs native DSP, effects, capture and all scheduling lanes. The current coverage and remaining device listening checks are in `docs/native-scheduling.md`; earlier bring-up measurements are historical.
 4. **Everything moves together.** This used to read "parts move over one at
    a time… mõdFX, reverb and the master bus move with the last of them",
    and that is wrong. It was tried: the chord part's mõdSynth played
@@ -279,11 +272,11 @@ app: engine running=yes`): the fade finished about 150-215 ms after leaving, not
 asked for, since iOS coalesces timers in the background. Heard on an iPhone 17 Pro Max: quiet at once on
 leaving, resumes together on return, same with a sampled voice.
 
-**Where background play stands (6.9.9.9.9.9.9.7h).** Supported Native sound runs now prepare voice banks and claim one native transport owner automatically. Drums, bass, arp, melody and the song share its first bar; page schedulers are suppressed, native mirrors drive the UI, and stale starts cannot revive after Stop. The host continues without page timers, with no scheduler handover on leaving/returning. Native patch/sub, tuning/glide, MIDI observer and next-bar chart revision paths are implemented.
+**Where background play stands (6.9.9.9.9.9.9.7i).** Native sound runs now prepare voice banks and claim one native transport owner automatically. Drums, bass, arp, melody and the song share its first bar; page schedulers are suppressed, native mirrors drive the UI, and stale starts cannot revive after Stop. The host continues without page timers, with no scheduler handover on leaving/returning. Native patch/sub, tuning/glide, MIDI observer and next-bar chart revision paths are implemented.
 
-Unsupported configurations use the whole page band and pause on leaving: custom sampler instrument voices/patterns, metronome/simple rhythm, standalone chord rhythm, queued/chained drum patterns and practice key/tempo automation. Chart-position jumps also fall back. Background MIDI out/external clock remain outside v1. Background permission follows a completed native claim, not a debug storage flag.
+Custom sampler instruments/patterns, metronome/simple rhythm, standalone chord rhythm, queued/chained drum patterns, practice key/tempo changes and chart-position jumps now remain native. Page recovery is reserved for actual engine/readiness failure. Background MIDI out/external clock remain outside v1. Background permission follows a completed native claim, not a debug storage flag.
 
-Audio session interruption/route recovery remains in the native host. Mac event/audio/ownership tests and Simulator builds pass; device checks 45–49 remain not heard and do not block shipping. Current decisions and fallback coverage are in `docs/native-scheduling.md`; reproduction and handoff are in `docs/native-audio-handoff.md`. The original measurements remain in `docs/archive/v5-architecture-built.md`.
+Audio session interruption/route recovery remains in the native host. Mac event/audio/ownership tests and Simulator builds pass; device checks 45–54 remain not heard and do not block shipping. Current decisions and fallback coverage are in `docs/native-scheduling.md`; reproduction and handoff are in `docs/native-audio-handoff.md`. The original measurements remain in `docs/archive/v5-architecture-built.md`.
 
 ## 4. In-app purchase: seven modules and a bundle
 

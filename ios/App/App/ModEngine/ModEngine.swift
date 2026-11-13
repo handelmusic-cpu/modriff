@@ -71,6 +71,10 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqTempoRamp", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqIntonation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqLiveChord", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqVoices", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqDrumQueue", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqExtras", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqExtraTouch", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTransportStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqTransportStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqObserve", returnType: CAPPluginReturnPromise),
@@ -81,6 +85,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "seqSongStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongHold", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongArm", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "seqSongSeek", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongMove", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqSongCapo", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "seqBassScore", returnType: CAPPluginReturnPromise),
@@ -816,6 +821,10 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     }
 
     /// A Next (1) or Prev (-1) queued by the player, taken at the end of the pass.
+    @objc func seqSongSeek(_ call: CAPPluginCall) {
+        guard let host = host else { call.reject("engine not started"); return }
+        call.resolve(["ok":host.seqSongSeek(Int32(clamping:call.getInt("section") ?? -1), slot:Int32(clamping:call.getInt("slot") ?? -1))])
+    }
     @objc func seqSongMove(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         host.seqSongMove(Int32(call.getInt("delta") ?? 0))
@@ -854,6 +863,22 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["ok": host.seqSetBassScore(data, revision:call.getDouble("revision") ?? -1)])
     }
 
+    @objc func seqVoices(_ call: CAPPluginCall) {
+        guard let host = host, let encoded = call.getString("voices"), let data = Data(base64Encoded:encoded) else {call.reject("engine or voice codes unavailable");return}
+        call.resolve(["ok":host.seqSetVoices(data)])
+    }
+    @objc func seqDrumQueue(_ call: CAPPluginCall) {
+        guard let host = host, let encoded = call.getString("score"), let data = Data(base64Encoded:encoded) else {call.reject("engine or drum queue unavailable");return}
+        call.resolve(["ok":host.seqSetDrumQueue(data)])
+    }
+    @objc func seqExtras(_ call: CAPPluginCall) {
+        guard let host = host, let encoded = call.getString("score"), let data = Data(base64Encoded:encoded) else {call.reject("engine or extras score unavailable");return}
+        call.resolve(["ok":host.seqSetExtras(data)])
+    }
+    @objc func seqExtraTouch(_ call: CAPPluginCall) {
+        guard let host = host else {call.reject("engine not started");return}
+        call.resolve(["ok":host.seqExtraTouch(Int32(clamping:call.getInt("key") ?? -1), hold:call.getBool("hold") ?? false, release:call.getBool("release") ?? false)])
+    }
     @objc func seqTransportStart(_ call: CAPPluginCall) {
         guard let host = host, let b64 = call.getString("options"), let options = Data(base64Encoded:b64), let token = call.getDouble("token") else { call.reject("transport options required"); return }
         call.resolve(["ok":host.seqTransportStart(options, token:token)])
