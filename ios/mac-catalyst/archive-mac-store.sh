@@ -13,6 +13,8 @@
 # (YYMMDD.HHMM, or MODRIFF_BUILD), passed on the command line so nothing is committed:
 # App Store Connect wants it to go up for every upload of the same version.
 set -euo pipefail
+# Ableton LinkKit is fetched, never committed (docs/link.md); no build links without it.
+bash "$(cd "$(dirname "$0")" && pwd)/../link/fetch-linkkit.sh"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${OUT:-$HOME/Desktop/modRiff-mac-store}"
 DD="${TMPDIR:-/tmp}/modriff-dd-mac-rel"

@@ -4,3 +4,4 @@
 // importable: the C++ (modsynth::Processor, the message queue) lives entirely
 // inside ModEngineHost.mm, where Swift never has to look at it.
 #import "ModEngine/ModEngineHost.h"
+#import "ModLink/ModLink.h"

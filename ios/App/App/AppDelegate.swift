@@ -26,6 +26,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // activation is exclusive and whichever side activates last silences
         // the other. With it, WebKit starting its AudioContext no longer
         // takes the hardware away from the engine.
+        // Ableton Link (docs/link.md) exists from launch, so the Settings row can say Enabled or Disabled
+        // before the engine is built. Until the user switches it on in Ableton's pane it sends nothing.
+        ModLink.shared().start(withBpm: 120)
+
         let session = AVAudioSession.sharedInstance()
         do {
             // .playAndRecord, not .playback, since the sampler's microphone: with the

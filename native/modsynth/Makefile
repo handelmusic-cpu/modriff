@@ -56,6 +56,10 @@ fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimt
 seqhosttest: extraseq.h chordplay.h chordcomp.h synthseq.h seqhosttest.mm arpcore.h arpplay.h melcore.h melplay.h melcell.h seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h songvoice.h voicing.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
 	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp songcore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
 
+# Ableton Link steering through the real host, the session faked (no SDK).
+linkhosttest: linksteer.h extraseq.h chordplay.h chordcomp.h synthseq.h linkhosttest.mm arpcore.h arpplay.h melcore.h melplay.h melcell.h seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h songvoice.h voicing.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ linkhosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp songcore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+
 clean:
 	rm -f chartedittest seqobservetest synthseqtest melseqtest meltool arpseqtest arptool songtool tempotest banktest chordtool chordtest chordseqtest bassscoretest scoretest basstool seqhosttest seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender
 .PHONY: clean

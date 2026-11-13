@@ -30,6 +30,8 @@
 #include "songend.h"
 #include "voicebank.h"
 #include "extraseq.h"
+#include "linksteer.h"
+#include <mach/mach_time.h>
 #include <functional>
 #include <thread>
 #include <unistd.h>
@@ -145,6 +147,27 @@ double num(id value, double fallback = 0) {
 
 
 // ── The native sequencer (seqcore.h, docs/native-scheduling.md slice 1) ──────
+// What the render thread and the sequencer thread share about the Link session, without a lock (the render thread may not take one).
+// The render thread is the only writer of the snapshot; `seq` is odd while it writes, and a reader that saw it change reads again.
+struct LinkShared {
+  std::atomic<uint32_t> seq{0};
+  std::atomic<double> frame{0}, beat{0}, tempo{0};
+  std::atomic<int> enabled{0}, peers{0};
+  std::atomic<unsigned> aligned{0};
+  // requests to the render thread, each carried out by the next block
+  std::atomic<double> propose{0}, alignFrame{-1}, quantum{4};
+  bool read(modsynth::LinkSnap &s) const {
+    for (int tries = 0; tries < 8; tries++) {
+      const uint32_t a = seq.load(std::memory_order_acquire);
+      if (a & 1) continue;
+      s.frame = frame.load(std::memory_order_relaxed); s.beat = beat.load(std::memory_order_relaxed); s.tempo = tempo.load(std::memory_order_relaxed);
+      s.enabled = enabled.load(std::memory_order_relaxed); s.peers = peers.load(std::memory_order_relaxed); s.aligned = aligned.load(std::memory_order_relaxed);
+      if (seq.load(std::memory_order_acquire) == a) return true;
+    }
+    return false;
+  }
+};
+
 // A thread of its own, not the render callback: the voices it will start are begun with GraphPool::begin,
 // which parses a program into a Graph and allocates, so it must run on a control-side thread. It reads the
 // render thread's frame counter, expands the score up to a horizon a little ahead of it, and so keeps stepping
@@ -250,7 +273,77 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   int arpTuneRoot = -1;
   std::function<void(double)> synthTempo;
   void retimePending() { if(pendingSong && seq.running()) pendingSongBeat=tmap.beatAt(seq.nextBarFrame()); }
-  void setTempoNow(double bpm) { tmap.jump((double)frames->load(std::memory_order_relaxed), bpm); retimePending(); }
+  // ── Ableton Link (docs/link.md, section 3; the arithmetic is linksteer.h) ──
+  // The map stays the engine's; while the user has Link on, the session steers it. Under `lock`, like the map.
+  LinkShared *link = nullptr;
+  bool linkWas = false;         // Link was on at the last tick
+  bool linkHold = false;        // a ritardando owns the tempo: the session is not followed until the tempo is set again
+  bool linkGrid = false;        // a bar one exists to compare with the session's (something was started while Link was on)
+  bool linkAlignWait = false;   // alone: the render thread has not yet put the session's bar line on ours
+  unsigned linkAlignSeen = 0;
+  double linkOriginBeat = 0;    // the map's beat at that bar one
+  double linkOffset = 0;        // whole beats the session's bar line is known to be away from ours (a session joined while playing)
+  double linkErrMs = 0, linkWorstMs = 0, linkLaunchWait = 0;
+  uint64_t linkJumps = 0, linkRebars = 0;
+  bool linkSnap(modsynth::LinkSnap &s) const {
+    if (!link || !link->read(s)) return false;
+    // A snapshot the render thread stopped renewing (no host time, the hook removed) is not a session to follow.
+    return s.enabled && s.tempo > 0 && (double)frames->load(std::memory_order_relaxed) - s.frame < sr;
+  }
+  double linkQuantum() const { return std::max(1.0, seq.score().barSteps / 4.0); }
+  void linkPropose(double bpm) { if (link && bpm > 0) link->propose.store(bpm, std::memory_order_relaxed); }
+  // Where a start that nothing else is aligned to lands. With others in the session that is their next bar line, at least the asked
+  // lead away, so Play waits up to a bar and every peer's bar one is the same instant. Alone it is where it was asked, and the
+  // session's bar line is moved onto it instead (nobody hears that), so that whoever joins later joins our bar.
+  double linkLaunch(double first) {
+    modsynth::LinkSnap s;
+    linkGrid = false; linkOffset = 0; linkAlignWait = false; linkLaunchWait = 0; linkHold = false;
+    if (!linkSnap(s)) return first;
+    const double now = (double)frames->load(std::memory_order_relaxed), q = linkQuantum();
+    link->quantum.store(q, std::memory_order_relaxed);
+    tmap.jump(now, s.tempo);
+    if (s.peers > 0) { const double at = modsynth::linkNextBar(s, first, q, sr); linkLaunchWait = at - first; first = at; }
+    else { linkAlignSeen = s.aligned; linkAlignWait = true; link->alignFrame.store(first, std::memory_order_relaxed); }
+    linkOriginBeat = tmap.beatAt(first); linkGrid = true; linkWas = true; linkErrMs = linkWorstMs = 0;
+    return first;
+  }
+  // Once per tick, before anything is laid out: the tempo from the first frame no sequencer has laid out becomes the session's,
+  // pushed toward the phase error measured at that same frame (so a correction already planned is not applied twice).
+  void linkSteer() {
+    modsynth::LinkSnap s;
+    if (!linkSnap(s)) { linkWas = false; linkGrid = false; return; }
+    const double now = (double)frames->load(std::memory_order_relaxed), q = linkQuantum();
+    if (!linkWas) { linkWas = true; linkGrid = false; linkHold = false; linkErrMs = linkWorstMs = 0; }
+    link->quantum.store(q, std::memory_order_relaxed);
+    if (linkHold) return;
+    const bool running = seq.running() || bseq.running() || aseq.running() || mseq.running() || sseq.running() || cseq.running();
+    if (!running) linkGrid = false;
+    double at = now + lookahead;
+    if (seq.running()) at = std::max(at, seq.nextFrame());
+    double target = s.tempo;
+    if (linkGrid && linkAlignWait) { if (s.aligned != linkAlignSeen) linkAlignWait = false; }
+    if (linkGrid && !linkAlignWait) {
+      double e = modsynth::linkError(s, at, tmap.beatAt(at) - linkOriginBeat, linkOffset, q, sr);
+      // More than half a beat away is not drift: a session joined while we were playing and its bar line is elsewhere. Those already
+      // playing may not jump, so the beats are pulled together and the bar lines stay apart by whole beats until the next Play.
+      if (std::fabs(e) > 0.5) { linkOffset += std::round(e); linkRebars++; e = modsynth::linkError(s, at, tmap.beatAt(at) - linkOriginBeat, linkOffset, q, sr); }
+      linkErrMs = e * 60000.0 / s.tempo;
+      if (std::fabs(linkErrMs) > std::fabs(linkWorstMs)) linkWorstMs = linkErrMs;
+      target = modsynth::linkSteerBpm(s.tempo, e);
+    }
+    const double have = tmap.bpmAt(at);
+    // Not every tick: a new segment only when the tempo really moves (one part in ten thousand), or when it settles on the session's.
+    if (have != target && (target == s.tempo || std::fabs(have - target) > 1e-4 * s.tempo)) { tmap.jump(at, target); linkJumps++; retimePending(); }
+  }
+  void setTempoNow(double bpm) {
+    // While Link is on, the tempo is the session's. The page says its tempo with every start and every change of rate, whether the
+    // user moved it or not, so what it says here is not a proposal: a tempo the user moved reaches the session through ModLink
+    // (the page's linkTempo), and a page that only repeated itself used to pull the whole session back to its own number.
+    linkHold = false;
+    modsynth::LinkSnap s;
+    if (linkSnap(s)) return;
+    tmap.jump((double)frames->load(std::memory_order_relaxed), bpm); retimePending();
+  }
   HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate), aseq(rate), mseq(rate), sseq(rate), svoice(rate), tmap(rate) {
     sr = rate; bplay.synth.sr = cplay.synth.sr = aplay.synth.sr = mplay.synth.sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank; aplay.sr = rate; aplay.bank = &bank; mplay.sr = rate; mplay.bank = &bank;
     for(auto &e:extras){e.sr=rate;e.tempo=&tmap;}
@@ -385,6 +478,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   }
   void tick() {
     os_unfair_lock_lock(&lock);
+    linkSteer();
     if (synthTempo && (seq.running() || bseq.running() || aseq.running() || mseq.running() || sseq.running() || cseq.running())) synthTempo(tmap.bpmAt((double)frames->load(std::memory_order_relaxed)));
     tmap.prune((double)frames->load(std::memory_order_relaxed) - sr);     // the clock never goes back; keep a second
     if (seq.running() && hasScore) {
@@ -459,12 +553,15 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
         // The practice trainer stepped the tempo at a chorus's first bar line. The drums have already laid their steps out to their look-ahead at the old tempo, and the
         // other parts follow the same map, so it takes effect at the first step the drums have not laid out, never before the bar line.
         if (ev.bpm > 0) tmap.jump(std::max(ev.frame, seq.running() ? seq.nextFrame() : ev.frame), ev.bpm);
+        // With Link on, a tempo the trainer moves is the session's to follow, or the next tick would steer it straight back.
+        if (ev.bpm > 0) linkPropose(ev.bpm);
       };
       auto onEnding = [&](const modsynth::EndingEvent &ev) {
         using EE = modsynth::EndingEvent;
         if (ev.type == EE::Ritard) {
           // the slowdown: the tempo steps the page's way, at the first step the drums have not laid out
           endPhase = 1; endAt = ev.frame; endRestoreBpm = std::round(ev.fromBpm);
+          linkHold = true;      // the slowdown is ours alone: the session keeps its tempo, and we rejoin it when the tempo is restored
           for (const auto &st : ev.tempoSteps) tmap.jump(std::max(st.first, seq.running() ? seq.nextFrame() : st.first), st.second);
         } else if (ev.type == EE::FadeStart) {
           endPhase = 1; endAt = ev.frame; fading = true; fadeT0 = ev.frame; fadeDur = ev.durFrames; fadeSteps = ev.fadeSteps; fadeDone = 0;
@@ -577,6 +674,13 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   Queue _queue;
   os_unfair_lock _pushLock;
   std::atomic<uint64_t> _frames;
+  // Ableton Link: the hook into ModLink.mm and what it last said (LinkShared). The hook and its context are set from the main
+  // thread and read by the render thread, so each is an atomic and the context is stored first.
+  LinkShared _link;
+  std::atomic<ModLinkAudioHook> _linkHook;
+  std::atomic<void *> _linkCtx;
+  std::atomic<uint64_t> _linkLatency;     // mach ticks
+  double _ticksPerSec;
   std::atomic<uint32_t> _dropped;
   std::atomic<uint32_t> _notesOn;
   std::atomic<float> _peak;
@@ -624,6 +728,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     _maxFrames = maxFrames > 0 ? maxFrames : 4096;
     _pushLock = OS_UNFAIR_LOCK_INIT;
     _frames.store(0);
+    _linkHook.store(nullptr); _linkCtx.store(nullptr); _linkLatency.store(0);
+    { mach_timebase_info_data_t tb; mach_timebase_info(&tb); _ticksPerSec = 1e9 * (double)tb.denom / (double)tb.numer; }
     _dropped.store(0);
     _notesOn.store(0);
     _peak.store(0.0f);
@@ -648,6 +754,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     _gbus.assign((size_t)modsynth::GraphPool::kBuses * 2 * (size_t)_maxFrames, 0.0f);
     _endGain.store(1.0f); _endGainPrev = 1.0f;
     _hostSeq = std::make_unique<HostSeq>(&_frames, sampleRate);
+    _hostSeq->link = &_link;
     {
       // The sequencer thread begins voices the way the page's graphBegin does, under the same lock. Raw pointers: the
       // members outlive the thread (it is joined first, see _hostSeq).
@@ -934,7 +1041,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   q.setTempoNow(bpm > 0 ? bpm : 120);
   q.seq.setRate(rate > 0 ? rate : 1);
   if (seed != 0) q.seq.seed((uint64_t)seed);
-  const double first = (double)_frames.load(std::memory_order_relaxed) + (leadMs > 0 ? leadMs : 0) * _sampleRate / 1000.0;
+  const double first = q.linkLaunch((double)_frames.load(std::memory_order_relaxed) + (leadMs > 0 ? leadMs : 0) * _sampleRate / 1000.0);
   q.steps = q.events = q.late = q.recDropped = 0; q.resetCounters(); q.ringN = 0; q.firstFrame = (uint64_t)first;
   q.rec.clear();
   q.seq.start(first);
@@ -1449,7 +1556,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 // itself. All three sequencers follow it on one grid.
 - (void)seqTempoRampTo:(double)bpm overMs:(double)ms {
   os_unfair_lock_lock(&_hostSeq->lock);
-  if (bpm > 0) _hostSeq->tmap.ramp((double)_frames.load(std::memory_order_relaxed), bpm, ms > 0 ? ms * _sampleRate / 1000.0 : 0);
+  if (bpm > 0) { _hostSeq->linkHold = true; _hostSeq->tmap.ramp((double)_frames.load(std::memory_order_relaxed), bpm, ms > 0 ? ms * _sampleRate / 1000.0 : 0); }
   _hostSeq->retimePending();
   os_unfair_lock_unlock(&_hostSeq->lock);
 }
@@ -1642,6 +1749,15 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                  @"voiced": @((double)q.songVoiced), @"hits": @((double)q.songHits), @"rests": @((double)q.songRests), @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused),
                                  @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases)},
                       @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};
+  // Link, as numbers (docs/link.md): the session as the engine last saw it, how far the engine's beat is from the session's, and
+  // how long the last Play waited for the bar line.
+  { modsynth::LinkSnap ls; const bool on = q.linkSnap(ls);
+    NSMutableDictionary *m = [r mutableCopy];
+    m[@"link"] = @{@"on": @(on), @"peers": @(on ? ls.peers : 0), @"tempo": @(on ? ls.tempo : 0), @"beat": @(on ? modsynth::linkBeatAt(ls, now, _sampleRate) : 0),
+                   @"quantum": @(q.linkQuantum()), @"grid": @(q.linkGrid), @"hold": @(q.linkHold), @"alignWait": @(q.linkAlignWait), @"errMs": @(q.linkErrMs), @"worstMs": @(q.linkWorstMs),
+                   @"offset": @(q.linkOffset), @"jumps": @((double)q.linkJumps), @"rebars": @((double)q.linkRebars), @"launchWaitMs": @(q.linkLaunchWait * 1000.0 / _sampleRate),
+                   @"segments": @((double)q.tmap.segments())};
+    r = m; }
   os_unfair_lock_unlock(&q.lock);
   return r;
 }
@@ -1857,9 +1973,36 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   }
 }
 
-- (void)renderInto:(float *)left right:(float *)right frames:(int)frames {
+- (void)setLinkHook:(ModLinkAudioHook)hook context:(void *)context {
+  if (!hook) { _linkHook.store(nullptr); _linkCtx.store(nullptr); return; }
+  _linkCtx.store(context); _linkHook.store(hook);
+}
+- (void)setLinkOutputLatency:(double)seconds {
+  _linkLatency.store((uint64_t)(std::max(0.0, std::min(2.0, seconds)) * _ticksPerSec), std::memory_order_relaxed);
+}
+- (void)renderInto:(float *)left right:(float *)right frames:(int)frames { [self renderInto:left right:right frames:frames hostTime:0]; }
+
+- (void)renderInto:(float *)left right:(float *)right frames:(int)frames hostTime:(uint64_t)hostTime {
   if (frames <= 0) return;
   if (frames > _maxFrames) frames = _maxFrames;   // never write past the scratch
+
+  // Ableton Link, once per block: say when this block is heard, pass on what the sequencer thread asked for, and publish where
+  // the session is. Nothing here blocks: the hook's calls into the SDK are the ones it documents as safe on the audio thread.
+  if (ModLinkAudioHook hook = hostTime ? _linkHook.load(std::memory_order_relaxed) : nullptr) {
+    const double f0 = (double)_frames.load(std::memory_order_relaxed);
+    ModLinkIO io = {};
+    io.hostTime = hostTime + _linkLatency.load(std::memory_order_relaxed);
+    io.quantum = _link.quantum.load(std::memory_order_relaxed);
+    io.proposeBpm = _link.propose.exchange(0, std::memory_order_relaxed);
+    const double alignFrame = _link.alignFrame.exchange(-1, std::memory_order_relaxed);
+    if (alignFrame >= 0) { io.align = 1; io.alignHostTime = io.hostTime + (uint64_t)(std::max(0.0, alignFrame - f0) / _sampleRate * _ticksPerSec); }
+    hook(_linkCtx.load(std::memory_order_relaxed), &io);
+    _link.seq.fetch_add(1, std::memory_order_acq_rel);
+    _link.frame.store(f0, std::memory_order_relaxed); _link.beat.store(io.beat, std::memory_order_relaxed); _link.tempo.store(io.tempo, std::memory_order_relaxed);
+    _link.enabled.store(io.enabled, std::memory_order_relaxed); _link.peers.store(io.peers, std::memory_order_relaxed);
+    if (io.align) _link.aligned.fetch_add(1, std::memory_order_relaxed);
+    _link.seq.fetch_add(1, std::memory_order_acq_rel);
+  }
 
   // Where this block sits on the wall clock, for the recorder to line the host
   // up with the page's AudioContext. A clock read and a compare a block.

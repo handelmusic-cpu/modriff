@@ -8751,7 +8751,7 @@ body.bt-timeline .sb-secdel { position:static; margin-left:auto; }
 #page-build .set-none { order:2; color:var(--muted); font-size:.62rem; padding:10px 2px; }
 #page-build #ss-playing { order:11; } #page-build #ss-global { order:12; } #page-build #ss-tune { order:13; }
 #page-build #ss-starters { order:14; } #page-build #ss-layouts { order:15; }
-#page-build #ss-midi { order:21; } #page-build #ss-samples { order:22; }
+#page-build #ss-midi { order:21; } #page-build #ss-link { order:21; } #page-build #ss-samples { order:22; }
 #page-build #ss-ui { order:31; } #page-build #ss-cloud { order:32; } #page-build #ss-packs { order:33; } #page-build #ss-about { order:34; }
 #page-build .ss-hide { display:none !important; }
 #page-build .settings-section { margin:0; box-shadow:none; background:var(--surf); border:1px solid var(--border2); border-radius:14px; }
@@ -9423,7 +9423,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.1</span></div>
  </div>
 </div>
 
@@ -10644,6 +10644,16 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-sync-body"></div>
   </div>
+  <!-- Ableton Link (docs/link.md). The one place another company's product is named in the interface, at the
+       owner's word: their licence requires this exact label, "Enabled"/"Disabled", and their own pane behind it.
+       Hidden until the native plugin answers (the web page has no Link). -->
+  <div class="settings-section" id="ss-link" style="display:none">
+   <div class="ss-hdr" role="button" tabindex="0" onclick="window._link&&window._link.open()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window._link&&window._link.open();}"
+        title="Play in time with other apps and devices on the same network. Tempo and bar lines are shared; Play waits for the others' next bar.">
+    <span>Ableton Link</span>
+    <div class="ss-preview" id="ss-link-preview">Disabled</div>
+   </div>
+  </div>
   <div class="settings-section" id="ss-ui">
    <div class="ss-hdr" onclick="toggleSS('ui')">
     <span>Look &amp; feel</span>
@@ -10872,7 +10882,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.1</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12074,7 +12084,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.9a';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.1';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -13136,7 +13146,9 @@ function modNativePlugin(){
                      // page in Settings. A method missing from this list is a method the page
                      // cannot see: the sampler took the "no plugin method" branch and never asked.
                      micPermission:call('micPermission'), openSettings:call('openSettings'),
-                     micStart:call('micStart'), micRead:call('micRead'), micStop:call('micStop') };
+                     micStart:call('micStart'), micRead:call('micRead'), micStop:call('micStop'),
+                     // Ableton Link (window._link); an older binary has none of these.
+                     linkState:call('linkState'), linkSettings:call('linkSettings'), linkTempo:call('linkTempo') };
   }
   return MODNAT.plugin;
  }catch(e){ return null; }
@@ -24237,6 +24249,84 @@ function _bgSyncNative(){
  _bgNativeSent = on;
  P.setBackgroundPlay({on:on}).catch(function(){ _bgNativeSent = null; });   // a binary from before the method rejects it
 }
+// ── Ableton Link (docs/link.md) ────────────────────────────────────────────
+// The engine follows the session by itself (ModEngineHost, linkSteer); this is only the page's side: the Settings
+// row, and keeping the tempo readout and the session's tempo the same number.
+//  - A tempo the user moves (a touch on a tempo control within the last 1.5 s) is proposed to the session at once.
+//  - Otherwise, with others connected, the page takes the session's tempo: loading a song must not move everyone
+//    else's tempo (Ableton's test TEMPO-3). Alone, the page's tempo wins, since nobody else can have moved it.
+// The readout is set with _setBpmGliss, never onBpmInput: that one restarts the clock, and a tempo somebody else
+// moved would restart the groove on every step of their change.
+// var, and on window: read from onBpmInput thousands of lines away (the temporal dead zone note in CLAUDE.md).
+var _link = window._link = {
+ on:false, peers:0, tempo:0, synced:false, seen:false, pend:0, pendN:0, touch:-1e9, localUntil:0, timer:null, busy:false,
+ plugin:function(){ try{ if(!_inNativeApp()) return null; var P=modNativePlugin(); return P && P.linkState ? P : null; }catch(e){ return null; } },
+ paint:function(){
+  var sec=document.getElementById('ss-link'), pv=document.getElementById('ss-link-preview');
+  if(sec) sec.style.display=this.seen?'':'none';
+  if(pv) pv.textContent=this.on?'Enabled':'Disabled';
+ },
+ take:function(st){
+  if(!st) return;
+  this.seen=true;
+  var on=!!st.enabled;
+  if(on!==this.on){ this.on=on; this.synced=false; this.pendN=0; }
+  this.peers=st.peers|0; this.tempo=+st.tempo||0;
+  this.paint();
+  if(on && !this.timer){ var me=this; this.timer=setInterval(function(){ me.poll(); }, 500); }
+  if(!on && this.timer){ clearInterval(this.timer); this.timer=null; }
+ },
+ open:function(){
+  var P=this.plugin(), me=this; if(!P) return;
+  // Resolves when Ableton's pane closes; the row says what it was left at.
+  P.linkSettings().then(function(st){ me.take(st); me.poll(); }).catch(function(){});
+ },
+ // onBpmInput: every tempo change of the page comes through here, the user's and the page's own.
+ bpmInput:function(v){
+  if(!this.on || performance.now()-this.touch>1500) return;
+  var P=this.plugin(); if(!P) return;
+  this.localUntil=performance.now()+1200; this.synced=true; this.pendN=0;
+  P.linkTempo({bpm:+v}).catch(function(){});
+ },
+ poll:async function(){
+  var P=this.plugin(); if(!P || this.busy) return;
+  this.busy=true;
+  try{
+   this.take(await P.linkState());
+   if(!this.on) return;
+   var now=performance.now(), v=Math.round(_bpmNow()), shown=Math.max(40,Math.min(220,Math.round(this.tempo)));
+   if(!(this.tempo>0) || v===shown){ this.synced=true; this.pendN=0; return; }
+   if(now<this.localUntil) return;                    // the user's own change is still on its way to the session
+   // A ritardando is the engine's alone (the session is not followed while it lasts): leave the readout to it.
+   if(window._nativeTransport && window._nativeTransport.state==='native'){ var m=await P.seqMirror(); if(m && m.link && m.link.hold) return; }
+   if(this.peers===0){
+    // Alone. Twice the same number before it is proposed, once Link and the page have agreed: the practice trainer
+    // steps the tempo in the engine first and the readout follows a moment later, and a single look in between
+    // used to propose the old tempo back.
+    if(this.synced && !(v===this.pend && ++this.pendN>=2)){ if(v!==this.pend){ this.pend=v; this.pendN=1; } return; }
+    this.synced=true; this.pendN=0; this.localUntil=now+800;
+    await P.linkTempo({bpm:v});
+    return;
+   }
+   this.synced=true; this.pendN=0;
+   _setBpmGliss(shown);
+  }catch(e){}
+  finally{ this.busy=false; }
+ }
+};
+// What counts as the user moving the tempo: a touch, a key or a slider move on one of the tempo controls.
+['pointerdown','pointermove','keydown','input','click'].forEach(function(t){
+ document.addEventListener(t, function(e){
+  try{
+   if(t==='pointermove' && !e.buttons) return;
+   var el=e.target && e.target.closest && e.target.closest('#bpm, #ft-bpm-sl, #ft-bpm-val, #ft-bpm-pop, [onclick*="nudgeBpm"], [onclick*="tapTempo"]');
+   if(el) _link.touch=performance.now();
+  }catch(_){}
+ }, true);
+});
+setTimeout(function(){ _link.poll(); }, 1500);
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) _link.poll(); });
+
 // What the page itself did while the app was away, kept to compare with the engine's own
 // count of the page's calls (native.bg in Copy diagnostics): the page's ticks and their
 // gaps, and what its Web Audio context was doing, since the scheduler reads its clock from
@@ -53200,6 +53290,7 @@ function setMelWave(w){
 // ═══════════════════════════════════════
 const _origOnBpmInput = typeof onBpmInput !== 'undefined' ? null : null;
 function onBpmInput(v){
+ try{ if(window._link) window._link.bpmInput(v); }catch(e){}
  ['bpm','ft-bpm-sl'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=v; });
  ['bpm-disp','bpm-disp2'].forEach(id=>{ const e=document.getElementById(id); if(e) e.textContent='♪='+v; });
  const ftv=document.getElementById('ft-bpm-val');
