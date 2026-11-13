@@ -4,6 +4,8 @@
 # engine at -O0 (a plain Debug build) misses its audio deadline and sounds
 # distorted. MODRIFF_OPT=0 turns the optimisation off, for stepping through C++.
 set -euo pipefail
+# Ableton LinkKit is fetched, never committed (docs/link.md); no build links without it.
+bash "$(cd "$(dirname "$0")" && pwd)/../link/fetch-linkkit.sh"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DD="${TMPDIR:-/tmp}/modriff-dd-mac"
 "$ROOT/ios/mac-catalyst/build-capacitor-xcframeworks.sh"

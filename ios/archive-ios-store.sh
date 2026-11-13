@@ -18,6 +18,8 @@
 # maker-signed ones are put in their place, and the Catalyst ones are put back on exit
 # (success, failure or Ctrl-C) so the Mac build and Xcode keep working.
 set -euo pipefail
+# Ableton LinkKit is fetched, never committed (docs/link.md); no build links without it.
+bash "$(cd "$(dirname "$0")" && pwd)/link/fetch-linkkit.sh"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${OUT:-$HOME/Desktop/modRiff-ios-testflight}"
 DD="${TMPDIR:-/tmp}/modriff-dd-ios-rel"

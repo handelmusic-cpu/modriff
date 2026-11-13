@@ -1,6 +1,6 @@
 # Ableton Link: design
 
-Status: **slice 0 (spike) is on branch `claude/link-spike`, unmerged; nothing is in main.** Run `ios/link/fetch-linkkit.sh` before building that branch. The owner decisions in section 2 come before slice 1.
+Status: **built and merged in v6.9.9.9.9.9.9.9.1** (tempo, beat and bar-line start; no Start Stop Sync). On an iPhone it finds no peers until Apple grants the multicast entitlement (section 2). Run `npm run ios:frameworks` on a fresh clone: it fetches the SDK.
 Researched 2026-11-13 against the sources in section 8; check them again if this is picked up much later.
 
 ## 1. What was found
@@ -51,25 +51,25 @@ Latest official release is `LinkKit-4.1.3` (2026-10-19, deployment target iOS 15
 
 ## 2. Decisions for the owner
 
-1. **The name.** `CLAUDE.md` says no other company's product name anywhere a user or App Review sees. Link cannot
-   ship without: a row reading "Ableton Link" with "Enabled"/"Disabled", Ableton's pane (their name, their link),
-   and their join/leave banner. There is no licensed way round it (the GPL source cannot go on the App Store, and
-   a different label breaks the licence). So it is either **a third standing exception** beside the sample credit,
-   scoped to exactly those three surfaces, or **no Link**. Separate and optional: naming it in the listing,
-   screenshots or site (their badge rules then apply).
-2. **Apply for the multicast entitlement now?** It costs nothing, takes Apple some days, and blocks only the
-   phone, not the Mac work. Recommended: yes, today. Suggested text is in slice 0.
-3. **Mac wording.** Send the one-line question to link-devs@ableton.com ("the licence says iOS applications; is a
-   Mac Catalyst build of the same app on the Mac App Store covered?") or ship the Mac app without Link until
-   answered. Recommended: ask; build both meanwhile.
-4. **Start Stop Sync: not in v1** (recommended). The test plan requires an app with it enabled to stay on the
-   network and start from a peer's Play even while silent in the background, which means keeping the audio
-   engine alive whenever the app is left. That undoes "leaving the app goes quiet" and costs battery. Without the
-   `ABLLinkStartStopSyncSupported` key the switch simply does not appear in the pane. Slice 4 if wanted.
-5. **Who follows whom on a tempo the song or the trainer moves** (section 3, "Tempo the app moves").
-   Recommended: the app proposes it to the session, as a person turning the BPM would.
-6. **When this ships.** `CLAUDE.md` says new features wait during launch. Slices 0 to 2 touch only native code
-   behind a switch that is off; slice 3 is the first a user sees.
+Decided by the owner on 2026-11-13 ("make it work, adjust whatever we need"):
+
+1. **The name.** "Ableton Link" is the third standing exception to the no-product-names rule (`CLAUDE.md`): the
+   Settings row, its Enabled/Disabled state and Ableton's own pane and banner. Nowhere else, and no badge.
+2. **Start Stop Sync: not built.** Play and Stop stay local; Play lands on the session's bar line.
+3. **A tempo the app moves.** A tempo the user moves is proposed to the session. The practice trainer's steps are
+   proposed. A ritardando is ours alone: the session is not followed while it lasts. Loading a song with others
+   connected does not move their tempo; the readout goes back to the session's.
+
+Still the owner's to do (nobody else can):
+
+- **Ask Apple for the multicast entitlement** (developer.apple.com/contact/request/networking-multicast, account
+  holder only). Suggested text: "Ableton Link, tempo sync between music apps on the local network, multicast UDP
+  to 224.76.78.75:20808, see ableton.github.io/linkkit". Until it is granted and added
+  (`com.apple.developer.networking.multicast` in an iPhone entitlements file, and the provisioning profile
+  regenerated), **Link on an iPhone or iPad shows no peers.** The Simulator and the Mac app do not need it.
+- **Mac wording.** One line to link-devs@ableton.com: the licence says "iOS applications"; is a Mac Catalyst build
+  of the same app covered?
+- **Never an In-App Purchase**, and the SDK is never committed (the licence; the repository is public).
 
 ## 3. Engine design
 
@@ -145,29 +145,30 @@ today's (Ableton's tests TEMPO-5 and BEATTIME-1 require exactly that).
 
 ## 5. Slices, and what is measured on the Mac
 
-0. **Spike (needs decisions 1 and 2 only for shipping, not for the spike; needs the owner's yes to download the
-   SDK).** `ios/link/fetch-linkkit.sh` (tag + sha256, into a gitignored folder), xcframework linked into the
-   target, `ModLink` creating one `ABLLink` at launch and logging the session tempo. Measured: clean simulator
-   and Catalyst `xcodebuild`; app in the Simulator and the open-source `LinkHut` example on the Mac see each
-   other (peer count 1) and the logged tempo follows LinkHut's. The entitlement request goes to Apple in the same
-   week: "Ableton Link, tempo sync between music apps on the local network, multicast UDP to 224.76.78.75:20808,
-   see ableton.github.io/linkkit".
-1. **Host time in, snapshot out.** Timestamp into `renderInto`, the snapshot, a `link` block in `seqMirror`.
-   Measured: with LinkHut running, the phase error between Link's beat and the map's, printed per second (mean
-   and worst, in ms) while free-running, to size the trim. No behaviour change with Link disabled: the existing
-   host suite and null tests pass unchanged.
-2. **Steering.** Tempo follow, trim, quantized launch, proposals out, join jump, tempo range. Measured in the
-   host test with a scripted fake snapshot (deterministic: event lists before and after a session tempo change,
-   error converging to under 1 ms, no step lost or doubled across a jump, counted) and live against LinkHut
-   (tests TEMPO-1 to 5, BEATTIME-1 and 2 from Ableton's plan, read from the mirror as numbers).
-3. **The row, the pane, life cycle, clock exclusion.** The first slice that edits `index.html` and gets a version
-   label. Measured: Simulator screenshots of the row and pane in both states, BACKGROUND-1 and 2 by peer count
-   in LinkHut, Catalyst build opens the pane.
-4. *(only if decision 4 changes)* Start Stop Sync.
+(Heading kept for links.) What is built, and where:
 
-Not measurable on the Mac, one checklist line each when its slice lands: the 3 ms audio alignment against
-another device through speaker, headphones and Bluetooth (AUDIOENGINE-1 and 2: this is where `outputLatency`
-is right or wrong); the local-network prompt; a real session with a second phone or a laptop.
+- `ios/link/fetch-linkkit.sh`: the SDK by tag and sha256 into gitignored `ios/link/LinkKit/`; `npm run
+  ios:frameworks` runs it.
+- `ios/App/App/ModLink/`: the only code that includes the SDK. One `ABLLink`, the per-block audio hook, Ableton's
+  pane, tempo proposals, active/inactive with the app's life cycle.
+- `ModEngineHost`: `renderInto:...hostTime:`, the lock-free snapshot, `linkLaunch` (bar-line start), `linkSteer`
+  (tempo and phase), the `link` block in `seqMirror`. Arithmetic in `native/modsynth/linksteer.h`.
+- Page: `window._link` (the row, the tempo readout), plugin calls `linkState`, `linkSettings`, `linkTempo`.
+- Test: `make -C native/modsynth linkhosttest` (the session faked, no SDK). Debug builds log the engine's Link
+  numbers once a second (`[ModLink] t ...`).
+
+Known limits:
+
+- **A session that joins while we play, or an audio dropout longer than half a beat,** leaves the beats together
+  but the bar lines a whole number of beats apart until the next Play (`link.offset` in the mirror). Those already
+  playing may not jump, and the engine has no way to move every sequencer by a beat yet.
+- **Play does not show the wait** for the bar line (up to one bar).
+- **Session tempo outside 40 to 220** is played as it is; the readout shows the nearest end of its range.
+- **Page schedulers** (the free web page, whole-band recovery) have no Link.
+
+Not measurable on the Mac (lines in `docs/phone-test-checklist.md`): alignment by ear against another device
+through speaker, headphones and Bluetooth (where `outputLatency` is right or wrong), the local-network prompt, a
+real session.
 
 ## 6. Risks
 

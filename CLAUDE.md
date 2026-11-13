@@ -20,7 +20,7 @@ unless asked; `grep -n` it only when you need the old reasoning for one specific
 | decisions, open problems, purchase plan | `docs/v5-architecture.md` (update only when a decision or an open problem changes) |
 | background audio: moving the sequencers to the engine (design + checkpoint) | `docs/native-scheduling.md` |
 | the free web page at modriff.com/play: build, what is off, wiring | `docs/web-play.md` |
-| Ableton Link: licence, owner decisions, engine design, slices (design only, nothing built) | `docs/link.md` |
+| Ableton Link: licence, what is built and where, known limits, what the owner still has to ask Apple and Ableton | `docs/link.md` |
 
 ## Shipping
 
@@ -99,7 +99,8 @@ One app record, one bundle id: the iPhone target also builds for Mac Catalyst
 (`-destination 'generic/platform=macOS,variant=Mac Catalyst'`, same scheme). Capacitor's
 prebuilt binaries have no Catalyst slice, so `ios/App/capacitor-swift-pm/` is a local package
 that takes over that name; its xcframeworks are generated, not committed, by
-`npm run ios:frameworks` (`ios/mac-catalyst/`, run by `npm run ios` and `ios:device`). **On a
+`npm run ios:frameworks` (`ios/mac-catalyst/`, run by `npm run ios` and `ios:device`). The same script fetches
+Ableton's LinkKit into gitignored `ios/link/LinkKit/` (its licence forbids committing it; `docs/link.md`). **On a
 fresh clone or after a Capacitor upgrade run it first, or no build (iPhone too) resolves.**
 ActivityKit is compiled out on Catalyst and the Dynamic Island extension is iOS-only
 (`platformFilter = ios`). Mac-only sandbox entitlements: `ios/App/App/AppMac.entitlements`. `ios/mac-catalyst/run-mac.sh`
@@ -166,6 +167,9 @@ help text, listing, screenshots. Describe the sound instead (`Analog 1`, `Ladder
 `Chorus Bass`). Internal ids (`'808'`, `'LIN'`, `acid303`, `samples/808/`) stay as they are:
 songs save them. A renamed factory patch goes in `MSX_RENAMED` so old songs still load.
 The one place a maker is named is the sample credit in About, where the licence asks for it.
+
+**Ableton Link** is the standing exception, at the owner's word: its licence requires that exact label, with
+"Enabled"/"Disabled", on the row that opens Ableton's own pane (Settings). Nowhere else, no badge, no logo.
 
 ## Comments
 

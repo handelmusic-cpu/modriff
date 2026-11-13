@@ -240,6 +240,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     private var restarts = 0
     private var interruptions = 0
 
+    #if DEBUG
+    private var linkLogTimer: Timer?
+    #endif
     private func lifeNote(_ what: String) {
         NSLog("[ModEngine] %@", what)
         lifeLock.lock()
@@ -645,6 +648,19 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             self.host = host
             ModLink.shared().attach(to: host)
             host.setLinkOutputLatency(AVAudioSession.sharedInstance().outputLatency)
+            #if DEBUG
+            // Debug builds only: once a second while Link is on, the engine's own numbers (the session's tempo and beat,
+            // how far the engine's grid is from it), so two simulators can be compared from their logs.
+            DispatchQueue.main.async { [weak self] in
+                self?.linkLogTimer?.invalidate()
+                self?.linkLogTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                    guard let l = (self?.host?.seqMirror() as? [String: Any])?["link"] as? [String: Any], (l["on"] as? Bool) == true else { return }
+                    let f = { (k: String) -> Double in (l[k] as? Double) ?? 0 }
+                    NSLog("[ModLink] t %.3f peers %.0f tempo %.3f beat %.3f grid %.0f errMs %.3f worstMs %.3f waitMs %.0f offset %.0f wall %.3f",
+                          CACurrentMediaTime(), f("peers"), f("tempo"), f("beat"), f("grid"), f("errMs"), f("worstMs"), f("launchWaitMs"), f("offset"), Date().timeIntervalSince1970)
+                }
+            }
+            #endif
             self.started = true
             watchLife(engine)
             #if DEBUG
