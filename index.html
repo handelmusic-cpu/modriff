@@ -9412,7 +9412,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.5</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.6</span></div>
  </div>
 </div>
 
@@ -10890,7 +10890,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.5</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.6</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12092,7 +12092,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.5';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.6';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -62404,6 +62404,31 @@ window._nsBank = {
   return JSON.stringify([_wp('chord.voice'), _wp('chord.attack'), _wp('chord.release'), _wp('chord.reverb'), _wp('chord.sub'), _wp('chord.subLevel'),
                          _wp('chord.subWave'), _wp('mix.chord'), _wp('fx.trim'), _wp('fx.width'), _wp('master.tune'), SAMPLE_STATE[SAMPLED_WAVES[_wp('chord.voice')]],_wp('chord.voice')==='sampler'?smpNativeSignature('chord'):null]);
  },
+ // The sampled instruments the band's four pitched voices use. A native claim records one voice per pitch from the page's decoded buffers, so
+ // every one of them has to be decoded first. Only bass, arp and melody asked for a load when it was missing; the chord never did, and nothing
+ // waited, so a song whose chord voice was a sampled instrument not yet loaded (first Play after launch, or the first change of voice) was
+ // refused as "native chord preparation refused", the whole band recovered to the page, and background play stayed off for the run.
+ // Resolves {ok} or {ok:false, why} naming the voice, after at most `ms`.
+ awaitSamples: async function(ms){
+  var libs = [], seen = {};
+  [['chord','chord.voice'],['bass','bass.voice'],['arp','arp.voice'],['melgen','melgen.voice']].forEach(function(pv){
+   var v = _wp(pv[1]), lib = (pv[0]==='bass' && BASS_SAMPLED[v]) ? BASS_SAMPLED[v].lib : SAMPLED_WAVES[v];
+   if(lib && !seen[lib]){ seen[lib] = 1; libs.push({lib: lib, voice: v}); }
+  });
+  var until = Date.now() + (ms || 10000);
+  for(;;){
+   var wait = null;
+   for(var i = 0; i < libs.length; i++){
+    var st = SAMPLE_STATE[libs[i].lib];
+    if(st === 'ready') continue;
+    if(st === 'error'){ return {ok: false, why: 'the ' + libs[i].voice + ' recordings could not be loaded'}; }
+    wait = libs[i]; preloadSampleInstrument(libs[i].lib);
+   }
+   if(!wait) return {ok: true};
+   if(Date.now() > until) return {ok: false, why: 'the ' + wait.voice + ' recordings did not finish loading'};
+   await new Promise(function(r){ setTimeout(r, 25); });
+  }
+ },
  // The pitches a set of chords needs, recorded and sent if the host does not hold them under the current signature. Resolves {built, kept, failed}.
  // hold: the held chord a gated hit plays (bank part 4), which is its own recording of each pitch.
  ensureChord: async function(pitches, hold){
@@ -63274,6 +63299,7 @@ window._nativeTransport = {
  _prepare:async function(c,initial,gen){
   var me=this,P=window._nsDrum.plugin();if(c.unsupported.length)throw new Error(c.unsupported.join(', '));
   me.check(await window._nsEvents.prepare());me.check(await window._nsIntonation.sync());
+  me.check(await window._nsBank.awaitSamples(10000));
   if(gen!==me.generation)throw new Error('cancelled preparation');
   window._nsBank.isolated=true;
   try{
@@ -63285,7 +63311,7 @@ window._nativeTransport = {
    if(c.mel){me.check(await window._nsMel.prepare());if(initial&&!c.song)me.check(await window._nsMel.chords());}
    if(c.chord)me.check(await window._nsChord.prepare(true));
    if(c.song && (initial || !me.config || c.songSig!==me.config.songSig || c.bank[3]!==me.config.bank[3])){
-    var song=me.check(await window._nsSong.sync());if(chordsEnabled && song.chords===false)throw new Error((song.chordWhy||[]).join(', ')||'native chord preparation refused');
+    var song=me.check(await window._nsSong.sync());if(chordsEnabled && song.chords===false)throw new Error((song.chordWhy||[]).join(', ')||((song.bank&&song.bank.failed)||[]).map(function(f){return (f.voice?f.voice+' ':'')+(f.pitch!=null?f.pitch+': ':'')+f.why;}).filter(function(x,i,a){return a.indexOf(x)===i;}).slice(0,3).join('; ')||'native chord preparation refused');
    }
    if(P.seqVoices)me.check(await P.seqVoices({voices:_mgB64(Float64Array.from(['bass','arp','mel','chord'].map(function(p){return window._nsKitCode(p+':'+_wp((p==='mel'?'melgen':p)+'.voice'));})))}));
   }finally{window._nsBank.isolated=false;}

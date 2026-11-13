@@ -106,6 +106,7 @@ Since 6.2:
 - [ ] 59. Background audio toggle (6.9.9.9.9.9.9.9.3) — Settings > Sound & response: ON keeps every part playing through lock/app switch; OFF pauses and resumes on return. Relaunch preserves either choice; check speaker and headphones.
 
 - [ ] 60. Learn (6.9.9.9.9.9.9.9.4) — clean free install: Learn > Show me → hear the drums with no pack toast; play all four steps by thumb, keep both key rows readable, and close with Keep playing or ✕ → full Chords header.
+- [ ] 61. Background audio, sampled chord voice (6.9.9.9.9.9.9.9.6) — right after launch set Chords to a sampled instrument, Song > Play, lock the phone → every part keeps playing. If it pauses, Copy diagnostics: `nativeTransport.last.why` now names the voice or pitch that was refused.
 
 ## Done
 

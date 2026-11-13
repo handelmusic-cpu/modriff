@@ -52,7 +52,7 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       const coverage=me.snapshot();const allFeatures=coverage.unsupported.length===0&&coverage.chord&&me.state==='native';
       CR.run=false;PS.patOn=false;metronomeOn=false;rhythmOn=false;prac.key.on=prac.ramp.on=false;
       stopEverything();await sleep(100);const stopped=me.state==='page'&&!m.transport.owned;
-      let edits=0;window._nsBank.ensure=async()=>{if(++edits<=4)window._webParams['bass.voice']=edits%2?'square':'sine';return {ok:true,failed:[]};};
+      window._webParams['bass.voice']='sine';let edits=0;window._nsBank.ensure=async()=>{if(++edits<=4)window._webParams['bass.voice']=edits%2?'square':'sine';return {ok:true,failed:[]};};
       startEverything();await sleep(500);const stableEdits=me.state==='native'&&edits>=5&&me.last.ok;stopEverything();await sleep(100);window._nsBank.ensure=ready;
       // Cancelling while bank preparation is pending must prevent any native
       // claim, even if that asynchronous work completes after the Stop.
