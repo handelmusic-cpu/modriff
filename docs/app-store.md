@@ -187,6 +187,8 @@ site's "for iPhone, iPad and Mac" is true: the Mac Catalyst build is uploaded to
 > Microphone: requested only if you open the Sampler and choose to record.
 > Bluetooth: requested only if you press the Bluetooth button in
 > Settings > MIDI, to pair a Bluetooth MIDI keyboard (not needed to review).
+> Bluetooth headphones and speakers use the system audio route and do not need that MIDI permission.
+> Choose listening devices in Settings > Sound & response > Audio output.
 > iCloud sync is optional and off by default. When it is on, songs, setups and
 > saved patches are kept in the person's own private iCloud (CloudKit) database;
 > the developer has no access to it. (Not in a build until the iCloud capability

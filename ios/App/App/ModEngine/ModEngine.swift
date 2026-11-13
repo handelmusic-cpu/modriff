@@ -44,6 +44,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "ensurePart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "post", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stats", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioOutputs", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "selectAudioOutput", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openAudioOutputPicker", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setBuffer", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setBackgroundPlay", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "meters", returnType: CAPPluginReturnPromise),
@@ -140,6 +143,107 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     override public func load() {
         NSLog("[ModEngine] plugin registered")
         ModEngine.shared = self
+        #if targetEnvironment(macCatalyst)
+        outputWatch = ModMacOutputWatch(queue: fadeQueue) { [weak self] in
+            self?.refreshMacOutput()
+        }
+        #else
+        outputRouteObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self else { return }
+            self.notifyListeners("audioOutputChanged", data: self.audioOutputState())
+        }
+        #endif
+    }
+
+    // MARK: - Audio destinations
+
+    #if targetEnvironment(macCatalyst)
+    private var outputWatch: ModMacOutputWatch?
+    private let macOutput = ModMacAudioOutputDriver()
+    private let outputPreference = "modo-audio-output"
+
+    private func preferredOutputDevice() -> AudioDeviceID {
+        let uid = UserDefaults.standard.string(forKey: outputPreference) ?? ""
+        return ModMacAudioOutput.devices().first(where: { $0.uid == uid })?.id ?? ModMacAudioOutput.defaultDevice()
+    }
+
+    private func refreshMacOutput() {
+        if let engine = engine {
+            do {
+                try macOutput.setDevice(preferredOutputDevice(), on: engine)
+                outputWatch?.watchDevice(macOutput.device)
+                host?.setLinkOutputLatency(macOutput.outputLatency)
+                restartEngine("audio output changed")
+            } catch { lifeNote("audio output: \(error.localizedDescription)") }
+        }
+        notifyListeners("audioOutputChanged", data: audioOutputState())
+    }
+    #else
+    private var outputRouteObserver: NSObjectProtocol?
+    #endif
+
+    private func audioOutputState() -> [String: Any] {
+        #if targetEnvironment(macCatalyst)
+        let devices = ModMacAudioOutput.devices()
+        let id = macOutput.device != 0 ? macOutput.device : preferredOutputDevice()
+        return ["mode": "devices", "selected": UserDefaults.standard.string(forKey: outputPreference) ?? "",
+                "current": ModMacAudioOutput.string(id, kAudioObjectPropertyName) ?? "Output unavailable",
+                "devices": devices.map { ["id": $0.uid, "name": $0.name] }]
+        #else
+        return ["mode": "system", "current": AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portName).joined(separator: ", ")]
+        #endif
+    }
+
+    @objc func audioOutputs(_ call: CAPPluginCall) {
+        fadeQueue.async { [weak self] in
+            guard let self = self else { return }
+            #if targetEnvironment(macCatalyst)
+            self.refreshMacOutput()
+            #endif
+            call.resolve(self.audioOutputState())
+        }
+    }
+
+    @objc func selectAudioOutput(_ call: CAPPluginCall) {
+        #if targetEnvironment(macCatalyst)
+        let uid = call.getString("id") ?? ""
+        fadeQueue.async { [weak self] in
+            guard let self = self else { return }
+            let devices = ModMacAudioOutput.devices()
+            guard uid.isEmpty || devices.contains(where: { $0.uid == uid }) else {
+                call.reject("That audio output has been disconnected. Refresh the list and choose another output."); return
+            }
+            let id = devices.first(where: { $0.uid == uid })?.id ?? ModMacAudioOutput.defaultDevice()
+            do {
+                if let engine = self.engine {
+                    try self.macOutput.setDevice(id, on: engine)
+                    self.outputWatch?.watchDevice(self.macOutput.device)
+                    self.host?.setLinkOutputLatency(self.macOutput.outputLatency)
+                }
+                // Save only after a successful switch, so a rejected device never becomes the startup route.
+                UserDefaults.standard.set(uid, forKey: self.outputPreference)
+                call.resolve(self.audioOutputState())
+                self.notifyListeners("audioOutputChanged", data: self.audioOutputState())
+            } catch { call.reject(error.localizedDescription) }
+        }
+        #else
+        call.reject("Choose an audio output from the system route picker.")
+        #endif
+    }
+
+    @objc func openAudioOutputPicker(_ call: CAPPluginCall) {
+        #if targetEnvironment(macCatalyst)
+        call.reject("Choose an audio output from the device list.")
+        #else
+        DispatchQueue.main.async { [weak self] in
+            guard let vc = self?.bridge?.viewController, vc.presentedViewController == nil else {
+                call.reject("Close the open sheet before choosing an audio output."); return
+            }
+            let nav = UINavigationController(rootViewController: ModOutputPickerController())
+            nav.modalPresentationStyle = .pageSheet
+            vc.present(nav, animated: true) { call.resolve() }
+        }
+        #endif
     }
 
     // MARK: - Leaving and returning to the app
@@ -264,13 +368,24 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             // (the mixer converts to whatever rate the new route runs at).
             nc.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
                 self?.lifeNote("engine configuration changed (route or sample rate)")
+                #if targetEnvironment(macCatalyst)
+                self?.fadeQueue.async { [weak self] in self?.refreshMacOutput() }
+                #else
                 self?.restartEngine("configuration change")
+                #endif
             },
             nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: session, queue: nil) { [weak self] n in
                 let why = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) ?? 0
                 self?.lifeNote("audio route changed (reason \(why))")
                 // Headphones and Bluetooth report a different latency, and Link's beat is the one heard.
+                #if targetEnvironment(macCatalyst)
+                self?.fadeQueue.async { [weak self] in
+                    guard let self = self else { return }
+                    self.host?.setLinkOutputLatency(self.macOutput.outputLatency)
+                }
+                #else
                 self?.host?.setLinkOutputLatency(session.outputLatency)
+                #endif
             },
             // Ableton Link leaves the network when the app is left and is not playing, and comes back with it
             // (their test plan, BACKGROUND-1 and 2). Playing in the background, it stays in the session.
@@ -334,6 +449,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         if interrupted { return }
         do {
             try AVAudioSession.sharedInstance().setActive(true)
+            #if targetEnvironment(macCatalyst)
+            try macOutput.setDevice(preferredOutputDevice(), on: engine)
+            #endif
             try engine.start()
             restarts += 1
             lifeNote("engine restarted after \(why) (attempt \(attempt + 1))")
@@ -569,6 +687,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     // MARK: - Lifecycle
 
     @objc func start(_ call: CAPPluginCall) {
+        // Route preparation is asynchronous; a concurrent restart must not attach an output to an old graph.
+        fadeQueue.async { [weak self] in self?.startEngine(call) }
+    }
+
+    private func startEngine(_ call: CAPPluginCall) {
         if started {
             call.resolve(["started": true, "sampleRate": host?.sampleRate ?? 0])
             return
@@ -611,8 +734,12 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 // The host time the block leaves at is what Ableton Link counts beats against; without a valid
                 // one the host does not consult Link for this block (0).
                 let ts = timestamp.pointee
-                host.render(into: l, right: r, frames: Int32(frameCount),
-                            hostTime: ts.mFlags.contains(.hostTimeValid) ? ts.mHostTime : 0)
+                #if targetEnvironment(macCatalyst)
+                let renderHostTime = self.macOutput.renderHostTime
+                #else
+                let renderHostTime = ts.mFlags.contains(.hostTimeValid) ? ts.mHostTime : 0
+                #endif
+                host.render(into: l, right: r, frames: Int32(frameCount), hostTime: renderHostTime)
                 os_signpost(.end, log: ModEngine.signpostLog, name: "render")
                 let dt = Int64(DispatchTime.now().uptimeNanoseconds &- t0)
 
@@ -640,6 +767,10 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
 
             engine.attach(source)
             engine.connect(source, to: engine.mainMixerNode, format: format)
+            #if targetEnvironment(macCatalyst)
+            try macOutput.setDevice(preferredOutputDevice(), on: engine)
+            outputWatch?.watchDevice(macOutput.device)
+            #endif
             engine.prepare()
             try engine.start()
 
@@ -647,7 +778,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             self.source = source
             self.host = host
             ModLink.shared().attach(to: host)
+            #if targetEnvironment(macCatalyst)
+            host.setLinkOutputLatency(macOutput.outputLatency)
+            #else
             host.setLinkOutputLatency(AVAudioSession.sharedInstance().outputLatency)
+            #endif
             #if DEBUG
             // Debug builds only: once a second while Link is on, the engine's own numbers (the session's tempo and beat,
             // how far the engine's grid is from it), so two simulators can be compared from their logs.
@@ -674,11 +809,22 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 "maxFrames": maxFrames
             ])
         } catch {
+            #if targetEnvironment(macCatalyst)
+            macOutput.stop()
+            #endif
             call.reject("audio engine failed to start: \(error.localizedDescription)")
         }
     }
 
     @objc func stop(_ call: CAPPluginCall) {
+        fadeQueue.async { [weak self] in self?.stopEngine(call) }
+    }
+
+    private func stopEngine(_ call: CAPPluginCall) {
+        #if targetEnvironment(macCatalyst)
+        macOutput.stop()
+        outputWatch?.watchDevice(0)
+        #endif
         unwatchLife()
         bgTimer?.cancel(); bgTimer = nil; bgActive = false
         leftApp = false
@@ -1673,7 +1819,12 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setPreferredIOBufferDuration(ms / 1000.0)
-            call.resolve(["requestedMs": ms, "actualMs": session.ioBufferDuration * 1000.0])
+            #if targetEnvironment(macCatalyst)
+            let actual = macOutput.bufferDuration > 0 ? macOutput.bufferDuration : session.ioBufferDuration
+            #else
+            let actual = session.ioBufferDuration
+            #endif
+            call.resolve(["requestedMs": ms, "actualMs": actual * 1000.0])
         } catch {
             call.reject("could not set the buffer: \(error.localizedDescription)")
         }
@@ -1715,6 +1866,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         lifeLock.unlock()
         out["restarts"] = restarts
         out["interruptions"] = interruptions
+        out["audioOutput"] = audioOutputState()
+        #if targetEnvironment(macCatalyst)
+        out["outputRender"] = ["callbacks": macOutput.counters.callbacks, "frames": macOutput.counters.frames,
+                               "status": macOutput.counters.status, "error": Int(macOutput.counters.error)]
+        #endif
         out["engineRunning"] = engine?.isRunning ?? false
         out["keepPlaying"] = keepPlaying
         bgLock.lock()
