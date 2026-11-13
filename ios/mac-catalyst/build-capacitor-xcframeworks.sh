@@ -18,7 +18,28 @@ WORK="${TMPDIR:-/tmp}/modriff-capacitor-catalyst"
 
 VER="$(node -p "require('$CAP/package.json').version")"
 STAMP="$PKG/.built-for"
+
+# Apple rejects an upload whose Capacitor or Cordova framework has no signature
+# (ITMS-91065, "Missing signature"). The official xcframeworks are signed by their
+# makers, but `-create-xcframework` below writes new ones with no signature, and the
+# Catalyst slice cannot be added to a signed one. So the rebuilt ones are signed here
+# with this team's own development certificate, which Xcode then records in the
+# archive's Signatures/ folder. Idempotent: a signed one is left alone. The iPhone
+# archive does not use these at all (ios/archive-ios-store.sh swaps the official ones in).
+sign_xcframeworks() {
+  local id="${MODRIFF_SIGN_IDENTITY:-}"
+  if [ -z "$id" ]; then
+    id="$(security find-identity -v -p codesigning | grep -m1 -E '"Apple (Development|Distribution)' | awk '{print $2}')"
+  fi
+  [ -n "$id" ] || { echo "no Apple Development/Distribution identity in the keychain to sign the xcframeworks"; exit 1; }
+  for name in Capacitor Cordova; do
+    if codesign --verify "$PKG/$name.xcframework" 2>/dev/null; then continue; fi
+    codesign --timestamp --sign "$id" "$PKG/$name.xcframework"
+  done
+}
+
 if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$VER" ] && [ "${1:-}" != "--force" ]; then
+  sign_xcframeworks
   echo "Capacitor $VER xcframeworks already built (--force to rebuild)"; exit 0
 fi
 
@@ -55,5 +76,6 @@ for name in Capacitor Cordova; do
     -framework "$WORK/dd/Build/Products/Release-maccatalyst/$name.framework" \
     -output "$PKG/$name.xcframework"
 done
+sign_xcframeworks
 echo "$VER" >"$STAMP"
 echo "built $PKG/{Capacitor,Cordova}.xcframework for Capacitor $VER"
