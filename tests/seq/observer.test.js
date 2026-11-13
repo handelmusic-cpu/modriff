@@ -50,7 +50,9 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       wall=1000600;me.consume(response([9,1,5,75,90,30960,36000],9));
       me.consume(response([10,2,5,0,0,30000,30000],10));
       await new Promise(r=>setTimeout(r,80)); const cancelled=!sent.some(x=>x[0]==='on'&&x[2]===75);
-      me.consume(response([],10,9)); const loss=_midiRecNativeCut && me.lost===9 && me.last.why.includes('overflow');
+      me.consume(response([11,1,7,36,100,24000,900000,12,1,7,37,100,24000,900000,13,3,7,36,0,36000,36000],13));
+      const pads=_midiRecNotes.filter(n=>n.lane==='sampler').map(n=>({note:n.note,end:n.tOff}));
+      me.consume(response([],13,9)); const loss=_midiRecNativeCut && me.lost===9 && me.last.why.includes('overflow');
       // Route masks come from the existing MIDI lane/local policy and the
       // production GM table, including distinct kit and Aux mappings.
       let routes;
@@ -58,14 +60,16 @@ function ok(c, label, detail) { if (!c) failed++; console.log((c ? 'ok   ' : 'FA
       window.moSilences=lane=>lane==='bass'||lane==='melgen';me.routesSig='';await me.routes();
       const map=Array.from(new Float64Array(Uint8Array.from(atob(routes.routes),x=>x.charCodeAt(0)).buffer));
       me.pending.forEach(n=>me.cancel(n));me.pending.clear();_midiRecOn=false;Date.now=realNow;
-      return {notes,retried,held,cancelled,loss,mask:routes.localMask,mapCount:map.length/3,sent};
+      return {pads,notes,retried,held,cancelled,loss,mask:routes.localMask,mapCount:map.length/3,sent};
     });
     ok(out.notes.length===7 && out.retried===7,'delayed and repeated reads retain all seven notes once',out);
     ok(out.notes[1].tOn===100.00520833337214 && out.notes[2].tOn===100.015625,'fractional engine frames map to recording time while AudioContext is frozen',out.notes);
     ok(out.held.length===2 && out.held.every(t=>t===250),'a retained chord cut closes both held MIDI notes at its native frame',out.held);
     ok(out.cancelled,'a cut cancels a queued MIDI note before its onset',out.sent);
+    ok(out.pads.length===2&&out.pads[0].end===750&&out.pads[1].end===18750,'a native pad release cuts only its own MIDI note',out.pads);
+    ok(!out.sent.some(e=>e[0]==='on'&&e[1]==='sampler'),'pads remain recording-only MIDI');
     ok(out.loss,'overflow marks the take incomplete and remains visible',out);
-    ok(out.mask===(127 & ~(1<<2) & ~(1<<6)) && out.mapCount>100,'external-only mask and real drum/Aux GM routes reach the host',out);
+    ok(out.mask===(255 & ~(1<<2) & ~(1<<6)) && out.mapCount>100,'external-only mask and real drum/Aux GM routes reach the host',out);
     ok(errors.length === 0, 'the real page throws no errors', errors);
   } finally { await browser.close(); server.close(); }
   console.log(failed ? failed + ' FAILED' : 'all passed'); process.exitCode = failed ? 1 : 0;

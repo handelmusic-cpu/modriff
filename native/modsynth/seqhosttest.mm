@@ -278,6 +278,56 @@ static std::vector<double> editSong(int root) {
   return {5,16,0,0,0,0,0,1, 0,0,1, 4,0,0,0,(double)root,-1,-1,-1,0,0,-1,3,0,4,7,
     0,-1,-1,-1,0,4,2,140,0,2,7, 4,1,.15,0,0,0};
 }
+static void testExtraLanes() {
+  ModEngineHost *h=fresh();[h ensureGraphPart:5];[h ensureGraphPart:7];[h seqSetObserverRoutes:bytes({}) localMask:0];
+  auto entry=chordNoteEntry(60,false,8);entry[1]=7;entry[3]=1;
+  auto lane=[&](std::vector<double>&d,int pattern,bool on,bool next) {
+    d.insert(d.end(),{on?1.:0.,next?1.:0.});
+    auto score=[&](int pat,double at){d.insert(d.end(),{1.,(double)pat,1,1,0,61,0,(double)entry.size()});d.insert(d.end(),entry.begin(),entry.end());d.insert(d.end(),{12,2,0,4,0,0,0,2,0,3,0,0,.004,2,at,1,1,1,-1,at+.25,1,0,2,-1});};
+    score(pattern,0);if(next)score(pattern+1,.125);
+  };
+  std::vector<double> extra={2};lane(extra,0,false,false);lane(extra,0,false,false);lane(extra,0,true,true);
+  CHECK([h seqSetExtras:bytes(extra)],"native pad gate/queue is accepted atomically");
+  CHECK(![h seqSetExtras:bytes({1,1})],"a truncated extra lane cannot replace the working score");
+  [h seqSetDrumScore:bytes(score())];
+  CHECK([h seqTransportStart:bytes({1,240,1,1,1,0,0,0,0,0,0,0,0,0,0,0}) token:1],"extra lanes start with the public native clock");
+  CHECK([h seqSetVoices:bytes({21,22,23,24})],"all running voice codes can change without restarting a clock");
+  NSDictionary *voiceMirror=[h seqMirror];CHECK(([voiceMirror[@"voiceKits"] isEqual:@[@21,@22,@23,@24]]&&[voiceMirror[@"transport"][@"owned"] boolValue]),"live voice selection reaches every player and preserves ownership");
+  run(h,1300);NSDictionary *m=[h seqMirror];NSDictionary *e=m[@"extras"][2];
+  CHECK([e[@"hits"] intValue]>=3 && [e[@"pattern"] intValue]==1 && [e[@"misses"] intValue]==0,"native pads loop, gate and adopt the queued pattern without a page (%d hits)",[e[@"hits"] intValue]);
+  [h seqExtraTouch:1 hold:YES release:YES];run(h,600);e=[h seqMirror][@"extras"][2];
+  CHECK([e[@"erased"] count]>0,"holding a pad erases its future hit in the native loop");
+  const int hits=[e[@"hits"] intValue];[h seqTransportStop:2];run(h,400);e=[h seqMirror][@"extras"][2];
+  CHECK(![e[@"running"] boolValue] && [e[@"hits"] intValue]==hits,"Stop leaves no native pad scheduler running");
+  // A queued short pattern followed by a two-pattern chain changes on wraps,
+  // without any page timer calling back to advance it.
+  auto a=score(),b=score(),c=score();a[1]=4;b[1]=8;c[1]=12;
+  [h seqSetDrumScore:bytes(a)];std::vector<double>queue={1,2,0,11,(double)b.size()};queue.insert(queue.end(),b.begin(),b.end());queue.insert(queue.end(),{12,(double)c.size()});queue.insert(queue.end(),c.begin(),c.end());
+  CHECK([h seqSetDrumQueue:bytes(queue)],"the drum chain is prepared before playback");
+  [h seqTransportStart:bytes({1,240,1,1,1,0,0,0,0,0,0,0,0,0,0,0}) token:3];run(h,2200);m=[h seqMirror];
+  CHECK([m[@"queueLands"] intValue]>=3 && ([m[@"queueTag"] intValue]==11||[m[@"queueTag"] intValue]==12),"the native drum clock advances an unequal-length chain by itself (%d changes)",[m[@"queueLands"] intValue]);
+  [h seqTransportStop:4];
+  [h seqSetDrumScore:bytes(score())];auto jumpSong=editSong(60);jumpSong[10]=2;std::vector<double>slot(jumpSong.begin()+11,jumpSong.begin()+26);slot[4]=65;jumpSong.insert(jumpSong.begin()+26,slot.begin(),slot.end());[h seqSetSong:bytes(jumpSong)];[h seqTransportStart:bytes({1,240,1,1,1,0,0,0,0,1,0,0,0,0,0,0}) token:5];run(h,700);
+  [h seqSongMove:1];const double first=[[h seqMirror][@"firstFrame"] doubleValue];
+  CHECK([h seqSongSeek:0 slot:1],"a chart-position jump is accepted during native playback");run(h,250);m=[h seqMirror];
+  CHECK([m[@"song"][@"slot"] intValue]==1 && [m[@"song"][@"pending"] intValue]==0 && [m[@"firstFrame"] doubleValue]==first && [m[@"transport"][@"owned"] boolValue],"steering changes the chord and clears Next while preserving the band epoch and native ownership");
+  [h seqTransportStop:6];
+  auto trained=editSong(60);trained[11]=0;trained[12]=1;trained[30]=1;trained[32]=1;trained[34]=1;trained[35]=1;
+  [h seqSetSong:bytes(trained)];[h seqTransportStart:bytes({1,100,1,1,1,0,0,0,0,1,0,0,0,0,0,0}) token:7];run(h,2600);m=[h seqMirror];
+  NSDictionary *trainer=m[@"song"];const int chorus=[trainer[@"chorus"] intValue],keys=[trainer[@"keysDone"] intValue];int shift=(keys*7)%12;if(shift>6)shift-=12;
+  CHECK(chorus>=3&&keys==chorus&&[trainer[@"keyShift"] intValue]==shift&&[m[@"tempo"] doubleValue]>100,"native practice changes key and tempo without page callbacks (%d choruses, %d keys, %.0f BPM)",chorus,keys,[m[@"tempo"] doubleValue]);
+  [h seqSongSeek:0 slot:0];run(h,200);m=[h seqMirror];CHECK([m[@"song"][@"chorus"] intValue]>=chorus&&[m[@"transport"][@"owned"] boolValue],"a practice jump preserves the trainer and native owner");
+  [h seqTransportStop:8];CHECK(std::abs([[h seqMirror][@"tempo"] doubleValue]-100)<.001,"Stop restores the trainer's borrowed tempo");
+  ModEngineHost *g=fresh();[g ensureGraphPart:4];[g seqSetDrumScore:bytes(score())];[g seqSetObserverRoutes:bytes({}) localMask:(1<<5)];
+  auto loud=arpEntry(7,0,.1),silent=arpEntry(8,0,.1);for(size_t i=9;i<9+(size_t)silent[8];i++)if(silent[i]==.5)silent[i]=0;silent[9+(size_t)silent[8]+2]=0;
+  [g seqPutBankEntry:bytes(loud)];[g seqPutBankEntry:bytes(silent)];[g seqSetArpScore:bytes(arpScore(0,1))];[g seqSetArpNotes:bytes({60})];
+  [g seqTransportStart:bytes({1,240,1,1,1,0,1,0,0,0,0,7,0,0,0,0}) token:1];
+  auto measure=[&](int ms){float peak=0;std::vector<float> l(240),r(240);for(int t=0;t<ms;t+=5){[g renderInto:l.data() right:r.data() frames:240];for(int j=0;j<240;j++)peak=std::max(peak,std::max(std::abs(l[j]),std::abs(r[j])));usleep(5000);}return peak;};
+  const float before=measure(900);const double epoch=[[g seqMirror][@"firstFrame"] doubleValue];const int oldHits=[[g seqMirror][@"arp"][@"voices"] intValue];[g seqSetVoices:bytes({0,8,0,0})];measure(500);const float after=measure(400);
+  CHECK(before>.01&&after<before*.1&&[[g seqMirror][@"arp"][@"voices"] intValue]>oldHits&&[[g seqMirror][@"arp"][@"misses"] intValue]==0&&[[g seqMirror][@"firstFrame"] doubleValue]==epoch,"a running arp adopts the silent bank while its room tail decays, without missing notes or restarting (peak %.5f to %.9f)",before,after);[g seqTransportStop:2];
+
+}
+
 static void testTransportOwnership() {
   ModEngineHost *h=fresh();[h seqSetObserverRoutes:bytes({}) localMask:0];
   std::vector<double> bs={1,1,0,1,0,0,3,0,4,7,7,0,2,4,5,7,9,11,.7,0,1,1,.5,14,.28,18,0,0,0,1,1,0,2,1,0,0,0,0,0};
@@ -387,6 +437,8 @@ static void testIntonation() {
 
 int main() {
   @autoreleasepool {
+    if (getenv("MODRIFF_EXTRAS_ONLY")) {testExtraLanes();return failed?1:0;}
+    testExtraLanes();
     if (getenv("MODRIFF_TRANSPORT_ONLY")) { testTransportOwnership(); return failed ? 1 : 0; }
     testTransportOwnership();
     if (getenv("MODRIFF_CHART_EDIT_ONLY")) { testChartEdits(); return failed ? 1 : 0; }

@@ -1,27 +1,21 @@
-# Native audio handoff — 6.9.9.9.9.9.9.7h
+# Native audio handoff — 6.9.9.9.9.9.9.7i
 
-Supported Native sound runs now claim one native transport owner automatically through public Play. Chord patches/sub, Pure tuning/glide, retained MIDI observers and next-bar chart revisions are implemented. Web and unsupported configurations retain the whole page band. Phone checks are a to-do, not an activation gate; no debug latch is required.
+Public Play uses one native owner for the entire scheduled band. Normal features stay native: factory/custom sampler instruments, synth patches/sub, Pure/glide, live chords, standalone comp/Vary, pad patterns, click/simple rhythm, drum queues/chains, practice key/tempo steps and chart-position jumps. Page scheduling is retained for the free web page and recovery after an actual engine/readiness failure. Background MIDI output/external clock remain outside this transition.
 
-## Start the next session
+## Paste into the next Claude session
 
-Use the attached `codex/native-transition-complete` worktree or a clean merged `main`. Read `AGENTS.md` and current `CLAUDE.md`, then the short checkpoint in `docs/native-scheduling.md`. Search archived design/measurement logs by topic; do not read them end to end. Another session used the shared main checkout for a phone build; leave its stash and unrelated dependency changes alone.
+Continue mõdRïff from current merged main. Read AGENTS.md and CLAUDE.md, then the short checkpoint in docs/native-scheduling.md. Native scheduling coverage is implemented; do not restore feature-based page fallbacks or add a debug activation gate. Recovery is only for genuine engine/asset-readiness failure, with a diagnostic reason and one scheduler owner.
 
-Fetch current main, inspect status and run `npm run ios:check` before device testing. Build merged main with `npm run ios:device`; a deliberate branch build uses `MODRIFF_IOS_ANY=1 npm run ios:device`. Compare the phone's About build stamp. The attached worktree has untracked links for dependencies/generated Capacitor frameworks; do not commit them. `npm run ios:frameworks` is required on a fresh checkout.
+Verify the release on the paired iPhone using docs/phone-test-checklist.md items 45–54. These changes have compiled for iOS Simulator and passed Mac/browser event/audio tests; they have not been heard on device. Exercise background/foreground, routes/interruption, long Bounce/MIDI/stems, queued patterns, live sampler edits, practice and rapid Play/Stop. Fix any measured issue, run the relevant tests and Simulator build, commit verified changes with the repository's required attribution, open one PR and merge it. Phone listening is a follow-up, not a gate on native activation or shipping.
 
-## Next work
-
-- Hear checklist 45–49 on the paired iPhone: patches/sub, tuning/glide, audio/MIDI/stems, live chart revisions, rapid transport changes, interruptions/routes and background/foreground behavior. Fix any reported problem, measure on the Mac, commit it, open one PR and merge it. Do not wait for checklist ticks to continue or ship.
-- Confirm Copy diagnostics shows `nativeTransport.state: native` for a supported fresh Play and `page` plus a reason for fallback. Stop during preparation and immediately after Play; no cancelled start may revive. Test a native host restart and a long Bounce with MIDI/stems.
-- Current whole-band page fallbacks: custom sampler instrument voices, sampler patterns, metronome/simple rhythm, standalone chord rhythm, queued/chained drum patterns and practice key/tempo automation. Chart-position jumps also fall back. They pause on leaving. Broaden native coverage if requested; do not call these configurations background-native.
-- Preserve main's concurrent long-Bounce streaming, optional Bounce MIDI/Pads track, orphan-voice Panic/startup cleanup and Song Resume changes. They were integrated into this batch before final verification.
+Use the attached codex/native-full-coverage checkout or a clean main. Fetch and inspect status first. Do not modify another session's stash or unrelated dependency changes. Before installing, run npm run ios:check; build merged main with npm run ios:device and compare About's build stamp. A deliberate feature-branch install requires MODRIFF_IOS_ANY=1. Dependency and generated framework links are untracked and must stay out of commits; run npm run ios:frameworks on a fresh checkout.
 
 ## Reproduce verification
 
 - `./check.sh`, `npm run build`, `npm run build:web`.
-- `make -C native/modsynth seqhosttest seqobservetest chartedittest chordseqtest chordtest banktest synthseqtest`; run the first three binaries (the host suite takes several minutes).
-- Focused host checks: `MODRIFF_TRANSPORT_ONLY=1`, `MODRIFF_CHART_EDIT_ONLY=1`, or `MODRIFF_OBSERVER_ONLY=1` before `native/modsynth/seqhosttest`.
-- Browser tests: `tests/seq/transport.test.js`, `probe-isolation.test.js`, `observer.test.js`, `chartedit.test.js`, `intonation.test.js`, `synthbank.test.js`, `livechord.test.js`, plus existing bank/line/song regressions. Scratch Playwright is `/tmp/modriff-browser-tools/node_modules/playwright`; pass it as `PLAYWRIGHT` when needed. `PAGE_PATH=/dist/index.html` exercises the built app; web smoke uses `/dist-web/play/index.html`.
-- Pure/glide: `TUNING_TEST=1 GLIDE_TEST=1 VOICES=sine,piano,pianoreal2 node tests/seq/chordline.test.js`. Tuned bank tests accept `TUNE_CENTS`; Pure chord banks accept `TUNING_TEST=1`.
-- Native build: `xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/modriff-native-complete-derived CODE_SIGNING_ALLOWED=NO build`.
+- `make -C native/modsynth seqhosttest seqobservetest chartedittest chordtool banktest`; run `seqhosttest`, `seqobservetest` and `chartedittest`. The full host suite takes several minutes. `MODRIFF_EXTRAS_ONLY=1 native/modsynth/seqhosttest` focuses on pad gates/queue/erase, drum chains, practice/steering and live voice selection.
+- Browser: `tests/seq/transport.test.js`, `extras.test.js`, `observer.test.js`, `chordrhythm.test.js`, `chartedit.test.js`, `songmirror.test.js`, plus the existing tuning/patch/line tests. Use `PLAYWRIGHT=/tmp/modriff-browser-tools/node_modules/playwright` if the scratch install exists. `PAGE_PATH=/dist/index.html` checks the shipped app.
+- Custom sampler audio: run each of `bassbank`, `chordbank`, `arpbank`, `melbank` under `tests/seq/` with `CUSTOM_SAMPLER_LOOP=0` and `=1`, `VOICES=sine,sampler`; `ARP_SKIP_FX=1` narrows the arp matrix.
+- Native: `xcodebuild -project ios/App/App.xcodeproj -scheme App -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/modriff-native-complete-derived CODE_SIGNING_ALLOWED=NO build`.
 
-Measured evidence: zero page scheduler calls during native ownership; identical first frames for five native clocks; stale Start/Stop rejection; zero output for a cancelled committed future graph note; exact retained-note/root boundaries; unchanged live chord/bass/choke/room state during real bank probes; Panic cuts the separate chord sub to zero while the uncut control remains audible. These are Mac results, not claims of having heard the phone.
+Measured: 30 click/rhythm/reversed/looped/warped-pad voice renders match fresh page audio at every tested onset phase (worst null 213 dB); standalone Vary/voice-leading hit lists match; native queues, gates, hold erasure, trainer changes and steering advance without page callbacks; native ownership suppresses page schedulers; delayed starts are cancelled; pad MIDI releases affect only their own notes. These are Mac/browser measurements, not device listening claims.

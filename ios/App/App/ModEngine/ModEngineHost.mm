@@ -29,6 +29,7 @@
 #include "songvoice.h"
 #include "songend.h"
 #include "voicebank.h"
+#include "extraseq.h"
 #include <functional>
 #include <thread>
 #include <unistd.h>
@@ -198,6 +199,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   bool hasSong = false;
   std::unique_ptr<modsynth::SongScore> pendingSong;
   double pendingSongBeat=0,songEpochBeat=0;
+  int seekSection=-1,seekSlot=0; double seekFrame=0;
   uint64_t songRevision=0,chartEdits=0;
   int bassLockBase=0,melLockBase=0;
   uint64_t songChords = 0, songFirst = 0, songVoiced = 0, songRests = 0, songHits = 0;
@@ -238,6 +240,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
   // One tempo for the drums, the bass and the chord rhythm (tempomap.h): a tempo the page sets is a jump at the render clock, and the engine can move
   // it by itself (a ramp). Under `lock`.
+  modsynth::ExtraSequencer extras[3];
+  bool extraOn[3]={false,false,false};
   modsynth::TempoMap tmap;
   modsynth::SeqObserver observer;
   std::map<std::pair<int,int>,int> midiDrums;
@@ -249,6 +253,9 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   void setTempoNow(double bpm) { tmap.jump((double)frames->load(std::memory_order_relaxed), bpm); retimePending(); }
   HostSeq(const std::atomic<uint64_t> *f, double rate) : seq(rate), frames(f), lookahead(0.15 * rate), bseq(rate), cseq(rate), aseq(rate), mseq(rate), sseq(rate), svoice(rate), tmap(rate) {
     sr = rate; bplay.synth.sr = cplay.synth.sr = aplay.synth.sr = mplay.synth.sr = rate; bplay.sr = rate; bplay.bank = &bank; cplay.sr = rate; cplay.bank = &bank; aplay.sr = rate; aplay.bank = &bank; mplay.sr = rate; mplay.bank = &bank;
+    for(auto &e:extras){e.sr=rate;e.tempo=&tmap;}
+    extras[2].note=[this](int key,int midi,double at,double end){observer.note(7,midi,100,at,end);};
+    extras[2].cutNote=[this](int midi,double at){observer.cutNote(7,midi,at);};
     cplay.tuning = &tuning;
     bplay.tuning = [this](int note,double at){ const auto *w=bseq.timeline().windowFor(at); return w && !w->rest ? tuning.cents(note,w->rootPc) : 0; };
     mplay.tuning = [this](int note,double at){ const auto *w=mseq.timeline().windowFor(at); return w && !w->rest ? tuning.cents(note,w->rootPc) : 0; };
@@ -317,7 +324,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
   // stopEverything at `frame` (the end of a fade): what the band had committed is faded out there, the sequencers and the song stop, the chord is stopped.
   void landStop(double frame) {
-    liveChords.clear(); pendingSong.reset();
+    for(auto &e:extras)e.stop(frame);
+    liveChords.clear(); pendingSong.reset(); seekSection=-1;
     cutFollowers(frame);
     bplay.synth.stop(frame, true); aplay.synth.stop(frame, true); mplay.synth.stop(frame, true);
     if (kill) kill(kKillParts, (uint64_t)frame, 1056);
@@ -328,7 +336,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   // biggest cymbal and (for most endings) its snare, the key's tonic chord with its root an octave under, and the bass's last note on the tonic -- then, after the hold, the
   // chord is let go of (or choked), and a moment later everything is stopped and the tempo the ending borrowed is put back.
   void landing(const modsynth::EndingEvent &ev, double now) {
-    const double L = ev.frame; pendingSong.reset();
+    const double L = ev.frame; pendingSong.reset();seekSection=-1;for(auto &e:extras)e.stop(L);
     cutFollowers(L);
     bplay.synth.stop(L, true); aplay.synth.stop(L, true); mplay.synth.stop(L, true);
     const modsynth::SongScore &sc = sseq.score();
@@ -486,6 +494,11 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
         if(result==2 || (result==1 && !revised->voice.on)) stopChord(at);
         cplay.kit=revised->voice.kit;
       }
+      if(seekSection>=0 && seekFrame<now+lookahead) {
+        const double at=seekFrame;runSong(at);followUntil(now,at);svoice.clearHits();
+        sseq.seek(at,seekSection,seekSlot);seekSection=-1;songRevision++;
+        bseq.setPending(modsynth::BassPending());mseq.setPending(modsynth::MelPending());bassPendingRaw.clear();
+      }
       runSong(now+lookahead);
       bseq.timeline().prune(now);
       if (hasMel) mseq.timeline().prune(now);
@@ -493,6 +506,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     const double followNow = (double)frames->load(std::memory_order_relaxed);
     applyLiveChords(followNow);
     followUntil(followNow, followNow + lookahead);
+    for(auto &e:extras)if(e.running)e.run((double)frames->load(std::memory_order_relaxed)+lookahead,(double)frames->load(std::memory_order_relaxed));
     if (cseq.running() && hasChord) {
       const double now = (double)frames->load(std::memory_order_relaxed);
       chordSteps += (uint64_t)cseq.run(now + lookahead, [&](const modsynth::ChordEvent &e) { chordHits++; playChord(e, now); });
@@ -685,6 +699,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
         return ok;
       };
       _hostSeq->endGain = &_endGain;
+      for(auto &e:_hostSeq->extras){e.begin=_hostSeq->begin;e.edit=_hostSeq->edit;}
       _hostSeq->bplay.begin = _hostSeq->begin;
       _hostSeq->bplay.edit = _hostSeq->edit;
       _hostSeq->cplay.begin = _hostSeq->begin;
@@ -1372,7 +1387,12 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   modsynth::ChordScore s;
   if (!s.fromDoubles(d.data(), n)) return NO;
   os_unfair_lock_lock(&_hostSeq->lock);
+  const double oldTap=_hostSeq->cseq.score().tapMs;
   _hostSeq->cseq.setScore(s);
+  if(s.tapMs>0) {
+    const double off=_curOffPub.load(std::memory_order_relaxed);
+    if(std::isfinite(off)){const double frame=(s.tapMs-off)*_sampleRate/1000.;_hostSeq->cseq.setTapFrame(frame);if(s.tapMs!=oldTap&&_hostSeq->cseq.running())_hostSeq->stopChord(frame);}
+  }
   _hostSeq->hasChord = true;
   os_unfair_lock_unlock(&_hostSeq->lock);
   return YES;
@@ -1390,7 +1410,8 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   if (align && q.seq.running() && q.seq.nextFrame() > (double)_frames.load(std::memory_order_relaxed)) first = q.seq.nextFrame();
   q.cplay.reset(); q.cplay.kit = kit;
   q.chordSteps = q.chordHits = 0; q.chordFirst = (uint64_t)first;
-  q.cseq.start(first);
+  const int phase=align&&q.seq.running()?(int)std::llround((q.tmap.beatAt(first)-q.tmap.beatAt(q.seq.epochFrame()))*4.):0;
+  q.cseq.start(first,phase);
   os_unfair_lock_unlock(&q.lock);
   q.startThread();
   return YES;
@@ -1435,6 +1456,59 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
 
 // A whole-band claim has one token. Serialize the short control transaction,
 // including Stop, so a cancelled asynchronous page start cannot revive a run.
+- (BOOL)seqSetVoices:(NSData *)data {
+  if(data.length!=4*sizeof(double))return NO;
+  const double *d=(const double*)data.bytes;for(int i=0;i<4;i++)if(!std::isfinite(d[i])||d[i]<0||d[i]>0xffffff||d[i]!=std::floor(d[i]))return NO;
+  HostSeq &q=*_hostSeq;os_unfair_lock_lock(&q.lock);
+  q.bplay.kit=(int)d[0];q.aplay.kit=q.arpKit=(int)d[1];q.mplay.kit=q.melKit=(int)d[2];q.cplay.kit=(int)d[3];
+  os_unfair_lock_unlock(&q.lock);return YES;
+}
+- (BOOL)seqSetDrumQueue:(NSData *)data {
+  if(data.length<3*sizeof(double)||data.length%sizeof(double))return NO;
+  const double *d=(const double*)data.bytes;size_t n=data.length/sizeof(double),k=3;
+  if(d[0]!=1||!std::isfinite(d[1])||d[1]<0||d[1]>256||d[1]!=std::floor(d[1])||!std::isfinite(d[2])||d[2]<-1||d[2]>=d[1]||d[2]!=std::floor(d[2]))return NO;
+  std::vector<modsynth::DrumScore>scores;std::vector<int>tags;
+  for(int i=0;i<(int)d[1];i++){
+    if(k+2>n||!std::isfinite(d[k])||d[k]<1||d[k]>1000000000||d[k]!=std::floor(d[k]))return NO;
+    tags.push_back((int)d[k++]);const double size=d[k++];
+    if(!std::isfinite(size)||size<1||size>1000000||size!=std::floor(size)||k+(size_t)size>n)return NO;
+    modsynth::DrumScore score;size_t used=0;if(!score.fromDoubles(d+k,(size_t)size,&used)||used!=(size_t)size)return NO;
+    k+=(size_t)size;scores.push_back(std::move(score));
+  }
+  if(k!=n)return NO;HostSeq &q=*_hostSeq;os_unfair_lock_lock(&q.lock);q.seq.setQueue(std::move(scores),std::move(tags),(int)d[2]);os_unfair_lock_unlock(&q.lock);return YES;
+}
+- (BOOL)seqSetExtras:(NSData *)data {
+  if(!data.length||data.length%sizeof(double))return NO;
+  const double *d=(const double*)data.bytes;size_t n=data.length/sizeof(double),k=1;
+  if(d[0]!=1&&d[0]!=2)return NO;
+  modsynth::ExtraScore sc[3],pending[3];bool on[3],next[3];
+  for(int i=0;i<3;i++){
+    if(k+2>n||(d[k]!=0&&d[k]!=1)||(d[k+1]!=0&&d[k+1]!=1))return NO;
+    on[i]=d[k++]!=0;next[i]=d[k++]!=0;
+    if(!sc[i].read(d,n,k,d[0]==2)||(next[i]&&!pending[i].read(d,n,k,d[0]==2)))return NO;
+  }
+  if(k!=n)return NO;
+  HostSeq &q=*_hostSeq;os_unfair_lock_lock(&q.lock);
+  const double now=(double)_frames.load(std::memory_order_relaxed);
+  for(int i=0;i<3;i++){
+    auto &e=q.extras[i];e.set(std::move(sc[i]),std::move(pending[i]),next[i],now);q.extraOn[i]=on[i];
+    if(!on[i])e.stop(now);
+    else if(q.transportOwned&&!e.running)e.start(std::max(now+q.lookahead+128.,q.seq.nextBarFrame()));
+  }
+  os_unfair_lock_unlock(&q.lock);return YES;
+}
+- (BOOL)seqExtraTouch:(int)key hold:(BOOL)hold release:(BOOL)release {
+  if(key<0||key>1000000)return NO;
+  HostSeq &q=*_hostSeq;os_unfair_lock_lock(&q.lock);
+  q.extras[2].hold(key,hold);if(release)q.extras[2].touchRelease(key,(double)_frames.load(std::memory_order_relaxed));
+  os_unfair_lock_unlock(&q.lock);return YES;
+}
+- (BOOL)seqSongSeek:(int)section slot:(int)slot {
+  HostSeq &q=*_hostSeq;os_unfair_lock_lock(&q.lock);
+  const bool ok=q.sseq.running()&&!q.sseq.endingRunning()&&section>=0&&q.sseq.score().playable((size_t)section)&&slot>=0&&slot<(int)q.sseq.score().sections[(size_t)section].slots.size();
+  if(ok){q.seekSection=section;q.seekSlot=slot;q.seekFrame=(double)_frames.load(std::memory_order_relaxed)+q.lookahead+128.;}
+  os_unfair_lock_unlock(&q.lock);return ok;
+}
 - (BOOL)seqTransportStart:(NSData *)options token:(double)token {
   if(options.length!=16*sizeof(double) || !std::isfinite(token) || token<1 || token>9007199254740991. || token!=std::floor(token)) return NO;
   double d[16];std::memcpy(d,options.bytes,sizeof d);
@@ -1462,6 +1536,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     if(d[7]) ok=[self seqMelStartWithBpm:d[1] rate:d[4] leadMs:500 alignToDrums:YES kit:(int)d[12] seed:0] && ok;
     if(d[8]) ok=[self seqChordStartWithBpm:d[1] leadMs:500 alignToDrums:YES kit:(int)d[13]] && ok;
   }
+  if(ok){os_unfair_lock_lock(&q.lock);for(int i=0;i<3;i++)if(q.extraOn[i])q.extras[i].start(q.firstFrame);os_unfair_lock_unlock(&q.lock);}
   if(!ok) {os_unfair_lock_lock(&q.lock);q.landStop((double)_frames.load(std::memory_order_relaxed));q.transportOwned=false;os_unfair_lock_unlock(&q.lock);}
   return ok;
 }
@@ -1472,7 +1547,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   if((uint64_t)token<q.transportToken) {os_unfair_lock_unlock(&q.lock);return NO;}
   q.transportToken=(uint64_t)token;q.transportOwned=false;
   const double now=(double)_frames.load(std::memory_order_relaxed),back=q.sseq.restore(q.tmap.bpmAt(now));if(back>0)q.setTempoNow(back);
-  q.landStop(now);q.songRevision++;q.endTimers.clear();q.fading=false;q.endPhase=0;if(q.endGain)q.endGain->store(1.f,std::memory_order_relaxed);
+  q.landStop(now);q.seq.setQueue({}, {}, -1);q.songRevision++;q.endTimers.clear();q.fading=false;q.endPhase=0;if(q.endGain)q.endGain->store(1.f,std::memory_order_relaxed);
   os_unfair_lock_unlock(&q.lock);return YES;
 }
 
@@ -1491,7 +1566,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
   os_unfair_lock_unlock(&q.lock); return r;
 }
 - (BOOL)seqSetObserverRoutes:(NSData *)routes localMask:(int)mask {
-  if(routes.length % (3*sizeof(double)) || routes.length>4096*3*sizeof(double) || mask<0 || mask>127) return NO;
+  if(routes.length % (3*sizeof(double)) || routes.length>4096*3*sizeof(double) || mask<0 || mask>255) return NO;
   std::map<std::pair<int,int>,int> map; const double *d=(const double *)routes.bytes;
   for(size_t k=0;k<routes.length/sizeof(double);k+=3) {
     for(int j=0;j<3;j++) if(!std::isfinite(d[k+j]) || d[k+j]!=std::floor(d[k+j])) return NO;
@@ -1533,16 +1608,19 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
     const HostSeq::Fired &f = q.ring[(q.ringN - 1 - k) % HostSeq::kRing];
     if (f.frame <= now) { step = f.step; bar = f.bar; break; }
   }
+  NSMutableArray *erased=[NSMutableArray array];for(int id:q.extras[2].erased)[erased addObject:@(id)];
   NSDictionary *r = @{@"instance":q.instance,@"bankEpoch":@((double)q.bankEpoch),@"sampleRate": @(_sampleRate), @"running": @(q.seq.running()), @"step": @(step), @"bar": @(bar), @"frame": @(now), @"tempo": @(q.tmap.bpmAt(now)),
                       @"steps": @((double)q.steps), @"events": @((double)q.events), @"late": @((double)q.late),
-                      @"firstFrame": @((double)q.firstFrame), @"nextFrame": @(q.seq.nextFrame()),@"nextStep":@(q.seq.step()),
+                      @"firstFrame": @((double)q.firstFrame), @"nextFrame": @(q.seq.nextFrame()),@"nextStep":@(q.seq.step()), @"queueTag":@(q.seq.queueTag()), @"queueLands":@((double)q.seq.queueLands()),
                       @"recDropped": @((double)q.recDropped),
+                      @"extras":@[@{ @"running":@(q.extras[0].running),@"hits":@((double)q.extras[0].hits),@"misses":@((double)q.extras[0].misses)},@{@"running":@(q.extras[1].running),@"hits":@((double)q.extras[1].hits),@"misses":@((double)q.extras[1].misses)},@{@"running":@(q.extras[2].running),@"hits":@((double)q.extras[2].hits),@"misses":@((double)q.extras[2].misses),@"pattern":@(q.extras[2].pattern),@"erased":erased,@"loops":@((double)q.extras[2].loops),@"loopFrame":@(q.extras[2].originFrame()),@"nextFrame":@(q.extras[2].nextFrame()),@"nextStep":@(q.extras[2].step())}],
+                      @"voiceKits":@[@(q.bplay.kit),@(q.aplay.kit),@(q.mplay.kit),@(q.cplay.kit)],
                       @"transport":@{@"owned":@(q.transportOwned),@"token":@((double)q.transportToken)},
                       @"live": @{@"changes": @((double)q.liveChanges), @"pending": @(q.liveChords.size()), @"frame": @(q.liveFrame)},
                       @"hits": @((double)q.hits), @"misses": @((double)q.misses), @"silent": @((double)q.silent), @"refused": @((double)q.refused),
                       @"lateStarts": @((double)q.lateStarts), @"bank": @((double)q.bank.size()),
                       @"cuts": @((double)q.cuts), @"cutEdits": @((double)q.cutEdits),
-                      @"chord": @{@"running": @(q.cseq.running()), @"nextStep": @(q.cseq.step()), @"steps": @((double)q.chordSteps), @"hits": @((double)q.chordHits),
+                      @"chord": @{@"running": @(q.cseq.running()), @"nextStep": @(q.cseq.step()), @"nextFrame":@(q.cseq.nextFrame()), @"steps": @((double)q.chordSteps), @"hits": @((double)q.chordHits),
                                   @"chords": @((double)q.cplay.chords), @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases),
                                   @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused), @"firstFrame": @((double)q.chordFirst)},
                       @"bass": @{@"running": @(q.bseq.running()), @"nextStep": @(q.bseq.step()), @"steps": @((double)q.bassSteps), @"notes": @((double)q.bassNotes),
@@ -1560,7 +1638,7 @@ struct HostSeq : modsynth::DrumPlayer {   // bank, choke groups, begin/edit and 
                                 @"armed": @(q.melArmed), @"bySong": @(q.melBySong), @"lastMidi": @(q.melLastMidi)},
                       @"song": @{@"revision":@((double)q.songRevision),@"chartEdits":@((double)q.chartEdits),@"editPending":@(q.pendingSong!=nullptr),@"editFrame":@(q.pendingSong?q.tmap.frameAt(q.pendingSongBeat):-1),@"running": @(q.sseq.running()), @"section": @(q.sseq.section()), @"slot": @(q.sseq.slot()), @"pass": @(q.sseq.pass()),
                                  @"chords": @((double)q.songChords), @"firstFrame": @((double)q.songFirst), @"nextStart": @(q.sseq.nextStart()),
-                                 @"pending": @(q.sseq.queuedMove()), @"ending": @{@"timers":@(q.endTimers.size()),@"armed": @(q.sseq.armedEnding()), @"phase": @(q.endPhase), @"at": @(q.endAt), @"lands": @((double)q.endLands), @"gain": @(q.endGain ? q.endGain->load() : 1.0f)}, @"chorus": @(q.sseq.chorus()), @"keyShift": @(q.sseq.keyShift()), @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8]), @((double)q.songRevision)],
+                                 @"pending": @(q.sseq.queuedMove()), @"ending": @{@"timers":@(q.endTimers.size()),@"armed": @(q.sseq.armedEnding()), @"phase": @(q.endPhase), @"at": @(q.endAt), @"lands": @((double)q.endLands), @"gain": @(q.endGain ? q.endGain->load() : 1.0f)}, @"chorus": @(q.sseq.chorus()), @"keyShift": @(q.sseq.keyShift()), @"keysDone":@(q.sseq.keysDone()),@"trainerBpm":@(q.sseq.trainerBpm()), @"ask": @[@(q.ask[0]), @(q.ask[1]), @(q.ask[2]), @(q.ask[3]), @(q.ask[4]), @(q.ask[5]), @(q.ask[6]), @(q.ask[7]), @(q.ask[8]), @((double)q.songRevision)],
                                  @"voiced": @((double)q.songVoiced), @"hits": @((double)q.songHits), @"rests": @((double)q.songRests), @"misses": @((double)q.cplay.misses), @"refused": @((double)q.cplay.refused),
                                  @"voices": @((double)q.cplay.voices), @"stops": @((double)q.cplay.stops), @"releases": @((double)q.cplay.releases)},
                       @"lastMiss": @[@(q.lastMissPart), @(q.lastMissKit), @(q.lastMissLane)]};

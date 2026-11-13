@@ -25,6 +25,7 @@ function serve() {
   });
 }
 const CONFIGS = [
+  { name: 'native Vary and voice leading, slash chord', nativeVoice:true,vary:true,key:'strum',bpm:120,chord:[60,[0,4,7,-8]],swing:0,swing8:true,bars:12 },
   { name: 'the built-in strum rhythm, C major, 120 BPM', key: 'strum', bpm: 120, chord: [60, [0, 4, 7]], swing: 0, swing8: true, bars: 6 },
   { name: 'the same with the Feel swing at 40 on the eighths, 100 BPM', key: 'strum', bpm: 100, chord: [60, [0, 4, 7]], swing: 40, swing8: true, bars: 6 },
   { name: 'a drawn rhythm with soft, plain and accented hits, its own swing', def: { cells: { 0: { on: 1, acc: 1 }, 3: { on: 1, soft: 1 }, 6: { on: 1 }, 8: { on: 1, acc: 1 }, 11: { on: 1, soft: 1 }, 14: { on: 1 } }, swing: 30 }, bpm: 110, chord: [57, [0, 3, 7, 10]], swing: 0, swing8: true, bars: 6 },
@@ -60,7 +61,7 @@ const CONFIGS = [
     for (const c of configs) {
       document.getElementById('bpm').value = c.bpm; c.bpm = parseFloat(document.getElementById('bpm').value);
       window._sqSetSwing(c.swing); window._sqSetSwing8(c.swing8);
-      chordsEnabled = true; songLoopActive = false;
+      chordsEnabled = true; songLoopActive = false;voiceVary=!!c.vary;voicing='close';autoInvOn=true;root=0;mode='major';_prevVoices=[];_styledPrevTop=null;_jazzPrev=null;_vvCount={};_vvHist={};_vvLastId=null;CR.nativeTapMs=0;
       CR.on = true; CR.preview = null; CR.chord = { root: c.chord[0], intvs: c.chord[1].slice() }; CR.tapT = -100;
       if (c.def) { const d = rhyBlank(c.def.steps || 16); Object.keys(c.def.cells).forEach(i => Object.assign(d.cells[i], c.def.cells[i])); d.swing = c.def.swing != null ? c.def.swing : null; d.name = 'test'; CR.key = 'u:' + 'test'; CR.def = rhyNorm(d); }
       else { CR.key = c.key; CR.def = null; }
@@ -80,8 +81,9 @@ const CONFIGS = [
       CR.run = false;
       const hits = sent.filter(m => m.at < tEnd - 1e-6).map(m => ({ at: m.at, vel: m.vel, dur: m.dur, hold: m.dur == null ? released[m.id] - m.at : null, notes: m.notes, bass: m.bass, root: m.root }));
       const first = sent[0];
-      const sc = window._crNativeScore({ notes: (first.bass != null ? [first.bass] : []).concat(first.notes), root: first.root, bass: first.bass });
-      out.push({ name: c.name, hits, tEnd, score: sc.score, ok: sc.ok, why: sc.why, bpm: c.bpm, steps: pat.steps, jumps });
+      const nativeScore=c.nativeVoice?window._crNativeScore(null,true):null;
+      const sc = nativeScore||window._crNativeScore({ notes: (first.bass != null ? [first.bass] : []).concat(first.notes), root: first.root, bass: first.bass });
+      out.push({ nativeVoice:!!c.nativeVoice,name: c.name, hits, tEnd, score: sc.score, ok: sc.ok, why: sc.why, bpm: c.bpm, steps: pat.steps, jumps });
       document.getElementById('bpm').value = c.bpm;
     }
     // a gated hit and a ratchet are in the score, not refused
@@ -121,7 +123,7 @@ const CONFIGS = [
       else if ((p.hold != null) !== (n.hold === 1)) { same = false; why = `hit ${k}: the page ${p.hold != null ? 'holds' : 'does not hold'} it, the engine ${n.hold ? 'holds' : 'does not'}`; }
       else if (p.hold != null && Math.abs(p.hold - n.holdSec) * SR > 1e-5) { same = false; why = `hit ${k}: let go of after ${p.hold} s on the page, ${n.holdSec} native`; }
       else if (p.hold == null && Math.abs(p.dur - n.dur) > 1e-12) { same = false; why = `hit ${k}: length ${p.dur}, ${n.dur} native`; }
-      else if (chordOf(p) !== chordOf(first) || n.notes.join('.') !== chordOf(first)) { same = false; why = `hit ${k}: the chord is ${chordOf(p)} on the page and ${n.notes.join('.')} native (the first was ${chordOf(first)})`; }
+      else if ((!c.nativeVoice&&chordOf(p)!==chordOf(first)) || n.notes.join('.')!==chordOf(p)) { same = false; why = `hit ${k}: the chord is ${chordOf(p)} on the page and ${n.notes.join('.')} native (the first was ${chordOf(first)})`; }
     }
     const nHeld = pg.filter(h => h.hold != null).length;
     ok(same && c.ok, c.name + ': ' + pg.length + ' hits identical, ' + nHeld + ' of them held (worst timing ' + worstT.toExponential(1) + ' frames)', why + ' ' + (c.why || []).join(','));

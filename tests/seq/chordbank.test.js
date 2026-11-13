@@ -56,6 +56,10 @@ const ONSETS = [2304 + 128 * 400, 2304 + 128 * 400 + 77, 2304 + 128 * 523 + 5];
   const errs = []; page.on('pageerror', e => errs.push(String(e)));
   await page.goto('http://127.0.0.1:' + srv.address().port + '/index.html'); await page.waitForTimeout(1200);
   await page.getByText('Start', { exact: true }).first().click(); await page.waitForTimeout(1500);
+  if(process.env.CUSTOM_SAMPLER_LOOP!=null){
+    await page.addScriptTag({path:path.join(__dirname,'sampler-fixture.inpage.js')});
+    await page.evaluate(loop=>window._nativeSamplerFixture(loop),process.env.CUSTOM_SAMPLER_LOOP==='1');
+  }
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chordbank-'));
   const bin = path.join(root, 'native', 'modsynth', 'chordtest');

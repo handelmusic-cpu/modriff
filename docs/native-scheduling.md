@@ -28,7 +28,7 @@ over state; it does not feed notes. That is the only way to avoid porting makeVo
 every drum, bass, chord and melody voice to C++ (the way mõdSynth was ported), and it keeps the sound
 exactly what it is today.
 
-## 2. What exists today (facts from the code)
+## 2. Original migration baseline
 
 - **Messages are already semantic.** A drum step sends `{kind:'hit', part, kit, lane, vel, accent,
   pitch, dyn, at}`; a bass or melody note `{kind:'note', part, note, vel, dur, ...}`; a chord
@@ -106,15 +106,7 @@ program, not a scaled one, so it is part of the key).
 
 ### 4.2 Roll-out: the engine is the only scheduler (owner's decision)
 
-The owner chose way B: the engine becomes the only scheduler and the page schedulers are deleted. The
-alternative that was considered, the engine continuing only while the app is away with a handover at each
-end, is not built: it would mean two schedulers that must agree and a handover protocol that is thrown away.
-
-What that changes in practice: a half-native state cannot ship, because the drum grid is the bar clock the
-song, chord changes and arp hang off. So slices 1 to 4 are built and verified without being switched on (behind
-a developer switch like Native sound, compared against the page's own scheduler on the same score), and the
-cutover (slice 5) switches every part at once and deletes the page schedulers. Background play turns on
-with the cutover; before it, nothing changes for anyone.
+The native app uses one engine owner for the scheduled band. Public Play prepares its voices and scores before starting them on one clock. Page schedulers remain for the free web page and whole-band recovery after an engine or asset-readiness failure. A normal instrument, pattern, trainer or clock setting never selects the page scheduler. Background/foreground changes do not transfer ownership.
 
 ### 4.3 What stays on the page whatever happens
 Voice building, editing UIs, the song editor, MIDI in/record, MIDI out and external MIDI clock, anything
@@ -172,10 +164,11 @@ v1; say so, don't half-do them.
 ## Current migration checkpoint
 
 - **A:** generated lines, both Follow settings and last-line repetition are implemented.
-- **B1/B2:** factory instruments are banked per pitch. Custom sampler instruments still use whole-band page fallback.
+- **B1/B2:** factory and custom sampler instruments are banked per pitch. Slot settings and same-ID buffer replacement/drop invalidate the bank. Missing assets fail readiness explicitly.
 - **B3/B4/B5:** all four patch parts, the chord's separate sub, Pure tuning, chord glide and live hand-chord forwarding are implemented.
 - **C:** retained fractional-frame note/cut events feed foreground MIDI and Bounce MIDI, with cursors, native recording-clock mapping and explicit overflow reporting. Background MIDI out/external clock remain outside v1.
 - **D:** live chart revisions apply at the next uncommitted bar. Commands/pass/trainer state and old/new locks survive; stale generated-line replies are rejected by revision.
-- **E:** public Play prepares and claims one native owner by default when Native sound is on and the configuration is supported. Page schedulers/song timers are suppressed for that run. Five clocks share a first bar; monotonic tokens cancel stale starts/stops. Native mirrors drive displays. Host/bank identities invalidate stale caches. Probes preserve live manual voices. Background permission requires a completed native claim; there is no foreground/background scheduler handover.
-- **Whole-band fallback:** custom sampler voices, sampler patterns, metronome/simple rhythm, standalone chord rhythm, queued/chained drum patterns and practice key/tempo automation currently use the page. Chart-position jumps also return the run to the page. Loading/refused banks and older/unavailable hosts use the same fallback. These runs pause on leaving and do not claim background support.
-- **Verification:** Mac event/audio comparisons, real-page ownership/race/fallback tests, the full host suite and iOS Simulator build pass. Not heard on device: checklist 45–49. Those checks are a to-do, not a gate. Handoff: `docs/native-audio-handoff.md`.
+- **E:** public Play prepares and claims one native owner by default when Native sound is on. Page schedulers/song timers are suppressed for that run. Five clocks share a first bar; monotonic tokens cancel stale starts/stops. Native mirrors drive displays. Host/bank identities invalidate stale caches. Probes preserve live manual voices. Background permission requires a completed native claim; there is no foreground/background scheduler handover.
+- **Additional native lanes:** `extraseq.h` schedules click, legacy rhythm and pad patterns, including gates, chokes, loop queues, recording phase and hold erasure. Native chord rhythm keeps voice-leading/Vary and the tap-overlap guard. Drum queues/chains adopt prepared scores at pattern wraps. Practice changes key/tempo in the engine; mirrored charts are normalized before resending, preventing doubled transposition. Chart-position jumps keep the transport epoch and trainer. Live voice-bank changes reach every running player.
+- **Whole-band recovery:** unavailable/restarted engines, failed asset readiness, refused banks or an unconfirmed native command report a reason and recover the whole band to the page. Native background permission requires confirmed ownership; failed recovery never leaves two schedulers active. Normal app configurations have no feature-based fallback.
+- **Verification:** Mac event/audio comparisons, real-page ownership/race/fallback tests, the full host suite and iOS Simulator build pass. Not heard on device: checklist 45–54. Those checks are a to-do, not a gate. Handoff: `docs/native-audio-handoff.md`.

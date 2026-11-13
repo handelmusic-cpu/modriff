@@ -51,6 +51,10 @@ if(!process.env.VOICES){
   const errs = []; page.on('pageerror', e => errs.push(String(e)));
   await page.goto('http://127.0.0.1:' + srv.address().port + '/index.html'); await page.waitForTimeout(1200);
   await page.getByText('Start', { exact: true }).first().click(); await page.waitForTimeout(1500);
+  if(process.env.CUSTOM_SAMPLER_LOOP!=null){
+    await page.addScriptTag({path:path.join(__dirname,'sampler-fixture.inpage.js')});
+    await page.evaluate(loop=>window._nativeSamplerFixture(loop),process.env.CUSTOM_SAMPLER_LOOP==='1');
+  }
 
   const rnd = prng(97531);
   // Controls first (one quantity at a time, so a failure names its cause), then random combinations.

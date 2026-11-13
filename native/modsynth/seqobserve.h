@@ -21,6 +21,7 @@ class SeqObserver {
   void note(int part,int note,int vel,double frame,double end) {
     append({0,1,part,std::clamp(note,0,127),std::clamp(vel,1,127),frame,end});
   }
+  void cutNote(int part,int note,double frame) { append({0,3,part,note,0,frame,frame}); }
   void cut(int part,double frame) { append({0,2,part,0,0,frame,frame}); }
   std::vector<double> read(uint64_t after,size_t limit,uint64_t &cursor,uint64_t &lost) const {
     after=std::min(after,next_-1);
