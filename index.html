@@ -39739,16 +39739,25 @@ function playOnboardingDemo(opts){
       rg.style.display = h ? 'block' : 'none';
       if(h){ rg.style.left = h.x + 'px'; rg.style.top = h.y + 'px'; rg.style.width = h.w + 'px'; rg.style.height = h.h + 'px'; }
     });
-    // Beside what is lit: below it if there is room, else above, else over the
-    // bottom of the screen. With nothing lit (the end), in the middle.
-    var ch = card.offsetHeight, sf = _tourSafe(), MT = sf.top + 10, MB = sf.bottom + 10, top;
+    // Two lit rows can span most of a phone while leaving a card-sized gap
+    // between them. Treating them as one block put step 4 over the key names.
+    var ch = card.offsetHeight, sf = _tourSafe(), MT = sf.top + 16, MB = sf.bottom + 16, top;
     if(!hs.length){ top = Math.max(MT, (H - ch) / 2); }
     else {
       var t = Math.min.apply(null, hs.map(function(h){ return h.y; }));
       var b = Math.max.apply(null, hs.map(function(h){ return h.y + h.h; }));
-      if(H - b - MB >= ch + 6) top = b + 10;
-      else if(t - MT >= ch + 6) top = t - 10 - ch;
-      else top = H - ch - MB;
+      var rows = hs.slice().sort(function(a, b){ return a.y - b.y; });
+      var end = rows[0].y + rows[0].h;
+      for(var i=1;i<rows.length;i++){
+        var lo = Math.max(MT, end + 10), hi = Math.min(H - MB, rows[i].y - 10);
+        if(hi - lo >= ch){ top = lo + (hi - lo - ch) / 2; break; }
+        end = Math.max(end, rows[i].y + rows[i].h);
+      }
+      if(top === undefined){
+        if(H - b - MB >= ch + 10) top = b + 10;
+        else if(t - MT >= ch + 10) top = t - 10 - ch;
+        else top = H - ch - MB;
+      }
     }
     top = Math.round(Math.max(MT, Math.min(H - ch - MB, top)));
     if(card._top !== top){ card._top = top; card.style.top = top + 'px'; }
