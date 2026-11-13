@@ -98,6 +98,8 @@ Since 6.2:
 - [ ] 55. Rating card (6.9.9.9.9.9.9.9) — after a second clean bounce, close the share sheet and leave it alone for 20 s → the
   App Store rating card appears once, never while playing, recording or over a sheet (a Debug build always shows it).
 - [ ] 55. Folds and order (6.9.9.9.9.9.9.7j) — Live mõdFX: shut caret hides the part chips, Mix and All-controls button; open, they sit under the pad. Studio Drums/Bass/Melody: Generate | Arrange | Play in, Kit | Aux and the pattern tools are over the grid. Song > Build: Line and section is one shut row under the timeline.
+- [ ] 56. Text size and VoiceOver (6.9.9.9.9.9.9.9a) — set iOS Text Size to the largest and the smallest, reopen the app → text grows
+  (to 1.15 at most) or shrinks, nothing clipped, pads and canvases still line up; VoiceOver reads Settings headers as buttons.
 - [ ] 56. Sound > Voices pickers (6.9.9.9.9.9.9.7j) — each part is ‹ name ▾ ›: the name opens the sound browser, the carets step; a drum kit change waits for the next loop; the ◈ sampler badge still opens the sampler.
 
 ## Done

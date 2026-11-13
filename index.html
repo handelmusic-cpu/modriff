@@ -19,6 +19,53 @@ try{ if(window.__modMacApp) document.documentElement.classList.add('mac-app'); }
 // host. Pointer capability keeps touch tablets on their existing layout.
 try{ if(!window.__modMacApp && matchMedia('(hover:hover) and (pointer:fine)').matches)
  document.documentElement.classList.add('desktop-web'); }catch(e){}
+// ── Follow the iOS text size ────────────────────────────────────────────
+// A WKWebView's default text is 16px whatever Text Size is set to, so the app
+// ignored the setting. WebKit resolves `font:-apple-system-body` to the size the
+// person chose (17px at the default), and the ratio becomes --text-scale, which
+// the root font-size multiplies by. Done here, before the first layout, so
+// nothing is measured at one size and drawn at another; done again on coming
+// back to the app, since the setting is changed in Settings, and a resize is
+// sent so the canvases redraw. Only in the iPhone and iPad app: on a Mac the
+// same keyword is 13px (it would shrink the Mac app), and a browser has its own
+// text size, which the 125% root already follows.
+window._textScale = {
+  min: 0.9, max: 1.15, big: 1.08, now: 1,
+  inApp: function(){
+    try{
+      if(window.__modMacApp) return false;
+      var C = window.Capacitor;
+      if(C && typeof C.isNativePlatform === 'function' && C.isNativePlatform()) return true;
+      return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge);
+    }catch(e){ return false; }
+  },
+  // The body size in px, or 0 where the keyword means nothing.
+  read: function(){
+    try{
+      if(!(window.CSS && CSS.supports && CSS.supports('font', '-apple-system-body'))) return 0;
+      var p = document.createElement('span');
+      p.style.cssText = 'font:-apple-system-body;position:absolute;visibility:hidden';
+      document.documentElement.appendChild(p);
+      var px = parseFloat(getComputedStyle(p).fontSize) || 0;
+      p.remove();
+      return px;
+    }catch(e){ return 0; }
+  },
+  apply: function(px){
+    var s = px > 0 ? Math.min(this.max, Math.max(this.min, px / 17)) : 1;
+    s = Math.round(s * 100) / 100;
+    var root = document.documentElement, was = this.now;
+    this.now = s;
+    if(s === 1) root.style.removeProperty('--text-scale'); else root.style.setProperty('--text-scale', s);
+    root.classList.toggle('text-big', s >= this.big);
+    if(s !== was) try{ window.dispatchEvent(new Event('resize')); }catch(e){}
+    return s;
+  },
+  sync: function(){ return this.inApp() ? this.apply(this.read()) : this.now; }
+};
+window._textScale.sync();
+window.addEventListener('modriff-foreground', function(){ window._textScale.sync(); });
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) window._textScale.sync(); });
 // ── Fit the app to a tablet ─────────────────────────────────────────────
 // The layout is a phone's, capped at 700px wide, and an iPad drew it at
 // phone size in the middle of a 1024px screen with the rest empty. Rather
@@ -249,7 +296,16 @@ try{ if(!window.__modMacApp && matchMedia('(hover:hover) and (pointer:fine)').ma
    this computes to exactly the 20px every rem in this file was tuned against,
    so nothing moves — but a reader who has set their browser text larger now
    gets a larger app instead of being overridden. */
-html { font-size: 125%; }
+html { font-size: calc(125% * var(--text-scale, 1)); }
+/* --text-scale is the iOS text size setting (Settings > Display & Brightness > Text Size), read at the top of
+   the page and kept between 0.9 and 1.15: every rem follows it, the px sizes (44 pt targets, chrome heights) do
+   not. 1.15 is where the layout stops holding at 375 pt: at 1.3 the Build | Perform | Library switch runs
+   into itself and the part names become "DR…". Past 1.08 the page is html.text-big, and the two rows that
+   were fitted to the point at scale 1 give way instead of clipping: the chord rhythm bar goes back to the
+   picker on its own line, and the part buttons keep the size they have at 1. */
+html.text-big .cr-bar { flex-wrap:wrap; }
+html.text-big .cr-bar .cr-pick { flex:1 1 100%; }
+html.text-big :is(#ft-drum-btn,#ft-aux-btn,#ft-bas-btn,#ft-mel-btn,#ft-arp-btn,#ft-chd-btn,#ft-smp-btn) { font-size:calc(.6rem / var(--text-scale, 1)); }
 /* No double-tap zoom, anywhere. 172 controls already say touch-action:manipulation
    one by one; the page background, text and panels did not, and a double tap on
    any of those zoomed the whole app in. It is inherited down the chain by
@@ -8560,7 +8616,7 @@ body.light-mode .ft-more-menu { background:#f9faff; }
    window. 110% of that is 22 px. The rems follow it (a 0.55rem label goes from 11 to 12.1 px, a
    0.6rem line from 12 to 13.2), the px sizes (the 44 pt targets, the chrome's heights) do not,
    so nothing that has to stay a size changes. Phone widths only: a desktop window keeps 20. */
-@media (pointer:coarse) and (max-width:700px) { html { font-size:137.5%; } }
+@media (pointer:coarse) and (max-width:700px) { html { font-size:calc(137.5% * var(--text-scale, 1)); } }
 
 /* ── Song and Sound: the page's own switch, as the mock draws it (6.0g) ──
    Build | Perform | Library and Mixer | Voices | mõdSynth are one wide bordered switch at the top of the
@@ -9367,7 +9423,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9a</span></div>
  </div>
 </div>
 
@@ -9562,13 +9618,13 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div id="smp-ctl">
     <div class="smp-ctl-row"><label for="smp-gain">Volume</label>
-     <input type="range" id="smp-gain" min="0" max="300" step="1" value="100"
+     <input type="range" id="smp-gain" aria-label="Sample volume" min="0" max="300" step="1" value="100"
             oninput="smpEdit('gain',this.value)"><div class="smp-v" id="smp-gain-v">100%</div></div>
     <div class="smp-ctl-row"><label for="smp-tune">Pitch</label>
-     <input type="range" id="smp-tune" min="-24" max="24" step="1" value="0"
+     <input type="range" id="smp-tune" aria-label="Sample pitch, semitones" min="-24" max="24" step="1" value="0"
             oninput="smpEdit('tune',this.value)"><div class="smp-v" id="smp-tune-v">+0</div></div>
     <div class="smp-ctl-row"><label for="smp-fine">Fine</label>
-     <input type="range" id="smp-fine" min="-100" max="100" step="1" value="0"
+     <input type="range" id="smp-fine" aria-label="Sample fine tune, cents" min="-100" max="100" step="1" value="0"
             oninput="smpEdit('fine',this.value)"><div class="smp-v" id="smp-fine-v">+0¢</div></div>
     <!-- The cleanup high-pass. On the clip, not on the channel, because what
          it removes belongs to the recording — and because smpNorm lifts a
@@ -10036,7 +10092,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
        them auto-wah and shimmer. -->
   <div class="tmod-depth" id="tmod-rate-wrap">
    <span class="tmod-lbl">Speed</span>
-   <input type="range" id="tmod-rate" min="0" max="12" step="0.05" value="0" oninput="setMelModRate(this.value)">
+   <input type="range" id="tmod-rate" aria-label="Touch mod speed" min="0" max="12" step="0.05" value="0" oninput="setMelModRate(this.value)">
    <span class="tmod-val" id="tmod-rate-val">off</span>
   </div>
   <!-- Which of the two the gesture drives. The other stays where its slider
@@ -10237,7 +10293,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <span class="ms-lbl">Patch for</span>
    <div class="tg" style="flex-wrap:wrap" id="ms-part-btns"></div>
   </div>
-  <canvas id="ms-scope" class="ms-scope"></canvas>
+  <canvas id="ms-scope" class="ms-scope" aria-hidden="true"></canvas>
   <div class="ms-presets" id="modsynth-preset-btns"></div>
   <div class="ms-osc-row">
    <span class="ms-lbl">Wave</span>
@@ -10816,7 +10872,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -10960,7 +11016,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
  <div class="sb-keyrow">
   <div class="sb-keystep">
    <button class="btn-xp" onclick="transposeBy(-1)" aria-label="Down a semitone">−</button>
-   <div class="key-badge" id="chart-key-badge" onclick="snapChartKey()" title="Tap to refresh chord picker">C Maj</div>
+   <div class="key-badge" id="chart-key-badge" role="button" tabindex="0" onclick="snapChartKey()" title="Tap to refresh chord picker">C Maj</div>
    <button class="btn-xp" onclick="transposeBy(+1)" aria-label="Up a semitone">+</button>
   </div>
   <div class="sb-scale">
@@ -11603,8 +11659,8 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
        the roll rather than under it — see .bl-empty-hint. -->
   <div class="pr-host" data-acrow="roll">
    <div class="pr-wrap" id="bl-pr">
-    <canvas class="pr-keys-canvas pr-keys" id="bl-pr-keys"></canvas>
-    <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas"></canvas></div>
+    <canvas class="pr-keys-canvas pr-keys" id="bl-pr-keys" aria-hidden="true"></canvas>
+    <div class="pr-scroll" id="bl-pr-scroll"><canvas class="pr-canvas" id="bl-pr-canvas" role="img" aria-label="Bass line piano roll. Notes are drawn and edited by touch."></canvas></div>
    </div>
    <div class="pr-rulerhost" aria-hidden="true"><canvas class="pr-ruler" id="bl-pr-ruler"></canvas></div>
    <div class="pr-bar">
@@ -11746,8 +11802,8 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
   <!-- Same as the bass page: the roll shows in Basic too. -->
   <div class="pr-host" data-acrow="roll">
    <div class="pr-wrap" id="ml-pr">
-    <canvas class="pr-keys-canvas pr-keys" id="ml-pr-keys"></canvas>
-    <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas"></canvas></div>
+    <canvas class="pr-keys-canvas pr-keys" id="ml-pr-keys" aria-hidden="true"></canvas>
+    <div class="pr-scroll" id="ml-pr-scroll"><canvas class="pr-canvas" id="ml-pr-canvas" role="img" aria-label="Melody piano roll. Notes are drawn and edited by touch."></canvas></div>
    </div>
    <div class="pr-rulerhost" aria-hidden="true"><canvas class="pr-ruler" id="ml-pr-ruler"></canvas></div>
    <div class="pr-bar">
@@ -12018,7 +12074,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.9';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.9a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -44473,12 +44529,24 @@ function toggleSS(id){
  ssOpen[id] = !ssOpen[id];
  const hdr = document.getElementById('ss-'+id)?.querySelector('.ss-hdr');
  const body = document.getElementById('ss-'+id+'-body');
- if(hdr) hdr.classList.toggle('open', ssOpen[id]);
+ if(hdr){ hdr.classList.toggle('open', ssOpen[id]); hdr.setAttribute('aria-expanded', String(!!ssOpen[id])); }
  if(body) body.classList.toggle('open', ssOpen[id]);
  syncSSPreviews();
  // The MIDI list is drawn lazily and a closed row has no width to position anything against.
  if(id==='midi' && ssOpen[id] && typeof renderMidiCC==='function') renderMidiCC();
 }
+// The section headers are divs with an onclick, which VoiceOver read as a line of text: nothing said it
+// could be opened, or whether it was. They are told to be buttons here, once, rather than in thirteen
+// places in the markup, and Return or Space opens one from a keyboard or Switch Control.
+function ssHeadersA11y(){
+ document.querySelectorAll('.ss-hdr').forEach(function(h){
+  if(h.getAttribute('role')) return;
+  h.setAttribute('role', 'button'); h.tabIndex = 0;
+  h.setAttribute('aria-expanded', String(h.classList.contains('open')));
+  h.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); h.click(); } });
+ });
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ssHeadersA11y); else ssHeadersA11y();
 // Narrow the list to what matches and open those rows. The text searched is the whole row: its name,
 // its summary and every label and button under it, so 'swing' finds the row that holds Swing.
 function settingsFind(q){
