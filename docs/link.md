@@ -1,6 +1,6 @@
 # Ableton Link: design
 
-Status: **design only, nothing built.** Three owner decisions (section 2) come before slice 0.
+Status: **slice 0 (spike) is on branch `claude/link-spike`, unmerged; nothing is in main.** Run `ios/link/fetch-linkkit.sh` before building that branch. The owner decisions in section 2 come before slice 1.
 Researched 2026-11-13 against the sources in section 8; check them again if this is picked up much later.
 
 ## 1. What was found
@@ -176,8 +176,8 @@ is right or wrong); the local-network prompt; a real session with a second phone
 - **The 150 ms horizon** makes a peer's tempo change land late by design. If slice 1's numbers say the trim
   cannot hide it, the fallback is a shorter look-ahead while connected, which costs pool headroom.
 - **Entitlement refusal or delay** blocks the phone, not the design. Apple grants it routinely for Link.
-- **SDK size**: the zip is 110 MB (three static slices); what links into the app is far less. Slice 0 reports
-  the app size change.
+- **SDK size**: the zip is 110 MB, but the static library is 2.1 MB for the iPhone (4.2 MB for each
+  two-architecture slice), and only what is called links in.
 
 ## 7. Not decided here
 
