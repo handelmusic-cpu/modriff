@@ -41,7 +41,8 @@ public class ModBilling: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "purchase", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "restore", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "restore", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestReview", returnType: CAPPluginReturnPromise)
     ]
 
     // MARK: - The eleven products
@@ -224,6 +225,25 @@ public class ModBilling: CAPPlugin, CAPBridgedPlugin {
             } catch {
                 call.resolve(self.payload(extra: ["error": error.localizedDescription]))
             }
+        }
+    }
+
+    /// The App Store rating card. The page decides when (after a clean bounce, at
+    /// rest); this only refuses when the host has something of its own up, which
+    /// the page cannot see: the share sheet after a bounce is native, and a rating
+    /// card on top of it would spend one of the three asks iOS allows a year on a
+    /// moment nobody can answer it. `asked` is "handed to iOS", not "shown": iOS
+    /// decides that and does not say.
+    @objc func requestReview(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            guard let vc = self.bridge?.viewController, vc.presentedViewController == nil,
+                  let scene = vc.view.window?.windowScene, scene.activationState == .foregroundActive else {
+                call.resolve(["asked": false])
+                return
+            }
+            if #available(iOS 16.0, *) { AppStore.requestReview(in: scene) }
+            else { SKStoreReviewController.requestReview(in: scene) }
+            call.resolve(["asked": true])
         }
     }
 
