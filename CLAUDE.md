@@ -20,6 +20,7 @@ unless asked; `grep -n` it only when you need the old reasoning for one specific
 | decisions, open problems, purchase plan | `docs/v5-architecture.md` (update only when a decision or an open problem changes) |
 | background audio: moving the sequencers to the engine (design + checkpoint) | `docs/native-scheduling.md` |
 | the free web page at modriff.com/play: build, what is off, wiring | `docs/web-play.md` |
+| Ableton Link: licence, owner decisions, engine design, slices (design only, nothing built) | `docs/link.md` |
 
 ## Shipping
 
