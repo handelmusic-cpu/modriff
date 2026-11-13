@@ -95,6 +95,8 @@ Since 6.2:
 - [ ] 52. Native standalone comp (6.9.9.9.9.9.9.7i) — use Vary/VoiceLead, slash chords, ratchets/gates and repeated taps; no flams or held old chord on a tap or Stop.
 - [ ] 53. Native drum queue/chain (6.9.9.9.9.9.9.7i) — queue kits/templates/grooves/main/Aux patterns, unequal lengths and chains; hear each wrap once through lock/return, including cancellation.
 - [ ] 54. Native practice/steering/voices (6.9.9.9.9.9.9.7i) — auto keys/tempo, repeated chart arrows/taps, hand BPM and live voice switches retain one clock; Stop restores the trainer's changes.
+- [ ] 55. Rating card (6.9.9.9.9.9.9.9) — after a second clean bounce, close the share sheet and leave it alone for 20 s → the
+  App Store rating card appears once, never while playing, recording or over a sheet (a Debug build always shows it).
 - [ ] 55. Folds and order (6.9.9.9.9.9.9.7j) — Live mõdFX: shut caret hides the part chips, Mix and All-controls button; open, they sit under the pad. Studio Drums/Bass/Melody: Generate | Arrange | Play in, Kit | Aux and the pattern tools are over the grid. Song > Build: Line and section is one shut row under the timeline.
 - [ ] 56. Sound > Voices pickers (6.9.9.9.9.9.9.7j) — each part is ‹ name ▾ ›: the name opens the sound browser, the carets step; a drum kit change waits for the next loop; the ◈ sampler badge still opens the sampler.
 
