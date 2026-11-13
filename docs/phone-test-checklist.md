@@ -128,3 +128,4 @@ Since 6.2:
 - [ ] With tempo sync enabled, switch Mac outputs while playing: the session tempo and beat
   continue to follow; check alignment on Bluetooth and the wired interface by listening.
 - [ ] Studio Bass, Melody, Drums: Generate | Arrange | Play in, the Generate and Clr row and Place | Edit sit at the top; the roll is under them, and the patch and pattern names under the roll.
+- [ ] v6.9.9.9.9.9.9.9.9: Settings > About > Credits, the SoundFont entry now reads MIT with Frank Wen's notice; open it and check it scrolls and reads cleanly.

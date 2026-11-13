@@ -113,7 +113,7 @@ draws it) and no URL. It should be the legal name on the Apple Developer account
 shows as the seller; on an individual account that is `Ben Handel`. Use `Dutdut Records` only if that is a
 registered entity that owns the app and is the account holder. Nothing else is asked for on the page.
 
-Third-party material is not credited on the page. The licences that require credit (CC BY 3.0, and the
+Third-party material is not credited on the page. The licences that require credit (CC BY 3.0, MIT, and any
 CC BY-SA 3.0 share-alike files) are met in the app, in Settings > About > Credits (`CREDITS_TABLE`, kept in step
 with `samples/SOURCES.csv` by `check.sh`: author, licence link and what was changed). Credit anything new
 there before it ships; the store listing needs no change.

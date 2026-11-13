@@ -3,9 +3,15 @@
 Note samples are rendered from the **FluidR3_GM** and **MusyngKite** SoundFonts, redistributed by the
 [midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) project
 (Benjamin Gleitzman). Its README gives the two SoundFonts different licences
-(checked 2026-10-26): **FluidR3_GM is
-[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)** (upright bass,
-Motown, Hofner, jazz guitar), and **MusyngKite is
+(checked 2026-10-26). That README says **FluidR3_GM is CC BY 3.0**; that is the
+redistributor's label, not the SoundFont author's. FluidR3_GM is Frank Wen's and
+is released under the **MIT licence** (copyright 2000-2002, 2008 Frank Wen; text
+in [`LICENSE-FluidR3_GM.txt`](LICENSE-FluidR3_GM.txt), as carried by Debian's
+FluidR3 packages, read 2026-11-13). MIT permits commercial use and asks only that
+the copyright and permission notice travel with the work, which the Credits
+screen and that file do. This covers the upright bass, Motown, Hofner, jazz
+guitar and the jazz-kit cymbals and kick. MusyngKite, below, is a different
+matter, and **MusyngKite is
 [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)**, the
 share-alike one (vibes, nylon guitar, tenor sax, muted trumpet, and the scratch
 effect built from the sax). An earlier version of this file called all of them
@@ -105,8 +111,9 @@ climbs with the register the way the violin's does.
 
 Cymbals (`samples/drums/`) are the **FluidR3_GM percussion bank**, as published
 by [WebAudioFont](https://github.com/surikov/webaudiofontdata) — the same
-SoundFont as the upright bass and jazz guitar above, so the same CC BY 3.0
-terms apply.
+SoundFont as the upright bass and jazz guitar above, so the same MIT terms
+apply (WebAudioFont's data files are named for the FluidR3_GM SoundFont they
+were cut from).
 
     kick.mp3       MIDI 36, Bass Drum 1
     sidestick.mp3  MIDI 37, Side Stick (cross-stick)
@@ -174,8 +181,8 @@ citation. It covers written B♭3–F6 and has not been re-sourced.
 
 ## samples/bassfinger, samples/basspick — "Motown", "Höfner"
 
-From the same midi-js-soundfonts project as the upright (CC BY 3.0 / the
-SoundFonts' own terms, as above): `electric_bass_finger` and
+From the same midi-js-soundfonts project as the upright (FluidR3_GM, MIT, as
+above): `electric_bass_finger` and
 `electric_bass_pick` from **FluidR3_GM**. Chosen by measuring both libraries:
 MusyngKite's fingered and picked sets sit 9-17 cents out of tune, FluidR3's
 within 4. Natural notes C1-B4, 28 per set, shipped as downloaded.
