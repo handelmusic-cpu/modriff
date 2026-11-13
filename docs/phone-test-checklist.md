@@ -124,3 +124,4 @@ Since 6.2:
 - [ ] Switch during a sample recording and a bounce; playback recovers and the recording is usable.
 - [ ] With tempo sync enabled, switch Mac outputs while playing: the session tempo and beat
   continue to follow; check alignment on Bluetooth and the wired interface by listening.
+- [ ] Studio Bass, Melody, Drums: Generate | Arrange | Play in, the Generate and Clr row and Place | Edit sit at the top; the roll is under them, and the patch and pattern names under the roll.
