@@ -402,8 +402,14 @@ like hidden purchases:
 3. New App: name, language English (U.S.), bundle ID, SKU (any unique string,
    for example `modriff-ios-1`).
 4. Paste the text above, upload screenshots, set price and availability.
-5. In Xcode: set the signing team, add `PrivacyInfo.xcprivacy` to the target,
-   Product > Archive > Distribute > App Store Connect.
+5. Build the packages: `ios/archive-ios-store.sh` (iPhone/iPad `App.ipa`) and
+   `ios/mac-catalyst/archive-mac-store.sh` (Mac `App.pkg`). Both pick the build number
+   (date and time) themselves. Upload the file with Transporter (drag it in; Xcode's own
+   upload fails with "Credentials Error ... providerId" when its Apple ID session is stale).
+   Apple rejects a build whose Capacitor/Cordova framework is unsigned (ITMS-91065): the iPhone
+   script swaps in the official signed frameworks for the archive and restores ours on exit;
+   the Mac frameworks, which need a Catalyst slice, are signed with the team's own certificate
+   by `build-capacitor-xcframeworks.sh`.
 6. Add the build to the version, answer App Privacy as above, submit for review.
 7. Once live: put the App Store URL on the landing page button (`#get-app` in
    `index.html` of the site repo) and in the Dutdut Records site's app entry.
