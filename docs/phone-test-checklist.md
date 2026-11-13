@@ -105,6 +105,8 @@ Since 6.2:
 - [ ] 58. Ableton Link by ear (6.9.9.9.9.9.9.9.1) — against another device the beats coincide through the speaker, wired headphones and Bluetooth; iOS asks for the local network once, with our text.
 - [ ] 59. Background audio toggle (6.9.9.9.9.9.9.9.3) — Settings > Sound & response: ON keeps every part playing through lock/app switch; OFF pauses and resumes on return. Relaunch preserves either choice; check speaker and headphones.
 
+- [ ] 60. Learn (6.9.9.9.9.9.9.9.4) — clean free install: Learn > Show me → hear the drums with no pack toast; play all four steps by thumb, keep both key rows readable, and close with Keep playing or ✕ → full Chords header.
+
 ## Done
 
 - [x] 14. Leaving the app goes quiet (6.9.3) — heard on an iPhone 17 Pro Max, all pass.
