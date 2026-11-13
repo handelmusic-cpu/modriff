@@ -100,7 +100,7 @@ for root in ('samples', 'fonts'):
     for d, _, fs_ in os.walk(root):
         for f in sorted(fs_):
             pth = os.path.join(d, f)
-            if f.startswith('.') or pth in DOC_FILES: continue
+            if f.startswith('.') or pth in DOC_FILES or pth.startswith('samples/licenses/'): continue
             if pth not in prov_by_path:
                 print('PROVENANCE: %s is not in samples/SOURCES.csv' % pth)
                 prov_ok = False

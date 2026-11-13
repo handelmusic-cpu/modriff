@@ -395,7 +395,11 @@ Supplied by the project owner as Freesound pack downloads, and built here.
 Freesound itself refuses connections from the build environment, so each
 licence was checked against the `_readme_and_license.txt` every pack zip
 carries, which lists the licence per sound: **every sound below is
-[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)**. Two kinds
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)**. Those 19
+`_readme_and_license.txt` files are now kept, unedited, in
+[`licenses/`](licenses/) (one per pack, named `freesound-<user>-<pack id>.txt`;
+supplied by the owner 2026-11-13), and every row of `SOURCES.csv` that cites one
+of those packs or its sounds points at its file. Two kinds
 of file came without one, and are marked where they appear: the udu takes
 (single files from Freesound, CC0 per the owner) and the darbuka and loop
 files (no Freesound ID or author in the files; CC0 per the owner, source not

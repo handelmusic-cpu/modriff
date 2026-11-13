@@ -8,6 +8,8 @@ record a licence check or an App Store question is answered from. The same rows
 also cover `fonts/`, the app icons and the share card, since they have the same
 question.
 
+`licenses/` holds the licence file each Freesound pack came with, unedited; a row's `notes` names the one that covers it.
+
 `./check.sh` fails if a file is missing from the CSV, if a row's status is
 `UNKNOWN`, or if a pack that needs attribution is missing from the in-app
 Credits screen.
