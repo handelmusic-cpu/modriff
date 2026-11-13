@@ -107,3 +107,17 @@ Since 6.2:
 ## Done
 
 - [x] 14. Leaving the app goes quiet (6.9.3) — heard on an iPhone 17 Pro Max, all pass.
+
+### Audio output (6.9.9.9.9.9.9.9.2)
+
+- [ ] iPhone/iPad: Settings > Sound & response > Audio output > Choose output;
+  switch between device speaker, paired Bluetooth headphones and a wired/USB interface while
+  the band plays. Sound resumes on the chosen route; Current output follows it. MIDI Bluetooth
+  permission may remain denied while headphones play. Test returning from device settings too.
+- [ ] Mac: choose each connected audio interface, then System default; music follows the choice
+  without changing the Mac's default output. Restart audio and relaunch: the preference remains.
+- [ ] Mac: unplug the selected interface while playing: sound resumes on the default; reconnect:
+  the preferred interface returns. Change the Mac's default with System default selected.
+- [ ] Switch during a sample recording and a bounce; playback recovers and the recording is usable.
+- [ ] With tempo sync enabled, switch Mac outputs while playing: the session tempo and beat
+  continue to follow; check alignment on Bluetooth and the wired interface by listening.
