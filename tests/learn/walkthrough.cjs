@@ -66,8 +66,32 @@ const out = process.env.EVIDENCE;
    assert.equal(await page.locator('.lib-tabs button.on').innerText(),'Chord charts');
    assert.equal(await page.locator('.lib-import-in').getAttribute('aria-label'),'Chord chart link');
    assert(!/iReal/.test(await page.locator('.lib-sheet').innerText()));
+   // Real browser touch must pass through the dim layer's holes and satisfy
+   // the gates by count; Show me alone cannot establish that the keys work.
+   await page.evaluate(()=>{_libSheet.close();if(isAnythingPlaying())ftPlayStop();showTour();});
+   await page.waitForTimeout(300);
+   await page.locator('#ft-playstop-btn').tap();
+   await page.waitForFunction(()=>document.querySelector('.tour-title')?.textContent==='Play some chords');
+   await page.waitForTimeout(700);
+   for(let n=0;n<3;n++){
+    if(n===2)assert.equal(await title.innerText(),'Play some chords');
+    await page.locator('#chords-diatonic .btn-tri').nth(n).tap();
+   }
+   await page.waitForFunction(()=>document.querySelector('.tour-title')?.textContent==='Play a tune');
+   await page.waitForTimeout(700);
+   for(let n=0;n<5;n++){
+    if(n===4)assert.equal(await title.innerText(),'Play a tune');
+    await page.locator('#melody-keys > *').nth(n).tap();
+   }
+   await page.waitForFunction(()=>document.querySelector('.tour-title')?.textContent==='Now both together');
+   await page.waitForTimeout(700);
+   await page.locator('#chords-diatonic .btn-tri').first().tap();
+   for(let n=0;n<3;n++)await page.locator('#melody-keys > *').nth(n).tap();
+   await page.waitForFunction(()=>document.querySelector('.tour-title')?.textContent==='You’re playing');
+   await page.locator('#_ob-done').tap();
+   await page.waitForTimeout(500);assert.deepEqual(await scroll(),{page:0,window:0,tour:false});
    assert.deepEqual(errors,[]);
-   console.log(`ok ${width}x${height}: free groove; 4 cards clear targets; Keep playing and early exit reset scroll; Find label opens search`);
+   console.log(`ok ${width}x${height}: free groove; 4 cards clear targets; Keep playing and early exit reset scroll; Find label opens search; counted touch gates pass`);
    await ctx.close();
   }
  }finally{await browser.close();server.close();}
