@@ -19,7 +19,7 @@ Decided, and it affects the screenshots:
 
 - `TARGETED_DEVICE_FAMILY = "1,2"` stays: the app ships for iPad too, so App
   Store Connect **requires iPad screenshots** (13": 2064 x 2752). They are in
-  `docs/app-store/screenshots/` (see Screenshots below).
+  `docs/app-store/screenshots/v6.9.9.9.9.9.9.9a/` (see Screenshots below).
 - `MARKETING_VERSION` is `1.0` and `CURRENT_PROJECT_VERSION` is `1`. The
   Build number must go up on every upload.
 - `UIRequiredDeviceCapabilities` is `arm64` (it was `armv7`, which App Store Connect
@@ -203,27 +203,36 @@ the app genuinely plays music in the background, which the note above says.
 
 ## Screenshots
 
-The current set is `docs/app-store/screenshots/v6.9.2/` (build 6.9.2: the tabs are Live, Studio, Song, Sound). The
-older `6.9in-` and `13in-` files in the folder above it show the retired Play / Accomp tabs and are kept only as history;
-do not upload them.
-
-How they were shot, so they can be redone: the app built for the iOS Simulator (`xcodebuild -sdk iphonesimulator`), the
-status bar pinned with `xcrun simctl status_bar <udid> override --time 9:41 --batteryState charged --batteryLevel 100`,
-every pack unlocked by seeding `modo-dev-tier` = `pro` (and `modo-tour-ch1` = `1`, so the tour stays closed) into the
-app's WebKit `localstorage.sqlite3` while the app is not running, then Random on the splash screen so each screen has a
-song, a drum pattern and a chord row in it, and `xcrun simctl io <udid> screenshot`.
+The upload set is `docs/app-store/screenshots/v6.9.9.9.9.9.9.9a/` (taken from build 6.9.9.9.9.9.9.9a in the iOS
+Simulator; the version shows on the splash shot). Tabs are Live, Studio, Song, Sound. No pack is locked in them and
+no other company's product name is visible. Everything older (`6.9in-` and `13in-` in this folder, `v6.9.2/`) shows
+retired tab names or the old kit names and is history only: do not upload it. `v6.9.6/` is the Duo layout reference.
 
 | set | device | size | files |
 |---|---|---|---|
-| iPhone 6.9" | iPhone Air | 1260 x 2736 (an accepted 6.9" size) | `iphone-6.9in-01-splash` to `05-sound` |
-| iPhone Duo | iPhone Duo | 1398 x 2034 | `iphone-duo-01-splash` to `05-sound` |
+| iPhone 6.9" | iPhone 18 Pro Max | 1320 x 2868 | `iphone-6.9in-01-splash` to `05-sound` |
 | iPad 13" | iPad Pro 13-inch (M5) | 2064 x 2752 | `ipad-13in-01-splash` to `05-sound` |
-| Mac | Chrome, 1440 x 900 at 2x | 2880 x 1800 (16:10) | `mac-16x10-01-splash` to `05-sound` |
 
-Order in every set: splash, Live, Studio, Song, Sound. Random gave the iPad a song on the Song tab but not the iPhone, so the
-iPhone Song shot has I-V-vi-IV loaded from Common progressions (Replace song).
+Order in both: splash, Live, Studio, Song, Sound. Each has a song loaded (Random), the transport playing and a chord
+lit. Sizes checked with `sips`. The iPad splash also shows RESUME because the shots came from one session.
 
-The Mac set above is still the web build in a browser window. There is now a Mac app (Mac Catalyst, same bundle id, so
+How to redo them: build the Simulator app with the optimiser on and the debug switch kept (a plain Debug build runs
+the C++ engine at -O0 and stalls the page; a Release build has no `__modDebug`, so no unlock switch):
+`xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO GCC_OPTIMIZATION_LEVEL=3 SWIFT_OPTIMIZATION_LEVEL=-O build`.
+Pin the status bar with `xcrun simctl status_bar <udid> override --time 9:41 --batteryState charged --batteryLevel 100`.
+Open the app once, quit it, then write `modo-dev-tier` = `pro` and `modo-tour-ch1` = `1` into the app's WebKit
+`localstorage.sqlite3` (table `ItemTable`, values UTF-16LE blobs) so every pack is open and the tour stays closed;
+launch, tap Random, tap play, tap a chord, then `xcrun simctl io <udid> screenshot`. Give each device its own
+Simulator: the shared one gets other sessions' builds installed over it. Driving a new Simulator needs the owner's
+approval in the app once per device.
+
+**IAP review shots** (`screenshots/iap/`, 1320 x 2868) were not retaken here: they are the 6.9.9.3a set. Retake them if
+a pack's copy, price or the sheet changed since (the Theory Pack copy changed at 6.9.9.9.9.9.9.7d).
+
+There is no Mac set in this folder: the old `mac-16x10-*` files in `v6.9.2/` are the web build in Chrome. Mac App Store
+needs 16:10 shots (2880 x 1800 at 2x, a 1440 x 900 window). `ios/mac-catalyst/run-mac.sh` builds and opens the Mac app, but it
+signs with the team, replaces `~/Applications/modRiff-dev.app` and needs someone to drive the window and capture it
+(`screencapture -l`); it was not run from this session. There is now a Mac app (Mac Catalyst, same bundle id, so
 universal purchase): it builds, signs ad hoc and launches on this Mac with all eight plugins registered and a 922 x 692
 window. Retake the Mac set from that window before uploading, and check the Studio panel at the 768 x 600 minimum.
 Mac App Store build: `ios/mac-catalyst/archive-mac-store.sh` archives the Release Mac Catalyst build and exports a signed
