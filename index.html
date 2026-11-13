@@ -10396,6 +10396,14 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
   <div class="ss-note" id="audio-output-scope" hidden>Applies to Native sound. Web Audio uses the system output.</div>
   <div class="ss-note">Wireless audio adds delay. Wired headphones or an audio interface respond sooner.</div>
  </div>
+ <div id="background-audio-settings" hidden>
+  <div class="ss-scope">Background audio</div>
+  <div class="row">
+   <!-- Space activates this focused button; it must not also reach the global Play shortcut. -->
+   <button class="tb tb-solo active" type="button" id="background-audio-toggle" style="min-height:44px" onclick="toggleBackgroundAudio()" onkeydown="if(event.key===' '||event.key==='Enter')event.stopPropagation();" aria-pressed="true" aria-describedby="background-audio-hint">Background audio: ON</button>
+  </div>
+  <div class="ss-note" id="background-audio-hint">Keep music playing when you lock the screen or use another app. Off pauses music while you are away and resumes it when you return.</div>
+ </div>
  <!-- Only Drive is left here, because only Drive is on every voice: it is the
       saturator at the head of the master bus. Tone, Reso, Sweep, Width and Drift
       were here too, headed "every voice in the app", and were not: they shape
@@ -24288,7 +24296,7 @@ function _duckAudio(down){
 }
 // In the iPhone app the audio session is a background one (UIBackgroundModes
 // audio), so leaving the app is not a suspend: the music can carry on. That is
-// what happens whenever the engine owns the whole band (_bgKeepPlaying below).
+// what happens with Background audio on and the engine owning the whole band.
 // It was off for a long time: with the page scheduling, sampled voices (flute,
 // violin) dropped out the moment the app was left, and a song that loses half
 // its band when you answer a text is worse than one that stops. A page-owned
@@ -24298,18 +24306,37 @@ function _duckAudio(down){
 // window.Capacitor is not guaranteed to exist yet when this script runs, and a
 // value fixed too early is how the pause kept happening in the app.
 function _inNativeApp(){ try{ var C=window.Capacitor; return !!(C && typeof C.isNativePlatform==='function' && C.isNativePlatform()); }catch(e){ return false; } }
-// Background permission follows the completed native transport claim. A web
+// Keep the existing on-by-default behaviour, and the old saved preference key:
+// changing its name would discard a player's choice on the next launch.
+var _bgPlayOn = true;
+try{ _bgPlayOn = localStorage.getItem('modo-bgplay') !== '0'; }catch(e){}
+function _syncBackgroundAudio(){
+ var host = document.getElementById('background-audio-settings');
+ if(host) host.hidden = !_inNativeApp();
+ var b = document.getElementById('background-audio-toggle');
+ if(!b) return;
+ b.textContent = 'Background audio: '+(_bgPlayOn ? 'ON' : 'OFF');
+ b.setAttribute('aria-pressed', _bgPlayOn ? 'true' : 'false');
+ b.classList.toggle('active', !!_bgPlayOn);
+}
+function toggleBackgroundAudio(){
+ _bgPlayOn = !_bgPlayOn;
+ try{ localStorage.setItem('modo-bgplay', _bgPlayOn ? '1' : '0'); }catch(e){}
+ _bgSyncNative();
+}
+// Background permission also follows the completed native transport claim. A web
 // or whole-band page fallback pauses on leaving; it never inherits permission
 // from an old debug flag or from Native sound alone.
 function _bgKeepPlaying(){
  try{
-  return _inNativeApp() && !!MODGRAPH.on && !!(window._nativeTransport && window._nativeTransport.state==='native');
+  return _bgPlayOn && _inNativeApp() && !!MODGRAPH.on && !!(window._nativeTransport && window._nativeTransport.state==='native');
  }catch(e){ return false; }
 }
 // SceneDelegate asks the engine to go quiet the instant the app is left, before the page
-// hears of it, so the engine is told ahead of time whether this is a test.
+// hears of it, so the engine is told the preference before the app is left.
 var _bgNativeSent = null;
 function _bgSyncNative(){
+ _syncBackgroundAudio();
  var on = _bgKeepPlaying();
  if(on === _bgNativeSent) return;
  var P = modNativePlugin();
@@ -24317,6 +24344,10 @@ function _bgSyncNative(){
  _bgNativeSent = on;
  P.setBackgroundPlay({on:on}).catch(function(){ _bgNativeSent = null; });   // a binary from before the method rejects it
 }
+window.addEventListener('load', function(){ _bgSyncNative(); setTimeout(_bgSyncNative, 500); });
+document.addEventListener('click', function(e){
+ if(e.target && e.target.closest && e.target.closest('.ss-hdr')) _syncBackgroundAudio();
+});
 // ── Ableton Link (docs/link.md) ────────────────────────────────────────────
 // The engine follows the session by itself (ModEngineHost, linkSteer); this is only the page's side: the Settings
 // row, and keeping the tempo readout and the session's tempo the same number.
@@ -24486,7 +24517,7 @@ function copyDiagnostics(){
  try{ out.haptics = Object.assign({on:_hapticsOn(), available:modPlatform.hapticAvailable()}, modPlatform._hapStat); }catch(e){}
  try{ out.lead = window.leadStats ? window.leadStats() : null; }catch(e){ out.lead = String(e); }
  try{ out.nativeTransport=window._nativeTransport ? {state:window._nativeTransport.state,last:window._nativeTransport.last} : null; }catch(e){}
- try{ out.bgPage = _bgPage; out.bgTest = { switch: localStorage.getItem('modo-bgtest') === '1', on:_bgKeepPlaying() }; }catch(e){}
+ try{ out.bgPage = _bgPage; out.backgroundAudio = { enabled:_bgPlayOn, on:_bgKeepPlaying() }; }catch(e){}
  try{ out.graph = { wanted:_graphPathWanted(), on:MODGRAPH.on, sent:MODGRAPH.sent, fellBack:MODGRAPH.fellBack, edits:MODGRAPH.edits, empty:MODGRAPH.empty, why:MODGRAPH.why }; }catch(e){}
  var done = function(){
   var txt = JSON.stringify(out);
