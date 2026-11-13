@@ -208,77 +208,18 @@ The web provider wraps today's Web Audio calls (`playChord`,
 `send`, the native provider takes over one part at a time, in the order
 above.
 
-### Playing on while the app is in the background (4.9.9.9.9.7.7 – 7.7j; parked)
+### Playing on while the app is in the background
 
-**Decision (4.9.9.9.9.8.9x): not for 5.0.0.** Background play is punted until
-after the app ships. Leaving the app pauses everything under the duck and the
-song remembers its chord; coming back resumes by itself, once the audio context
-is running again (it waits up to two seconds, then offers a Resume button).
-"Keep playing in background" was an opt-in; as of 9y it is off and its control is hidden (_bgKeepPlaying() returns false); it was for
-testing, `modo-bgplay` = `'1'`. `UIBackgroundModes: audio` stays in Info.plist
-because the app does play audio. `SceneDelegate` posts `modriff-background` /
-`modriff-foreground` to the page, because `visibilitychange` is not reliable
-once that mode is on and something is playing; either signal alone is enough.
-The Swift side is unbuilt. The open problem below (sampled voices dropping out)
-is what has to be solved to turn the default back on.
-
-What was done, what it showed, and where it stopped, so the next pass starts
-from the evidence and not from the guesses.
-
-Done: `UIBackgroundModes: audio` in Info.plist (without it iOS suspended the
-app and the sound with it); the page no longer ducks or pauses on
-`visibilitychange` in the app (Settings > General > Interface, "Keep playing in
-background", on by default; the web build keeps its pause); the scheduler runs
-3 s ahead while backgrounded, entered on a hidden page *or* on a tick 400 ms
-late; ALIGN_LEAD 1.2 s there (3 s opened a 3 s silence on entering); chord
-comp re-strikes come from the scheduler tick rather than their own timers;
-native messages are stamped with the page's wall clock so the bridge delay
-comes off `atRel`. Tools: Settings > "Copy diagnostics" (build, native render
-stats with the slowest blocks and when, `leadStats()` per part, background
-switch log, the page's errors).
-
-What the measurements said:
-
-- Bass, drums and the melody sequencer hold in the background. They are plain
-  Web Audio nodes scheduled ahead.
-- A mõdSynth part on the web worklet holds. The native chord engine's own
-  numbers are clean in the background (load 5-12 %, nothing dropped, every
-  message on time).
-- **Sampled voices (flute, violin) drop out entirely when the app is left,
-  with every message delivered on time and no error thrown.** That is the
-  open problem; the notes are made and nothing sounds. Not understood. Likely
-  somewhere in WebKit's handling of buffer-source nodes in a throttled page.
-- One block of 40-80 ms on the native audio thread at the moment of
-  backgrounding. Nothing in the render path waits on a lock; this looks like
-  iOS, and nothing in the app prevents it so far.
-- Timing is loose for a moment on coming back (the look-ahead drops from 3 s to
-  the preset and the engines realign).
-
-Where this goes: the web path for background is a patch on a platform that
-throttles it. The real answer is the plan already in this document, every part
-on the native engine, where the audio thread does not care what the page is
-doing. Until then background audio is best-effort: mõdSynth parts hold, sampled
-voices do not.
-
-**Leaving the app (6.9.3).** Background play is still off: leaving pauses. What changed is
-who silences the engine. The pause used to be the page's alone (`_bgAway` →
-`stopEverything`), run by a web view WebKit throttles the moment the app is left, while the
-native engine kept playing whatever was already queued and iOS cut the web context off
-mid-render: sputter, parts missing, loose timing. `SceneDelegate` now calls
-`ModEngine.appLeft()` first, which queues a `panic` for the mõdSynth parts, fades the mixer
-to zero and pauses the engine; `appReturned()` restarts it and fades up. The fade runs on
-its own queue, because the main queue stalled in the simulator once the app was left (the
-first version used it and never paused the engine). Measured in the simulator (log
-lines `[ModEngine] leaving the app`, `left the app: ... paused (running=no)`, `back in the
-app: engine running=yes`): the fade finished about 150-215 ms after leaving, not the 36 ms
-asked for, since iOS coalesces timers in the background. Heard on an iPhone 17 Pro Max: quiet at once on
-leaving, resumes together on return, same with a sampled voice.
-
-**Where background play stands (6.9.9.9.9.9.9.7i).** Native sound runs now prepare voice banks and claim one native transport owner automatically. Drums, bass, arp, melody and the song share its first bar; page schedulers are suppressed, native mirrors drive the UI, and stale starts cannot revive after Stop. The host continues without page timers, with no scheduler handover on leaving/returning. Native patch/sub, tuning/glide, MIDI observer and next-bar chart revision paths are implemented.
-
-Custom sampler instruments/patterns, metronome/simple rhythm, standalone chord rhythm, queued/chained drum patterns, practice key/tempo changes and chart-position jumps now remain native. Page recovery is reserved for actual engine/readiness failure. Background MIDI out/external clock remain outside v1. Background permission follows a completed native claim, not a debug storage flag.
-
-Audio session interruption/route recovery remains in the native host. Mac event/audio/ownership tests and Simulator builds pass; device checks 45–54 remain not heard and do not block shipping. Current decisions and fallback coverage are in `docs/native-scheduling.md`; reproduction and handoff are in `docs/native-audio-handoff.md`. The original measurements remain in `docs/archive/v5-architecture-built.md`.
+**On, whenever the engine owns the whole band.** `_bgKeepPlaying()` is true in the app when Native sound
+is on and `_nativeTransport.state` is `'native'`; the page tells the host through `setBackgroundPlay`. There
+is no setting and no debug flag. A page-owned run (the free web page, or a whole-band recovery to the page
+after an engine or readiness failure) still pauses under the duck on leaving and resumes on coming back,
+because page-scheduled sampled voices drop out in a throttled WebView; that was the open problem that kept
+this parked through 5.x, and moving the sequencers to the engine (`docs/native-scheduling.md`) is what closed
+it. `SceneDelegate` posts `modriff-background` / `modriff-foreground` to the page because `visibilitychange`
+is not reliable once `UIBackgroundModes: audio` is on and something is playing. Not heard on device: checklist
+49 to 54. Background MIDI out and external clock are outside this. The 5.x investigation is in git history
+(this section before 6.9.9.9.9.9.9.9).
 
 ## 4. In-app purchase: seven modules and a bundle
 
