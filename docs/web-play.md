@@ -36,8 +36,8 @@ packages and which is untouched):
   was recorded was the Sampler's pad banks, so on the web the Sampler widget is a
   lock tile (`lvAllowed`), its sub-nav button is hidden, and `_psFactoryBuild` /
   `_psFetch` never run.
-- The Vercel analytics tags are removed: the site's privacy page promises no
-  analytics and no third-party code.
+- Neither the source nor either build includes Vercel analytics tags. The app uses
+  only Apple's built-in App Store Connect reports; the web page has no analytics.
 - The manifest `id` is `/play/` (the landing page owns `/`); the share-card tags
   point at `/play/og-card-3.png`.
 - Chords from outside the key are the Theory Pack's (`outsideChords`): the Modal and Secondary Dominant

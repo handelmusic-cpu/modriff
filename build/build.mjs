@@ -56,6 +56,9 @@ for (const name of fs.readdirSync(ROOT)) {
 }
 
 let src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+// These used to be stripped only from the free web page, leaving analytics
+// script requests in the native bundle. Both products use no analytics SDK.
+if (src.includes('/_vercel/')) throw new Error('analytics references are not allowed in app or web builds');
 if (WEB) {
   // First thing in <head>, before any script that asks what is owned: the web
   // billing provider reads this flag to hold nothing (see window.modBilling).
@@ -66,13 +69,6 @@ if (WEB) {
   const og = src.split('content="/og-card-3.png"').length - 1;
   if (og !== 2) throw new Error(`expected 2 root-relative og-card-3.png tags, found ${og}`);
   src = src.split('content="/og-card-3.png"').join('content="/play/og-card-3.png"');
-  // Vercel's analytics (two stubs and two scripts at /_vercel/...). modriff.com is GitHub Pages, where
-  // they 404, and the site's privacy page promises no third-party code and no analytics.
-  const va = /<script>\s*window\.(?:va|si) = [^<]*<\/script>\s*<script defer src="\/_vercel\/[a-z-]+\/script\.js"><\/script>\s*/g;
-  const nva = (src.match(va) || []).length;
-  if (nva !== 2) throw new Error(`expected 2 Vercel analytics blocks, found ${nva}`);
-  src = src.replace(va, '');
-  if (/_vercel/.test(src)) throw new Error('a _vercel reference is left in the web build');
 }
 // One left-to-right pass, so a "<script>" written inside an HTML comment, or
 // "<!--" written inside a script's string, is never mistaken for the other.
