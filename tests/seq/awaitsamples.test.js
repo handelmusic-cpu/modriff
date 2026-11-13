@@ -5,7 +5,7 @@
 const fs = require('fs'), path = require('path'), http = require('http');
 let chromium;
 try { ({ chromium } = require('playwright')); }
-catch (_) { ({ chromium } = require(process.env.PLAYWRIGHT || '/private/tmp/modriff-browser-tools/node_modules/playwright')); }
+catch (_) { ({ chromium } = require(process.env.PLAYWRIGHT || 'playwright-core')); }
 const root = path.join(__dirname, '../..');
 let failed = 0;
 const ok = (c, label, detail) => { if (!c) failed++; console.log((c ? 'ok   ' : 'FAIL ') + label + (c ? '' : ': ' + JSON.stringify(detail))); };

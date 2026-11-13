@@ -9412,7 +9412,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.7</span></div>
  </div>
 </div>
 
@@ -10890,7 +10890,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.7</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12092,7 +12092,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.6';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -24505,7 +24505,7 @@ function copyDiagnostics(){
  try{ out.dropouts = dropoutReport(); }catch(e){ out.dropouts = String(e); }
  try{ out.haptics = Object.assign({on:_hapticsOn(), available:modPlatform.hapticAvailable()}, modPlatform._hapStat); }catch(e){}
  try{ out.lead = window.leadStats ? window.leadStats() : null; }catch(e){ out.lead = String(e); }
- try{ out.nativeTransport=window._nativeTransport ? {state:window._nativeTransport.state,last:window._nativeTransport.last} : null; }catch(e){}
+ try{ out.nativeTransport=window._nativeTransport ? {state:window._nativeTransport.state,last:window._nativeTransport.last,history:window._nativeTransport.history||[]} : null; }catch(e){}
  try{ out.bgPage = _bgPage; out.backgroundAudio = { enabled:_bgPlayOn, on:_bgKeepPlaying() }; }catch(e){}
  try{ out.graph = { wanted:_graphPathWanted(), on:MODGRAPH.on, sent:MODGRAPH.sent, fellBack:MODGRAPH.fellBack, edits:MODGRAPH.edits, empty:MODGRAPH.empty, why:MODGRAPH.why }; }catch(e){}
  var done = function(){
@@ -52063,13 +52063,15 @@ window._songChordPitches = function(capoArg){
    if(wetDry >= .99){ pcs[pc(r)] = 1; subs['pc' + pc((sl.bassNote != null ? sl.bassNote + capo : r))] = 1; }
   });
  });
- var set = {};
+ var set = {}, optional = {};
  for(var m = 0; m <= 127; m++){
-  if(all ? true : (pcs[pc(m)] && m >= 33)) set[m] = 1;
-  if(subs['pc' + pc(m)]) set[m] = 1;
-  if(subs['m' + m]) set[m] = 1;
+  var need = (pcs[pc(m)] && m >= 33) || subs['pc' + pc(m)] || subs['m' + m];
+  if(need) set[m] = 1;
+  // Everything else is only here because any voicing could land anywhere (Vary, drop voicings, practice key changes). A voice that cannot
+  // record the lowest of these (the piano chord, below E1: "length slots are neither a line nor a line held") must not refuse the whole band.
+  else if(all){ set[m] = 1; optional[m] = 1; }
  }
- return {pitches: Object.keys(set).map(Number).sort(function(a, b){ return a - b; }), plain: plain, held: held};
+ return {pitches: Object.keys(set).map(Number).sort(function(a, b){ return a - b; }), plain: plain, held: held, optional: optional};
 };
 
 function _playLoopSlot(atTime){
@@ -61400,7 +61402,7 @@ window._nsKitCode = function(name){
 // patched wrongly. What is baked into a recording (the Drums fader, the lane's Shape) is its signature: change one and
 // the lane is recorded again.
 window._nsBank = {
- LEADF: 2304, have: {}, bad: {}, gen: 0, keepRecs: false, recs: [], constRandom: false,
+ LEADF: 2304, have: {}, bad: {}, badWhy: {}, gen: 0, keepRecs: false, recs: [], constRandom: false,
  isolated:false, _probe:{active:[],chokes:{},bass:null},
  resetProbeChokes:function(){if(this.isolated)this._probe.chokes={};else _chokeReg={};},
  withProbe:function(fn){
@@ -62165,14 +62167,14 @@ window._nsBank = {
    var note = notes[ni], key = 'mel:' + voice + (perPitch ? ':' + note : '');
    if(this.have[key] === sig){ rep.kept++; continue; }
    // A cached refusal is still a refusal: reporting it as kept could start a silent part.
-   if(this.bad[key] === sig){ rep.failed.push({voice: voice, pitch: note, why: 'this voice was refused under the current settings'}); continue; }
+   if(this.bad[key] === sig){ rep.failed.push({voice: voice, pitch: note, why: 'this voice was refused under the current settings' + (this.badWhy[key] ? ' (first refusal: ' + this.badWhy[key] + ')' : '')}); continue; }
    var r = await this.buildMel(voice, note);
    if(r.ok){ for(var i = 0; i < r.entries.length; i++){
     var sent = await P.seqBank({entry: _mgB64(r.entries[i])});
     if(sent && sent.ok === false){ r = {ok: false, why: 'the engine refused a bank entry'}; break; }
    } }
    if(r.ok){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
-   else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: note, why: r.why}); }
+   else { this.bad[key] = sig; this.badWhy[key] = r.why; delete this.have[key]; rep.failed.push({voice: voice, pitch: note, why: r.why}); }
   }
   return rep;
  },
@@ -62445,11 +62447,11 @@ window._nsBank = {
   for(var i = 0; i < pitches.length; i++){
    var key = 'chord:' + voice + ':' + pitches[i] + (hold ? ':hold' : '');
    if(this.have[key] === sig){ rep.kept++; continue; }
-   if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings'}); continue; }
+   if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings' + (this.badWhy[key] ? ' (first refusal: ' + this.badWhy[key] + ')' : '')}); continue; }
    var r = await this.buildChordNote(voice, pitches[i], hold, voice === 'modsynth');
    if(r.ok){ var sent = await P.seqBank({entry: _mgB64(r.entry)}); if(sent && sent.ok === false) r = {ok:false, why:'the engine refused the chord bank entry'}; }
    if(r.ok){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
-   else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: pitches[i], why: r.why}); }
+   else { this.bad[key] = sig; this.badWhy[key] = r.why; delete this.have[key]; rep.failed.push({voice: voice, pitch: pitches[i], why: r.why}); }
   }
   return rep;
  },
@@ -62505,14 +62507,14 @@ window._nsBank = {
    var note = notes[ni], key = 'bass:' + voice + (perPitch ? ':' + note : '');
    if(this.have[key] === sig){ rep.kept++; continue; }
    // A cached refusal is still a refusal: reporting it as kept could start a silent part.
-   if(this.bad[key] === sig){ rep.failed.push({voice: voice, pitch: note, why: 'this voice was refused under the current settings'}); continue; }
+   if(this.bad[key] === sig){ rep.failed.push({voice: voice, pitch: note, why: 'this voice was refused under the current settings' + (this.badWhy[key] ? ' (first refusal: ' + this.badWhy[key] + ')' : '')}); continue; }
    var r = await this.buildBass(voice, note);
    if(r.ok){ for(var i = 0; i < r.entries.length; i++){
     var sent = await P.seqBank({entry: _mgB64(r.entries[i])});
     if(sent && sent.ok === false){ r = {ok: false, why: 'the engine refused a bank entry'}; break; }
    } }
    if(r.ok){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
-   else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: note, why: r.why}); }
+   else { this.bad[key] = sig; this.badWhy[key] = r.why; delete this.have[key]; rep.failed.push({voice: voice, pitch: note, why: r.why}); }
   }
   return rep;
  },
@@ -62541,14 +62543,14 @@ window._nsBank = {
    var note = notes[ni], key = 'arp:' + voice + (perPitch ? ':' + note : '');
    if(this.have[key] === sig){ rep.kept++; continue; }
    // A cached refusal is still a refusal: reporting it as kept could start a silent part.
-   if(this.bad[key] === sig){ rep.failed.push({voice: voice, pitch: note, why: 'this voice was refused under the current settings'}); continue; }
+   if(this.bad[key] === sig){ rep.failed.push({voice: voice, pitch: note, why: 'this voice was refused under the current settings' + (this.badWhy[key] ? ' (first refusal: ' + this.badWhy[key] + ')' : '')}); continue; }
    var r = await this.buildArp(voice, note);
    if(r.ok){ for(var i = 0; i < r.entries.length; i++){
     var sent = await P.seqBank({entry: _mgB64(r.entries[i])});
     if(sent && sent.ok === false){ r = {ok: false, why: 'the engine refused a bank entry'}; break; }
    } }
    if(r.ok){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
-   else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({voice: voice, pitch: note, why: r.why}); }
+   else { this.bad[key] = sig; this.badWhy[key] = r.why; delete this.have[key]; rep.failed.push({voice: voice, pitch: note, why: r.why}); }
   }
   return rep;
  },
@@ -62568,10 +62570,10 @@ window._nsBank = {
    var ti = lanes[i]; if(ti < 0 || !M.tracks[ti] || !M.tracks[ti].play) continue;
    var key = '0:' + L.mach + ':' + ti, sig = this.signature(part, L.mach, ti);
    if(this.have[key] === sig){ rep.kept++; continue; }
-   if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings'}); continue; }
+   if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings' + (this.badWhy[key] ? ' (first refusal: ' + this.badWhy[key] + ')' : '')}); continue; }
    var r = await this.build(part, L.mach, ti);
    if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
-   else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
+   else { this.bad[key] = sig; this.badWhy[key] = r.why; delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
   }
   return rep;
  },
@@ -62587,10 +62589,10 @@ window._nsBank = {
     var row = L.grid[ti]; if(!M.tracks[ti].play || !row || !row.some(function(c){ return c && c.v > 0; })) continue;
     var key = i + ':' + L.mach + ':' + ti, sig = this.signature(part, L.mach, ti);
     if(this.have[key] === sig){ rep.kept++; continue; }
-   if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings'}); continue; }
+   if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings' + (this.badWhy[key] ? ' (first refusal: ' + this.badWhy[key] + ')' : '')}); continue; }
     var r = await this.build(part, L.mach, ti);
     if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
-    else { this.bad[key] = sig; delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
+    else { this.bad[key] = sig; this.badWhy[key] = r.why; delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
    }
   }
   return rep;
@@ -62619,7 +62621,7 @@ window._nsDrum = {
  },
  start: function(leadMs){
   var P = this.plugin(); if(!P) return Promise.resolve({ok: false, why: 'no engine'});
-  var me = this; window._nsBank.have = {}; window._nsBank.bad = {};
+  var me = this; window._nsBank.have = {}; window._nsBank.bad = {}; window._nsBank.badWhy = {};
   return P.seqBank({clear: true}).then(function(){ return me.prepare(); }).then(function(rep){
    if(rep.ok === false) return rep;
    return P.seqStart({bpm: sqBpm(), rate: sqRateMul, leadMs: leadMs || 250}).then(function(r){ r.bank = rep; return r; });
@@ -63048,7 +63050,8 @@ window._nsSong = {
  prepareChords: function(capo){
   if(!MODGRAPH.on || !MODGRAPH.parts.chord) return Promise.resolve({built: 0, kept: 0, failed: [], off: 'Native sound is off'});
   var need = window._songChordPitches(capo), me = window._nsBank, rep = {built: 0, kept: 0, failed: []};
-  var add = function(r){ rep.built += r.built; rep.kept += r.kept; rep.failed = rep.failed.concat(r.failed); };
+  // A refusal at a pitch only the "any voicing" filler asked for is not fatal: the engine skips a chord that has such a note, and none is played there.
+  var add = function(r){ rep.built += r.built; rep.kept += r.kept; rep.failed = rep.failed.concat(r.failed.filter(function(f){ return !(f.pitch != null && need.optional && need.optional[f.pitch]); })); };
   return (need.plain ? me.ensureChord(need.pitches) : Promise.resolve({built: 0, kept: 0, failed: []})).then(function(r){
    add(r);
    return need.held ? me.ensureChord(need.pitches, true) : {built: 0, kept: 0, failed: []};
@@ -63282,7 +63285,7 @@ window._nativeTransport = {
  },
  rememberEngine:function(head){
   var instance=head.instance||'legacy',id=instance+':'+(head.bankEpoch||0);if(this.bankIdentity===id)return;
-  window._nsBank.have={};window._nsBank.bad={};window._nsExtras.sig=null;window._nsExtras.cache={};window._nsExtras.cacheOrder=[];window._nsDrumQueue.sig=null;window._nsDrumQueue.seen=0;
+  window._nsBank.have={};window._nsBank.bad={};window._nsBank.badWhy={};window._nsExtras.sig=null;window._nsExtras.cache={};window._nsExtras.cacheOrder=[];window._nsDrumQueue.sig=null;window._nsDrumQueue.seen=0;
   if(this.engineInstance!==instance){
    if(window.GraphRec)GraphRec.forgetBuffers();
    if(this.engineInstance){if(_midiRecOn)_midiRecNativeCut=true;window._nsEvents.suspendOutput();}
@@ -63290,7 +63293,7 @@ window._nativeTransport = {
   }
   this.engineInstance=instance;this.bankIdentity=id;
  },
- check:function(r){if(!r || r.ok===false || (r.failed&&r.failed.length))throw new Error((r&&(r.why||(r.failed&&r.failed[0]&&r.failed[0].why)))||'native preparation refused');return r;},
+ check:function(r){if(!r || r.ok===false || (r.failed&&r.failed.length)){var f=r&&r.failed&&r.failed[0],who=f?[f.voice,f.kit,f.name,f.key,f.pitch!=null?'pitch '+f.pitch:null].filter(Boolean).join(' '):'';throw new Error((r&&r.why)||(f&&((who?who+': ':'')+f.why))||'native preparation refused');}return r;},
  prepare:function(c,initial){
   var me=this,gen=me.generation;
   var job=(me.bankWork||Promise.resolve()).catch(function(){}).then(function(){if(gen!==me.generation)throw new Error('cancelled preparation');return me._prepare(c,initial,gen);});
@@ -63379,7 +63382,7 @@ window._nativeTransport = {
  },
  fallback:async function(gen,e){
   var me=this;if(gen!==me.generation)return;gen=++me.generation;
-  me.last={ok:false,why:String(e&&e.message||e)};clearInterval(me.timer);me.timer=null;
+  me.last={ok:false,why:String(e&&e.message||e)};(me.history=me.history||[]).push({at:new Date().toISOString().slice(11,19),why:me.last.why.slice(0,300)});if(me.history.length>6)me.history.shift();clearInterval(me.timer);me.timer=null;
   window._nsSong.driving=false;window._nsSong.watch(false);window._songMirror.live=false;
   me.state='stopping';window._nsEvents.outputBlocked=true;window._nsEvents.suspendOutput();
   if(me.attempted){try{me.check(await window._nsDrum.plugin().seqTransportStop({token:++me.token}));}catch(err){me.state='failed';me.last.why+='; stop unconfirmed';_bgSyncNative();return;}}
