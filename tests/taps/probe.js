@@ -1,9 +1,8 @@
-/* Finding Ratchet and Tuplet (6.2c): Tap: Place | Edit, and Drums' Pattern tools fold.
+/* Finding Ratchet and Tuplet (6.2c): Tap: Place | Edit, and Drums' pattern tools.
 
    Driven on the real window with real touch (CDP):
-     - Drums: the grid comes first, then one "Pattern tools" row under it, closed, 44 pt or more; opening it shows
-       Steps, Rate, Swing, Fill, Duplicate, Tuplets: Cover, Audition and Clear, and closing hides them again;
-       in Play in the record button is still up;
+     - Drums: Kit | Aux and the pattern tools (Fill, Duplicate, Tuplets: Cover, Audition and Clear) are the page's first
+       controls, over the grid, with no fold; Steps and Swing are under it. In Play in the record button is still up;
      - "Tap a step to Place | Edit" is on Drums, Bass and Melody; Edit is one setting for all three, kept;
      - in Edit a single touch on an empty drum step places and selects it and the inspector shows Ratchet; a second
        touch on the selected step clears it; in Place a single touch only toggles, as before;
@@ -35,7 +34,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const errs = []; page.on('pageerror', e => errs.push(String(e)));
   await page.goto(URL); await page.evaluate(() => { localStorage.clear(); }); await page.reload(); await page.waitForTimeout(1500);
   await page.evaluate(() => { const b = document.querySelector('#unlock-choices button'); if (b) b.click(); }); await page.waitForTimeout(900);
-  await page.evaluate(() => { setModTier('pro'); setViewMode('studio'); switchTab('perform'); document.getElementById('ft-drum-btn').click(); }); await page.waitForTimeout(700);
+  await page.evaluate(() => { setModTier('pro'); setViewMode('studio'); switchTab('accomp'); setAccompMode('drums'); }); await page.waitForTimeout(700);
   const cdp = await ctx.newCDPSession(page);
   const tap = async (sel) => {
     const b = await page.evaluate(sel => { const e = document.querySelector(sel); e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, sel);
@@ -45,17 +44,13 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   };
   const vis = (sel) => page.evaluate(sel => { const e = document.querySelector(sel); return !!e && e.getBoundingClientRect().width > 0 && getComputedStyle(e).display !== 'none'; }, sel);
 
-  // 1. The fold.
-  const o = await page.evaluate(() => { const g = document.getElementById('sq-gScroll').getBoundingClientRect().top, h = document.querySelector('.st-fold-g[data-k="drumtools"]'); const r = h.getBoundingClientRect();
-    return { gridAbove: g < r.top, h: Math.round(r.height), exp: h.getAttribute('aria-expanded'), t: h.textContent.trim() }; });
-  check(o.gridAbove && o.h >= 44 && o.exp === 'false' && /Pattern tools/.test(o.t), 'the grid is first and Pattern tools sits under it, closed, 44 pt or more', JSON.stringify(o));
-  check(!(await vis('#sq-clearBtn')) && !(await vis('#sq-stepsDisp')) && !(await vis('#sq-tupcoverBtn')), 'closed, Steps, Tuplets and Clear are out of the way');
-  await tap('.st-fold-g[data-k="drumtools"]');
+  // 1. The pattern tools are over the grid, not behind a caret.
+  const o = await page.evaluate(() => { const g = document.getElementById('sq-gScroll').getBoundingClientRect().top, t = id => document.getElementById(id).getBoundingClientRect().top;
+    return { fold: !!document.querySelector('.st-fold-g'), layer: t('sq-layerRow') < g, fill: t('sq-fillBtn') < g, clear: t('sq-clearBtn') < g }; });
+  check(!o.fold && o.layer && o.fill && o.clear, 'Kit | Aux and the pattern tools sit over the grid, with no fold', JSON.stringify(o));
   const ids = ['sq-stepsDisp', 'sq-swingSl', 'sq-fillBtn', 'sq-dupextBtn', 'sq-tupcoverBtn', 'sq-aud-btn', 'sq-clearBtn'];
   const shown = []; for (const i of ids) shown.push(await vis('#' + i));
-  check(shown.every(Boolean), 'open: Steps, Swing, Fill, Duplicate, Tuplets: Cover, Audition and Clear are all there', shown.join());
-  await tap('.st-fold-g[data-k="drumtools"]');
-  check(!(await vis('#sq-clearBtn')), 'a second touch closes it');
+  check(shown.every(Boolean), 'Steps, Swing, Fill, Duplicate, Tuplets: Cover, Audition and Clear are all on show', shown.join());
   // 6.4: the drums have no Play in; a saved or asked-for 'rec' comes back as Draw and there is no record button.
   await page.evaluate(() => acSetWriteMode('sq', 'rec')); await page.waitForTimeout(300);
   check(!(await vis('#ac-drums-panel [data-recarm="sq"]')) && (await page.evaluate(() => _acWMode.sq)) === 'draw', 'Drums has no Play in: asking for it leaves Draw and no record button');
@@ -90,8 +85,10 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(!e2.lit && !e2.sel, 'a second touch on the selected step clears it', JSON.stringify(e2));
 
   // 5. A roll.
-  await page.evaluate(() => { document.getElementById('ft-bas-btn').click(); }); await page.waitForTimeout(600);
-  check(await vis('#bl-mode-hint + .tap-mode'), 'Bass has the switch under its hint');
+  await page.evaluate(() => { setAccompMode('bass'); }); await page.waitForTimeout(600);
+  check(await page.evaluate(() => { const t = document.querySelector('#bm-bass-panel .tap-mode'), g = document.querySelector('#bm-bass-panel .bl-page-wrap > [data-acrow="mode"]'), r = document.querySelector('#bm-bass-panel .bl-page-wrap > [data-acrow="roll"]');
+    return !!t && t.getBoundingClientRect().width > 0 && g.getBoundingClientRect().top < t.getBoundingClientRect().top && t.getBoundingClientRect().top < r.getBoundingClientRect().top; }),
+   'Bass: Generate | Arrange | Play in is first, and the switch sits directly over the roll');
   await page.evaluate(() => { try{ generateBassline && generateBassline(); }catch(e){} }); await page.waitForTimeout(400);
   const r1 = await page.evaluate(() => { const cfg = PR_ENGINES.bl; for (let s = 0; s < cfg.steps(); s++){ const c = cfg.cell(s); if(c && c.v) return s; } return -1; });
   check(r1 >= 0 || true, 'Bass has a line to edit', r1);

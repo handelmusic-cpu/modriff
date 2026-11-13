@@ -77,7 +77,14 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await tap('#bt-timeline');
   const sections_n = await page.evaluate(() => sections.filter(x => x.slots.length).length);
   const v = await page.evaluate(() => ({ cols: document.querySelectorAll('#chart-timeline .tl-col').length, want: sections.reduce((a, x) => a + x.slots.length, 0), heads: document.querySelectorAll('#chart-timeline .tl-secl').length, strip: getComputedStyle(document.getElementById('chart-sequence')).display, sel: [...document.querySelectorAll('#chart-timeline .tl-col.tl-sel')].map(c => c.dataset.ci).join(), joins: document.querySelectorAll('#chart-timeline .tl-block:first-of-type .tl-join').length, stored: localStorage.getItem('modo-build-view'), panel: getComputedStyle(document.getElementById('tl-panel')).display }));
-  check(v.cols === v.want && v.heads === sections_n && v.strip === 'none' && v.stored === 'timeline' && v.panel !== 'none', 'Timeline: every section on the page (a heading and a column per chord), the strip hidden, the panel up', JSON.stringify(v));
+  check(v.cols === v.want && v.heads === sections_n && v.strip === 'none' && v.stored === 'timeline', 'Timeline: every section on the page (a heading and a column per chord), the strip hidden', JSON.stringify(v));
+  // The Line tools, the section's Loop row and the pass hint are folded behind one "Line and section" row, shut until it is touched.
+  const fold = await page.evaluate(() => { const f = document.getElementById('sb-lines-fold'), r = f.getBoundingClientRect(), vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
+    return { h: Math.round(r.height), exp: f.getAttribute('aria-expanded'), panel: vis('tl-panel'), bar: vis('sec-plays-bar'), hint: vis('sec-plays-hint'), below: r.top > document.getElementById('chart-timeline').getBoundingClientRect().top }; });
+  check(fold.h >= 44 && fold.exp === 'false' && !fold.panel && !fold.bar && !fold.hint && fold.below, 'Line and section: one 44 pt row under the timeline, shut: the Line tools, Loop row and pass hint are out of the way', JSON.stringify(fold));
+  await tap('#sb-lines-fold');
+  const open = await page.evaluate(() => ({ exp: document.getElementById('sb-lines-fold').getAttribute('aria-expanded'), panel: getComputedStyle(document.getElementById('tl-panel')).display !== 'none', bar: getComputedStyle(document.getElementById('sec-plays-bar')).display !== 'none', stored: localStorage.getItem('modo-fold-songlines') }));
+  check(open.exp === 'true' && open.panel && open.bar && open.stored === '1', 'a touch opens it (and the choice is kept)', JSON.stringify(open));
   check(v.sel === '1', 'the selected chord (the second) is marked', v.sel);
   check(v.joins === 4, 'a join between each pair of chords on a card (3 on the first line, 1 on the second)', v.joins);
 

@@ -138,6 +138,39 @@ function serve() {
   ok(flat(lv.before).every(x => !x), 'Live: every Studio-only control is hidden until All controls is pressed', lv.before);
   ok(flat(lv.after).every(x => x), 'Live: All controls shows the Rhythm builder, chord octave, variants, Touch Mod, sample editor and mõdFX routing', lv.after);
   ok(/"chords":1/.test(lv.saved || ''), 'and the choice is kept', lv.saved);
+  // mõdFX with All controls on: the part chips and Mix sit under the pad, a folded caret hides them (and its All-controls
+  // button) whatever was chosen, and opening it again brings the choice back.
+  const fx = await page.evaluate(() => {
+    const slot = () => document.querySelector('.lv-slot[data-mod="fx"]');
+    const shown = q => { const e = slot().querySelector(q); return !!(e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0); };
+    const top = q => slot().querySelector(q).getBoundingClientRect().top;
+    const o = { open: shown('#fx-targets') && shown('.fx-mixes'), belowPad: top('#fx-targets') > top('.fx-padwrap') && top('.fx-mixes') > top('#fx-targets') };
+    const caret = () => slot().querySelector('.lv-xt[data-mod="fx"]');
+    caret().click();
+    o.foldedTargets = shown('#fx-targets'); o.foldedMixes = shown('.fx-mixes'); o.foldedMore = shown('.lv-more'); o.foldedPad = shown('.fx-padwrap');
+    o.kept = /"fx":1/.test(modStore.getItem('modo-live-adv') || '');
+    caret().click();
+    o.back = shown('#fx-targets') && shown('.fx-mixes') && shown('.lv-more');
+    return o;
+  });
+  ok(fx.open && fx.belowPad, 'mõdFX: with All controls on, the part chips and Mix are below the pad', fx);
+  ok(!fx.foldedTargets && !fx.foldedMixes && !fx.foldedMore && fx.foldedPad && fx.kept, 'mõdFX: folded, the chips, Mix and All-controls button are hidden (the pad stays) and the choice is kept', fx);
+  ok(fx.back, 'mõdFX: opening the caret again brings them back', fx);
+  // Sound > Voices names each part's voice the way the Live rows do: a name that opens the list, and ‹ › that step.
+  const vp = await page.evaluate(() => {
+    switchTab('mix'); setMixMode('voices');
+    const row = k => document.querySelector('#voices-grid-mix .voice-row[data-part="' + k + '"]');
+    const o = { rows: document.querySelectorAll('#voices-grid-mix .voice-row .vp-name').length, selHidden: getComputedStyle(row('chord').querySelector('select')).display === 'none' };
+    const sel = document.getElementById('vsel-chord-mix'), before = sel.value, name0 = row('chord').querySelector('.vp-name').textContent;
+    row('chord').querySelectorAll('.vp-step')[1].click();
+    o.stepped = sel.value !== before && row('chord').querySelector('.vp-name').textContent !== name0;
+    row('chord').querySelectorAll('.vp-step')[0].click();
+    o.back = sel.value === before;
+    row('chord').querySelector('.vp-name').click();
+    o.list = !!document.querySelector('.pp-pop.open .pb-root');
+    return o;
+  });
+  ok(vp.rows === 7 && vp.selHidden && vp.stepped && vp.back && vp.list, 'Sound > Voices: seven ‹ name › pickers, the select hidden, the carets step and the name opens the sound browser', vp);
   await page.close();
   ok(errs.length === 0, 'no page errors', errs);
   await browser.close(); srv.close();

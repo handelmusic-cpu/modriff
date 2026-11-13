@@ -387,7 +387,7 @@ Triangle and the two stock basses are named by no pack, so they are free.
 step count and rate linked. A direct rate or step-count edit asks to unlink that
 setting and change only the selected part; Cancel preserves both locks and all
 parts. Programmatic restores keep the existing linked setters. Counts can be typed
-or adjusted beside each grid without unfolding Pattern tools. Rate labels describe
+or adjusted beside each grid. Rate labels describe
 speed (½× / 1× / 2×), while stored multipliers still describe step duration. Native
 rate edits send the selected sequencer its new rate during playback. Independent
 step lengths retain the Groove Pack entitlement. Browser checks against `dist/`:
