@@ -104,6 +104,8 @@ Since 6.2:
 - [ ] 57. Ableton Link (6.9.9.9.9.9.9.9.1) — Settings > Ableton Link opens Ableton's pane; with it on and another Link app on the same Wi-Fi, the tempo is shared and Play lands on their bar line. **Needs Apple's multicast entitlement first (docs/link.md); without it an iPhone shows no peers.** The Mac app can be tried now.
 - [ ] 58. Ableton Link by ear (6.9.9.9.9.9.9.9.1) — against another device the beats coincide through the speaker, wired headphones and Bluetooth; iOS asks for the local network once, with our text.
 
+- [ ] 59. Learn (6.9.9.9.9.9.9.9.4) — clean free install: Learn > Show me → hear the drums with no pack toast; play all four steps by thumb, keep both key rows readable, and close with Keep playing or ✕ → full Chords header.
+
 ## Done
 
 - [x] 14. Leaving the app goes quiet (6.9.3) — heard on an iPhone 17 Pro Max, all pass.
