@@ -21,6 +21,21 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// What the host and Link exchange once per block. In: when the block is heard, the bar length, and at most one tempo proposal
+/// and one request to put the session's bar line on a host time. Out: the session at `hostTime`.
+typedef struct ModLinkIO {
+  uint64_t hostTime;        // mach ticks at which the block's first frame reaches the output
+  double quantum;           // the bar in quarter notes
+  double proposeBpm;        // > 0: the app moved the tempo; the session takes it
+  int align;                // 1: map the session's beat 0 to alignHostTime (immediate when alone, the next bar line otherwise)
+  uint64_t alignHostTime;
+  double beat;              // out: the session's beat at hostTime
+  double tempo;             // out: the session's tempo
+  int enabled;              // out: Link is switched on by the user
+  int peers;                // out
+} ModLinkIO;
+typedef void (*ModLinkAudioHook)(void * _Nullable context, ModLinkIO * _Nonnull io);
+
 @interface ModEngineHost : NSObject
 
 /// Builds the host. `maxFrames` is the largest block renderInto will ever be
@@ -43,6 +58,17 @@ NS_ASSUME_NONNULL_BEGIN
 /// Renders `frames` frames of every live part, summed, into L and R.
 /// **Audio thread only.** Overwrites the buffers.
 - (void)renderInto:(float *)left right:(float *)right frames:(int)frames;
+
+// Ableton Link (docs/link.md). The SDK is not visible from here: the one file that includes it (ModLink.mm) hands the host a C
+// function, and the host calls it once per block on the audio thread. That keeps this file, and the Mac tests that compile it,
+// free of the SDK.
+/// The same render, with the host time (mach ticks) at which the block's first frame leaves the app, as the audio callback's
+/// timestamp gives it. 0 when unknown: Link is then not consulted for that block.
+- (void)renderInto:(float *)left right:(float *)right frames:(int)frames hostTime:(uint64_t)hostTime;
+/// Called on the audio thread at the start of every block that has a host time. NULL removes it.
+- (void)setLinkHook:(nullable ModLinkAudioHook)hook context:(nullable void *)context;
+/// The output latency of the current route, seconds: added to the block's host time, so the session's beat is the one heard.
+- (void)setLinkOutputLatency:(double)seconds;
 
 /// Creates the part like ensurePart, but first grows the engine's internal
 /// containers to their steady-state size by playing and releasing notes into a

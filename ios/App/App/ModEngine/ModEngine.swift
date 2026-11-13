@@ -114,7 +114,10 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "micStart", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "micRead", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "micStop", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "micStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "linkState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "linkSettings", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "linkTempo", returnType: CAPPluginReturnPromise)
     ]
 
     // The sampler's microphone take. The web view's getUserMedia was granted by iOS
@@ -263,6 +266,19 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: session, queue: nil) { [weak self] n in
                 let why = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) ?? 0
                 self?.lifeNote("audio route changed (reason \(why))")
+                // Headphones and Bluetooth report a different latency, and Link's beat is the one heard.
+                self?.host?.setLinkOutputLatency(session.outputLatency)
+            },
+            // Ableton Link leaves the network when the app is left and is not playing, and comes back with it
+            // (their test plan, BACKGROUND-1 and 2). Playing in the background, it stays in the session.
+            nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+                let m = self?.host?.seqMirror() as? [String: Any]
+                let owned = ((m?["transport"] as? [String: Any])?["owned"] as? Bool) ?? false
+                let running = (m?["running"] as? Bool) ?? false
+                ModLink.shared().setActive(owned || running)
+            },
+            nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
+                ModLink.shared().setActive(true)
             },
             // Everything audio is invalid after this, the engine included. Starting it again
             // is a try, not a rebuild: if it fails the status line says so, and the app has
@@ -575,7 +591,7 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 return
             }
 
-            let source = AVAudioSourceNode(format: format) { [weak self] _, _, frameCount, audioBufferList -> OSStatus in
+            let source = AVAudioSourceNode(format: format) { [weak self] _, timestamp, frameCount, audioBufferList -> OSStatus in
                 // ── audio thread ──
                 // No allocation, no locks, no Swift runtime calls that could
                 // take either. `host` is captured unowned-ish via self; the
@@ -589,7 +605,11 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
                 }
                 let t0 = DispatchTime.now().uptimeNanoseconds
                 os_signpost(.begin, log: ModEngine.signpostLog, name: "render")
-                host.render(into: l, right: r, frames: Int32(frameCount))
+                // The host time the block leaves at is what Ableton Link counts beats against; without a valid
+                // one the host does not consult Link for this block (0).
+                let ts = timestamp.pointee
+                host.render(into: l, right: r, frames: Int32(frameCount),
+                            hostTime: ts.mFlags.contains(.hostTimeValid) ? ts.mHostTime : 0)
                 os_signpost(.end, log: ModEngine.signpostLog, name: "render")
                 let dt = Int64(DispatchTime.now().uptimeNanoseconds &- t0)
 
@@ -623,6 +643,8 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             self.engine = engine
             self.source = source
             self.host = host
+            ModLink.shared().attach(to: host)
+            host.setLinkOutputLatency(AVAudioSession.sharedInstance().outputLatency)
             self.started = true
             watchLife(engine)
             #if DEBUG
@@ -1095,6 +1117,30 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     }
 
     /// {running, step, bar, frame, steps, events, late, ...}: where the engine's own sequencer is.
+    // Ableton Link (docs/link.md). These three do not need the engine: Link exists from launch, and the row in
+    // Settings has to say Enabled or Disabled before anything has played.
+
+    private func linkStateNow() -> [String: Any] {
+        let l = ModLink.shared()
+        return ["enabled": l.enabled, "connected": l.connected, "peers": l.peers, "tempo": l.sessionTempo]
+    }
+    /// Resolves `enabled`, `connected`, `peers`, `tempo` (the session's, quarter-note BPM).
+    @objc func linkState(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { call.resolve(self.linkStateNow()) }
+    }
+    /// Ableton's own preference pane, the only place Link is switched on or off. Resolves the state when it closes.
+    @objc func linkSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let vc = self.bridge?.viewController else { call.reject("no view controller"); return }
+            ModLink.shared().showSettings(from: vc) { call.resolve(self.linkStateNow()) }
+        }
+    }
+    /// The user moved the tempo: the session takes it.
+    @objc func linkTempo(_ call: CAPPluginCall) {
+        let bpm = call.getDouble("bpm") ?? 0
+        DispatchQueue.main.async { ModLink.shared().proposeTempo(bpm); call.resolve() }
+    }
+
     @objc func seqMirror(_ call: CAPPluginCall) {
         guard let host = host else { call.reject("engine not started"); return }
         call.resolve(host.seqMirror() as? [String: Any] ?? [:])
