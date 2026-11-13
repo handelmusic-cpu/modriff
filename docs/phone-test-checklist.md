@@ -108,6 +108,7 @@ Since 6.2:
 - [ ] 60. Learn (6.9.9.9.9.9.9.9.4) — clean free install: Learn > Show me → hear the drums with no pack toast; play all four steps by thumb, keep both key rows readable, and close with Keep playing or ✕ → full Chords header.
 - [ ] 61. Background audio, sampled chord voice (6.9.9.9.9.9.9.9.6) — right after launch set Chords to a sampled instrument, Song > Play, lock the phone → every part keeps playing. If it pauses, Copy diagnostics: `nativeTransport.last.why` now names the voice or pitch that was refused.
 - [ ] 62. Background audio with Vary or a drop voicing (6.9.9.9.9.9.9.9.7) — piano chords, a song, Vary on, every part on, lock the phone → keeps playing. Copy diagnostics `nativeTransport.history` lists every refusal with its reason.
+- [ ] 63. Background audio, held chords (6.9.9.9.9.9.9.9.8) — a song with sustained or gated chords, every part on, Play, lock the phone → keeps playing (this was the refusal in the 9.7 diagnostics: held-chord release read the real audio clock).
 
 ## Done
 
