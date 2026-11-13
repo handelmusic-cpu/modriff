@@ -39702,7 +39702,7 @@ function playOnboardingDemo(opts){
   wrap.appendChild(card);
   document.body.appendChild(dim); document.body.appendChild(wrap);
   document.body.classList.add('tour-open');
-  var rings = [], targets = [], step = 0, teardownGate = null, raf = 0, ended = false;
+  var rings = [], targets = [], step = 0, teardownGate = null, raf = 0, ended = false, closed = false;
 
   function esc(e){ if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); close(true); } }
   document.addEventListener('keydown', esc, true);
@@ -39800,9 +39800,10 @@ function playOnboardingDemo(opts){
       setTimeout(next, st.target.length > 1 ? 900 : 350);
     };
     scrollTo();
-    setTimeout(function(){ if(!ended && steps[step] === st) teardownGate = st.gate(next); }, 60);
+    setTimeout(function(){ if(!closed && !ended && steps[step] === st) teardownGate = st.gate(next); }, 60);
   }
   function next(){
+    if(closed) return;
     if(teardownGate){ teardownGate(); teardownGate = null; }
     step++;
     if(step >= steps.length) return finish();
@@ -39823,11 +39824,18 @@ function playOnboardingDemo(opts){
     document.getElementById('_ob-done').onclick = function(){ close(false); };
   }
   function close(early){
+    closed = true;
     if(teardownGate){ teardownGate(); teardownGate = null; }
     cancelAnimationFrame(raf);
     document.removeEventListener('keydown', esc, true);
     dim.remove(); wrap.remove(); rings.forEach(function(r){ r.remove(); });
     document.body.classList.remove('tour-open');
+    // The tour scrolls Live to its targets. Cancel an in-flight smooth scroll
+    // too: removing the tour's extra padding alone left the header clipped.
+    var page = document.getElementById('page-perform');
+    [page, document.scrollingElement || document.documentElement].forEach(function(el){
+      if(el) el.scrollTo({top:0, left:0, behavior:'instant'});
+    });
     _tourClose = null;
     if(prevView !== 'basic' && typeof setViewMode==='function') _tourSet(function(){ setViewMode(prevView); });
     if(early){
