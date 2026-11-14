@@ -245,13 +245,17 @@ Profile: Handel.modRiff` embedded and the sandbox entitlements present. Not done
 Store Connect (a build cannot be uploaded until it exists), then upload, and the purchase flow on the Mac through
 StoreKit. Audio and bounce saving work on the Mac (owner-tested).
 
-The current **iPhone app preview** is `docs/app-store/previews/high-impact/modriff-in-motion-app-store.mp4`:
-27.1 seconds of native Simulator footage at 124 BPM, kinetic captions, an original score made with the
-app's C++ synth engine, and an IAP disclosure. Export: 886 × 1920 / 30 fps, H.264 + stereo AAC. The same
-folder has a separate campaign film with motion graphics, poster frames, measured audio/video checks
-and editable sources. The campaign film is for web/social, not the App Store upload. Not uploaded or
-processed by App Store Connect; not heard on a physical iPhone. The three earlier 24-second cuts remain
-in `previews/2026-11-13/`. iPad and Mac need their own footage.
+The current **iPhone app previews** are the three `store-*.mp4` files in
+`docs/app-store/previews/feature-series/`: Live/theory/exports, landscape instruments,
+and songs/imports/learning. Each is 27.1 seconds at constant 30 fps, H.264 High Level 4.0
+with an 11 Mbps target and stereo AAC. Portrait is 886 × 1920; landscape is 1920 × 886.
+The folder also contains seven separate motion feature films, five-second posters,
+editable sources, original import fixtures and measured audio/video verification.
+See its README for coverage and the three-file upload order. The Live performance shows
+chords, melody and mõdFX together with its real native audio; playlist/PDF imports and
+full stems/MIDI exports were exercised in the native Simulator app. Not uploaded or
+processed by App Store Connect; not heard on a physical iPhone. Earlier treatments remain
+in `previews/high-impact/` and `previews/2026-11-13/`. iPad and Mac need their own footage.
 
 The Duo draws its clock and status pill down the right edge and reports a right inset of 84pt (measured in the simulator:
 top 0, right 84, bottom 34, left 0). 1398 x 2034 is not one of the sizes App Store Connect lists, so the Duo set is a
