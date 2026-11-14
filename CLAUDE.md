@@ -142,7 +142,7 @@ from far away: `var`. Cross-region APIs: `window.*` (`window.fxSendsAPI`,
 
 ## `modo-` storage keys are load-bearing
 
-All saved state lives under `localStorage` keys prefixed `modo-` (48), plus
+All saved state lives under `localStorage` keys prefixed `modo-` (49), plus
 older `prism-theme`, `mv-theme`, `modriff-diag`. The app was once called Modo;
 it isn't now, and the keys stay. Renaming wipes every user's setups, setlist,
 patterns, theme and place. **Never rename a key to match the app's name.** If one
