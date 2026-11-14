@@ -1,23 +1,67 @@
 # Sample credits
 
-Note samples are rendered from the **FluidR3_GM** and **MusyngKite** SoundFonts, redistributed by the
-[midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) project
-(Benjamin Gleitzman). Its README gives the two SoundFonts different licences
-(checked 2026-10-26). That README says **FluidR3_GM is CC BY 3.0**; that is the
+The upright bass, Motown, Hofner and jazz guitar notes are rendered from the
+**FluidR3_GM** SoundFont, redistributed by
+[midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts) (Benjamin
+Gleitzman). That project's README labels FluidR3_GM **CC BY 3.0**; that is the
 redistributor's label, not the SoundFont author's. FluidR3_GM is Frank Wen's and
 is released under the **MIT licence** (copyright 2000-2002, 2008 Frank Wen; text
 in [`LICENSE-FluidR3_GM.txt`](LICENSE-FluidR3_GM.txt), as carried by Debian's
 FluidR3 packages, read 2026-11-13). MIT permits commercial use and asks only that
 the copyright and permission notice travel with the work, which the Credits
-screen and that file do. This covers the upright bass, Motown, Hofner, jazz
-guitar and the jazz-kit cymbals and kick. MusyngKite, below, is a different
-matter, and **MusyngKite is
-[CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)**, the
-share-alike one (vibes, nylon guitar, tenor sax, muted trumpet, and the scratch
-effect built from the sax). An earlier version of this file called all of them
-CC BY 3.0; that was wrong for MusyngKite. A Polyphone listing of Musyng Kite
-says personal use only, which the README does not; the sets stay NEEDS-CONFIRM
-in SOURCES.csv until that is settled or they are replaced.
+screen and that file do. The jazz-kit cymbals and kick are the same SoundFont's
+percussion bank.
+
+**MusyngKite is no longer used.** Vibes, nylon guitar, tenor sax, muted trumpet
+and the scratch effect were rendered from it until 6.9.9.9.9.9.9.9.9a. Its
+licence could not be pinned down: its author's forum post says CC BY-SA 3.0,
+Polyphone lists it as personal use, Gentoo as non-commercial, and its author
+calls it a compilation of other people's samples. They are now real recordings,
+all **CC0**, built by `build/cc0-sets.py` (and `build/scratch-fx.py`). The old
+files remain in git history only.
+
+## samples/vibes-vcsl, tenorsax-vcsl, mutetpt-vsco, nylongtr-freepats
+
+- **Vibes** — [Versilian Community Sample Library](https://github.com/sgossner/VCSL)
+  (Versilian Studios / Sam Gossner), Vibraphone, soft mallets, velocity 2, one take
+  per note. 11 anchors, F3 to E6 on a minor-third grid.
+- **Tenor sax** — VCSL, Tenor Saxophone, non-vibrato, loud layer. 21 anchors on a
+  whole-tone grid, G#2 to C6 (the altissimo files are not used).
+- **Muted trumpet** — [VSCO-2 Community Edition](https://github.com/sgossner/VSCO-2-CE)
+  (Versilian Studios), Trumpet, straight mute, sustain, velocity 3. 8 anchors,
+  A#3 to A5, plus C5 made from the A#4 take raised two semitones (the sampler's
+  "Muted Trumpet · C5" pad names a C5). Gaps up to five semitones, so a note can
+  shift 2.5.
+- **Nylon guitar** — [FreePats Spanish classical guitar](https://freepats.zenvoid.org/Guitar/acoustic-guitar.html)
+  (the FreePats project, recorded 2008, version 2019-06-18), from
+  `SpanishClassicalGuitar-SFZ+FLAC-20190618.7z`, which ships its own `cc0.txt`.
+  21 anchors, C2 to A5.
+
+All four are **CC0 1.0**; the licence texts are in [`licenses/`](licenses/)
+(`vcsl-LICENSE-CC0.txt`, `vsco-2-ce-LICENSE-CC0.txt`, the FreePats readme).
+
+The sources name their notes an octave under what sounds (the sax's lowest file,
+"G#1", is the instrument's real lowest note, G#2; FreePats' names are right), so
+every file was placed by a harmonic comb around its octave-corrected name and
+resampled to its exact pitch, never more than 10 cents. Then, as for the violin:
+mono, trimmed to the attack, 3.2 s with a 300 ms fade, 45 Hz high-pass, LAME
+VBR q4.
+
+**Level.** The gain tables (`WAVE_GAIN`, `MEL_SAMPLE_TRIM`, `ARP_SAMPLE_GAIN`)
+were calibrated on the files these replace, so each new file was scaled to the
+old set's mean RMS over C3-E5, and a look-ahead limiter holds a recording's
+transient (the mute's pop, the sax's tongue) to the old crest factor plus 2.5 dB,
+because a sampled part that crosses 1.0 at the master is hard-clipped. Then each
+set was measured in the running app (`tests/levels/measure.js` method, chord
+part, against the synth voices): vibes +6.8 dB, tenor sax +2.0 dB and nylon
++1.5 dB were added to the files, and `MELGEN_VOICE_TRIM` was redone for all four
+(vibes 0.586, nylongtr 0.719, tenorsax 0.602, mutetpt new at 0.582). After that:
+chord part within 0.6 dB of the synth median, melody sequencer within 0.7 dB, the
+strip (`mel`) within 1.1 dB, and the arp part within 0.5 dB of the old sets. The
+bass part was not measured. Not heard on a phone.
+
+**scratch2.mp3** replaces `scratch.mp3` (a MusyngKite note): the new tenor sax C4
+moved back and forth under a virtual hand, level-matched to the old scratch's RMS.
 
 Every natural note (C D E F G A B) is included across bass octaves 1-4; the
 app pitch-shifts each sample at playback time to cover the sharps/flats in

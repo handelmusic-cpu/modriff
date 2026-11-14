@@ -129,3 +129,4 @@ Since 6.2:
   continue to follow; check alignment on Bluetooth and the wired interface by listening.
 - [ ] Studio Bass, Melody, Drums: Generate | Arrange | Play in, the Generate and Clr row and Place | Edit sit at the top; the roll is under them, and the patch and pattern names under the roll.
 - [ ] v6.9.9.9.9.9.9.9.9: Settings > About > Credits, the SoundFont entry now reads MIT with Frank Wen's notice; open it and check it scrolls and reads cleanly.
+- [ ] v6.9.9.9.9.9.9.9.9a: Vibes, Nylon guitar, Tenor sax and Muted trumpet are now different (CC0) recordings and the Scratch pad is rebuilt from the new sax: play each over its whole range and the Scratch pad, and check the levels against the other voices and that no low note sounds strained.
