@@ -252,25 +252,34 @@ name fixes the semitone, a harmonic comb measures the cents), trims it to
 the attack, keeps 3.0 s of its 5.4 s ring with a 0.8 s fade, peak-matches to
 -1.5 dBFS and encodes mono mp3 VBR q6. Notes above E2 are these, shifted up.
 
-## samples/808 — the phrase sampler's TR-808
+## samples/analog1 — the Real Analog 1 kit and the phrase sampler's Analog 1 / Sub Bass
 
-From **Michael Fischer's Roland TR-808 sample set** (Technopolis, 1994),
-recorded from the individual outputs of a real TR-808 (serial 103852) and given
-away with no licensing restrictions — the text file that came with it calls
-them "ABSOLUTELY FREE". Taken from the copy packaged on npm as
-`@fluid-music/tr-808` (ISC), which documents the source at
-machines.hyperreal.org. Fourteen of the 116 files, converted to mono MP3 and
-trimmed of trailing silence, otherwise as recorded:
+**"Filthy Drums 808 Analog Drum Hits"** by **Uberproduktion**, Freesound
+[pack 25700](https://freesound.org/people/Uberproduktion/packs/25700/), **CC0**
+(its `_readme_and_license.txt` lists CC0 for all 16 sounds:
+[`licenses/freesound-uberproduktion-25700.txt`](licenses/freesound-uberproduktion-25700.txt)).
+It replaced Michael Fischer's 1994 sample set of an analog drum machine, whose
+only licence was a text file saying "ABSOLUTELY FREE" — not a licence, and the app
+has paid tiers — in 6.9.9.9.9.9.9.9.9.5. Built by `build/analog-cc0.py`: mono, 30 Hz
+high-pass, trimmed to the attack and a 60 dB tail fall, peak-normalised -1 dBFS,
+mp3 VBR q5, one take per lane.
 
-| file | original | | file | original |
+| file | source | | file | source |
 |---|---|---|---|---|
-| kick | BD2575 | | cowbell | CB |
-| snare | SD5050 | | conga | HC50 |
-| clap | CP | | tom | MT50 |
-| hat | CH | | lotom | LT50 |
-| open | OH25 | | clave | CL |
-| rim | RS | | maracas | MA |
-| crash | CY5050 | | bass | BD2510, tuned to G1 (fluid-music's `BDTuned`) |
+| kick | bass-drum | | cowbell | cowbell |
+| snare | snare | | conga | conga-hi |
+| clap | clap | | tom | tom-mid |
+| hat | hihat-closed | | lotom | tom-low |
+| open | hihat-open | | hitom | tom-hi |
+| rim | rimshot | | clave | claves |
+| crash | cymbal | | maracas | marcaras |
+| bass | bass-drum, retuned so its body (36.8 Hz) sits on G1 | | | |
+
+The lane gains of the Real Analog 1 kit were recomputed the way `build/drum-kits.py`
+does it (A-weighted loudness against the Rock snare at 0.75; the old files'
+gains reproduce their table to the third decimal, so the method is the same).
+The 808's bass drum here is 1.1 s long, so Sub Bass rings for about 0.8 s once
+retuned, where the old file's was 3 s.
 
 ## samples/sfx — the phrase sampler's FX bank
 
@@ -284,8 +293,8 @@ trimmed of trailing silence, otherwise as recorded:
   re-encoded only.
 - **airhorn, siren, scratch, tapestop** — made for this app. The horn and
   siren are synthesized; the scratch is the tenor sax C4 above, moved back and
-  forth under a virtual hand; the tape stop is a bar of the 808 above, slowed
-  to a stop.
+  forth under a virtual hand; the tape stop (`tapestop2.mp3`) is a bar of the Analog 1
+  drums above, slowed to a stop.
 
 All are peak-normalised to −1 dBFS; their relative levels on the pads are set
 by `gain` in `PS_FACTORY_KIT`.
@@ -404,17 +413,12 @@ second take. 2.3 MB for all five, loaded only when the kit is picked.
 | **Hand Drums ◆** (`hand/`) | Cajon — the bass tone (`hit2`/`hit3`, 96–99% of its energy under 200 Hz, 4 strengths) and the slap (`hit1`, 3); Darbuka 1 doum and Darbuka 2 tek (2 each); Frame Drum large (2); Claps (six takes); Tambourine 1 (2); Shaker small; Woodblock (3). |
 | **Orchestral ◆** (`orch/`) | Bass Drum 2 (concert, 5); Snare Drum Rope Tension snares-on (4); Timpani 1 (~90 Hz) and Timpani 3 (~213 Hz) drums, 3 strengths each; Clash Cymbals 1 (4); Gong 1 (4, to 5 s); Triangle 1 (3). |
 
-## samples/808 — the Real 808 ◆ kit (4.9.9.1)
+## Real Analog 1 ◆ kit (4.9.9.1)
 
-The kit plays the fourteen files the phrase sampler already had (above), plus
-**hitom.mp3** ← HT50 from the same Michael Fischer set (via `@fluid-music/tr-808`),
-trimmed and peak-normalised by `build/drum-kits.py`. One take per lane: an 808
-has no velocity timbre.
-
-A TR-909 set was looked at and **not** used: the only free one
-(`@fluid-music/tr-909`, Jason Baker / Rob Roy Recordings, via
-machines.hyperreal.org) forbids changing the samples and distributing them for
-profit, and this app both converts its samples and has paid tiers.
+One take per lane from `samples/analog1` (above). An analog drum machine has no
+velocity timbre. A TR-909 set was looked at and **not** used: the only free one
+forbids changing the samples and distributing them for profit, and this app both
+converts its samples and has paid tiers.
 
 ## samples/mideast, africa, samba, bellsfx — world percussion for the Aux layer (4.9.9.2)
 
@@ -468,7 +472,7 @@ into soft and hard layers by their raw level. Files are named
 | **Maracatu ◆** (`maracatu/`) | sassaby, pack 28352 | Alfaia (2 strengths) and its rim; caixa and tarol (2), their rims and the samba rimshot; gonguê (the pack's agogo); shekere. |
 | **Salsa ◆** (`salsa/`) | sassaby, pack 28352 | Timbales macho, hembra and rimshot; mambo bell (body soft, mouth hard); cha-cha bell; wood block; conga, quinto and tumba with their slaps. Not used: electrokick, electro cymbal, china trash cymbal, the caixa with reverb, the side stick, mele and white conga E. |
 | **Medieval ◆** (`medieval/`) | "medieval perc" by **menegass** — [pack 5824](https://freesound.org/people/menegass/packs/5824/) | Tabor (the pack's "adrum", 2 strengths) and Tabor Open; hand drum (its "conga") and slap; tambourine skin and jingles; clappers; seeds; seed pod; shaker; rattle. The seedm and lyre-hit takes are not used. |
-| **Clay Drums ◆** (`clay/`) | udu by **iyankc** (Freesound 479245–479253, single files, CC0 per the owner); darbuka, the owner's own performance on an SPD-15 (`Darbuka_01`–`06.wav`) | Udu Bass, Udu, Udu Tap (2 strengths); Darbuka Doum (3), Tek (2), Ka. |
+| **Clay Drums ◆** (`clay/`) | udu by **iyankc** (Freesound 479245–479253, single files, CC0: each page read 2026-11-14, [`licenses/freesound-iyankc-udu.txt`](licenses/freesound-iyankc-udu.txt)); the darbuka lanes play the Middle East kit's VCSL files (CC0) | Udu Bass, Udu, Udu Tap (2 strengths); Darbuka Doum, Tek, Ka (2 strengths × 2 takes). |
 
 Which file is which take:
 
@@ -537,7 +541,7 @@ Which file is which take:
 - udubass0a ← udu-1 ([479245](https://freesound.org/s/479245/)) · udubass0b ← udu-2 ([479250](https://freesound.org/s/479250/))
 - udumid0a ← udu-3 ([479249](https://freesound.org/s/479249/)) · udumid0b ← udu-8 ([479253](https://freesound.org/s/479253/))
 - udutap0a ← udu-4 ([479248](https://freesound.org/s/479248/)) · udutap0b ← udu-7 ([479251](https://freesound.org/s/479251/)) · udutap1a ← udu-5 ([479247](https://freesound.org/s/479247/))
-- doum0a ← Darbuka_06 · doum1a ← Darbuka_01 · doum2a ← Darbuka_02 · tek0a ← Darbuka_03 · tek1a ← Darbuka_04 · ka0a ← Darbuka_05
+- The darbuka (doum, tek, ka) were the owner's takes on a sampling pad, which turned out to be its built-in sounds, so they were removed (6.9.9.9.9.9.9.9.9.5); the lanes now play `samples/mideast`.
 
 ### Rock ◆ — second cymbal takes
 
