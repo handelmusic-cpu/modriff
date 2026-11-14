@@ -1,4 +1,4 @@
-/* Patterns and kits are independent (6.9.9.9.9.9.9.9.9.3), through voice roles (SQ_ROLES).
+/* Patterns and kits are independent (6.9.9.9.9.9.9.9.9.4), through voice roles (SQ_ROLES).
    - A kit swap moves the hits by role, not lane number: the same beat on the 909, Studio, Rock, Acoustic and Jazz kits is the
      same kick, backbeat and time, and swapping away and back is exact until the layer is edited.
    - Either layer takes any pattern on its own kit: a percussion kit on Drums plays the pattern's percussion line, a drum kit on
