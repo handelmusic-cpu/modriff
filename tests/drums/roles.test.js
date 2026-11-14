@@ -3,6 +3,7 @@
      same kick, backbeat and time, and swapping away and back is exact until the layer is edited.
    - Either layer takes any pattern on its own kit: a percussion kit on Drums plays the pattern's percussion line, a drum kit on
      Aux plays its beat, and picking a pattern never changes a kit or touches the other layer (when the bar length holds).
+   - Layers whose bar lengths do not divide each other run at the length they meet at (12 against 16: 48 steps).
    - Drums and Aux offer the same patterns, grouped by family, with no kit in the name.
    Run: node tests/drums/roles.test.js   Env: CHROMIUM, PLAYWRIGHT */
 'use strict';
@@ -72,9 +73,13 @@ function serve() {
     window._sqRestoreState(Object.assign({}, st(), { aux: Object.assign({}, st().aux, { grid: g }) }));
     o.custom = window._sqLayerPat(1) === null || window._sqLayerPat(1) === undefined;
 
-    // 4. A pattern whose bar is another length takes the bar, and what does not fit is cleared, said aloud.
+    // 4. Two bar lengths that do not divide each other run at the length they meet at, each layer intact: 12 against 16 is 48
+    // steps, the Drums repeating every 16 and the Aux every 12, and the meter stays the Drums'. When both are 12 it comes back.
     window._sqPickAuxKit('PERC'); window._sqSetFocus(0); window._sqLoadPattern(0, '4/4 Basic'); window._sqLoadPattern(1, 'Bossa Nova');
-    window._sqLoadPattern(1, 'Afro 6/8'); o.len = st().steps; o.drumsCleared = roles(0) === '{}';
+    window._sqLoadPattern(1, 'Afro 6/8'); o.len = st().steps;
+    const per = (grid, n) => Object.keys(grid).every(k => { for (let s = 0; s < 48; s++) if (((grid[k][s] || {}).v | 0) !== ((grid[k][s % n] || {}).v | 0)) return false; return true; });
+    o.poly = o.len === 48 && per(st().grid, 16) && per(st().aux.grid, 12) && !per(st().aux.grid, 16) && roles(0) !== '{}' && METER.beats === 4;
+    window._sqLoadPattern(0, '3/4 Waltz'); o.back12 = st().steps === 12 && METER.beats === 3;
 
     // 5. One list.
     const d = starterList('drums').map(x => x.id), a = starterList('aux').map(x => x.id);
@@ -87,7 +92,8 @@ function serve() {
   ok(r.kitsKept && r.drumsUntouched, 'a pattern on Aux leaves the Drums layer and both kits alone; a percussion kit on Drums plays the line', JSON.stringify(r));
   ok(r.auxBeat, 'a drum kit on Aux plays the pattern\'s beat', r.rockAux);
   ok(r.custom, 'an edited layer no longer claims to be the pattern', '');
-  ok(r.len === 12 && r.drumsCleared, 'a 12-step line takes the bar and clears the 16-step layer that cannot fit it', JSON.stringify([r.len, r.drumsCleared]));
+  ok(r.poly, 'a 12-step Aux line against a 16-step Drums beat runs at 48 steps with both layers intact and the meter the Drums\'', JSON.stringify([r.len, r.poly]));
+  ok(r.back12, 'and the bar comes back to 12 when both layers are 12', '');
   ok(r.oneList && r.fams[0] !== undefined, 'Drums and Aux offer one list of patterns, with no kit in a name', JSON.stringify(r.fams));
   ok(errs.length === 0, 'no page errors', errs.join(' | '));
   await browser.close(); srv.close();

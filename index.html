@@ -9424,7 +9424,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.9.5</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.9.6</span></div>
  </div>
 </div>
 
@@ -10902,7 +10902,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.9.5</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.9.6</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12102,7 +12102,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.9.5';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.9.6';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -58910,14 +58910,77 @@ function sqRemapLayer(i, nk){
   var ng = srcKit === nk ? JSON.parse(JSON.stringify(srcGrid)) : sqRolesToGrid(nk, sqGridToRoles(srcKit, srcGrid, steps), steps);
   var out = sqCellsSig(ng, steps), pat = M.pat;
   M.rm = {homeKit:srcKit, homeGrid:JSON.parse(JSON.stringify(srcGrid)), outKit:nk, outSig:out, steps:steps};
-  if(pat && pat.sig === cur) M.pat = {id:pat.id, sig:out};
+  if(pat && pat.sig === cur) M.pat = {id:pat.id, sig:out, len:pat.len};
   L.mach = nk; L.grid = ng;
   if(i === sqFocus){ sqMach = nk; sqGrid = ng; }
 }
-// The bar length changes to `len` for a pattern going on layer `keep`. The other layer is refitted: tiled when the new bar is a
-// whole number of its old one, cut to its first bars when the old one is a whole number of the new, and emptied when neither
-// (a 12-step bar cannot be laid on a 16-step line without making it a different line). Meter and the linked bass and melody
-// follow, as they do for a groove (sqApplyGroove).
+// Two bar lengths that do not divide each other (a 12-step 6/8 line over a 16-step 4/4 beat) run at the length they meet at: 48
+// steps, three bars of the one and four of the other. There is one step counter for the page and the engine, so the layers do not
+// count apart; each is laid out at that length (a pattern is written out at it, anything else tiled) and plays through it.
+function sqGcd(a, b){ while(b){ var t = a % b; a = b; b = t; } return a; }
+function sqLcm(a, b){ return a / sqGcd(a, b) * b; }
+function sqPartLen(P, kit){ return sqPatternPart(P, kit) === 'line' ? P.steps : P.r.pat.length; }
+// A pattern on a kit, written out `steps` long; null if it has nothing for it.
+function sqRenderPattern(kit, P, steps){
+  var rows = sqPatternPart(P, kit) === 'line' ? sqLineRoles(P) : sqBeatRoles(P.r);
+  return rows ? sqRolesToGrid(kit, rows, steps) : null;
+}
+// The length a layer's pattern repeats at: its pattern's, while the layer is still exactly that; the whole bar if it was
+// edited or came from a save (anything else cannot be cut shorter without changing it); 0 when it is empty.
+function sqLayerLen(i){
+  var L = sqLayers[i], pat = sqLM[i].pat, any = false, k, s;
+  if(pat && pat.len && pat.sig === sqCellsSig(L.grid || {}, sqSteps)) return pat.len;
+  for(k in L.grid) for(s = 0; s < sqSteps && !any; s++) if(L.grid[k] && L.grid[k][s] && L.grid[k][s].v > 0) any = true;
+  return any ? sqSteps : 0;
+}
+// The step count becomes `n`: the display, the meter (from a pattern's signature, where its length agrees with it, so the
+// Drums' beat says 4/4 and an Aux line against it does not turn it into 6/8) and the linked bass and melody, as for a groove.
+function sqApplySteps(n, sig, sigLen){
+  sqSteps = n;
+  var d = document.getElementById('sq-stepsDisp'); if(d) d.textContent = sqSteps;
+  try{
+    var sg = /^(\d+)\/(\d+)$/.exec(sig || '');
+    if(sg && typeof setMeter === 'function'){
+      var b = +sg[1], u = +sg[2];
+      if(b * Math.round(16 / u) === sigLen && (b !== METER.beats || u !== METER.unit)) setMeter(b, u, {keepSteps:true});
+    }
+  }catch(e){}
+  if(typeof stepCountLock !== 'undefined' && stepCountLock){
+    if(typeof setSeqStepCount === 'function') setSeqStepCount('sq', n);
+    if(typeof window.blGenerate === 'function'){ try{ window.blGenerate(); }catch(e){} }
+    if(typeof window.mlGenerate === 'function'){ try{ window.mlGenerate(); }catch(e){} }
+  }
+  if(sqSeqStep >= sqSteps) sqSeqStep = 0;
+}
+// Both layers move to a bar of `n` steps. A layer that is still exactly its pattern is written out again at the new length; one
+// that was edited is tiled (the new bar is a whole number of the old, which is what the caller's length is made of).
+function sqSetBar(n, sig, sigLen){
+  var old = sqSteps; if(n === old) return;
+  sqStashFocused();
+  for(var j = 0; j < 2; j++){
+    var L = sqLayers[j], pat = sqLM[j].pat, g = null, P = null, k, s;
+    if(pat && pat.sig === sqCellsSig(L.grid || {}, old)) P = sqPatternById(pat.id);
+    if(P) g = sqRenderPattern(L.mach, P, n);
+    if(!g){
+      g = {};
+      for(k in (L.grid || {})){
+        g[k] = [];
+        for(s = 0; s < n; s++){
+          var src = (n % old === 0) ? L.grid[k][s % old] : (old % n === 0 ? L.grid[k][s] : null);
+          g[k].push(src ? JSON.parse(JSON.stringify(src)) : sqMkCell());
+        }
+      }
+    }
+    L.grid = g;
+    sqLM[j] = P ? {pat:{id:pat.id, sig:sqCellsSig(g, n), len:pat.len}} : {};
+  }
+  sqLM.auto = n;
+  sqApplySteps(n, sig, sigLen);
+  sqMach = sqLayers[sqFocus].mach; sqGrid = sqLayers[sqFocus].grid;
+}
+// The bar length changes to `len` for a pattern going on layer `keep` and the two do not fit together under the step limit (or the
+// tier's). The other layer is refitted: tiled when the new bar is a whole number of its old one, cut to its first bars when the
+// old one is a whole number of the new, and emptied when neither.
 function sqAdoptSteps(len, sig, keep){
   var old = sqSteps; if(len === old) return;
   sqStashFocused();
@@ -58934,20 +58997,7 @@ function sqAdoptSteps(len, sig, keep){
   oth.grid = ng; sqLM[keep ? 0 : 1] = {};
   // The focused layer's grid is sqGrid: left pointing at the old one, the next stash would put it back.
   if(sqFocus === (keep ? 0 : 1)) sqGrid = ng;
-  sqSteps = len;
-  var d = document.getElementById('sq-stepsDisp'); if(d) d.textContent = sqSteps;
-  try{
-    var sg = /^(\d+)\/(\d+)$/.exec(sig || '');
-    if(sg && typeof setMeter === 'function'){
-      var b = +sg[1], u = +sg[2];
-      if(b * Math.round(16 / u) === len && (b !== METER.beats || u !== METER.unit)) setMeter(b, u, {keepSteps:true});
-    }
-  }catch(e){}
-  if(typeof stepCountLock !== 'undefined' && stepCountLock){
-    if(typeof setSeqStepCount === 'function') setSeqStepCount('sq', len);
-    if(typeof window.blGenerate === 'function'){ try{ window.blGenerate(); }catch(e){} }
-    if(typeof window.mlGenerate === 'function'){ try{ window.mlGenerate(); }catch(e){} }
-  }
+  sqApplySteps(len, sig, len);
   if(say){ try{ showToast(say); }catch(e){} }
 }
 // A pattern on a layer: the layer's own kit stays, whatever the pattern was written for, and the other layer is left alone
@@ -58964,9 +59014,20 @@ window._sqLoadPattern = function(i, id, opts){
   var rows = part === 'line' ? sqLineRoles(P) : sqBeatRoles(P.r);
   if(!rows) return false;
   var len = part === 'line' ? P.steps : P.r.pat.length;
-  if(!(len === sqSteps || (len > 0 && sqSteps % len === 0))){
-    // A different bar length is not something to do mid-bar (that is how it "adds beats"): playing, it waits for the bar
-    // line as a groove does, and the groove it belongs to comes with it, so both layers are the one length.
+  // The bar: the layers' lengths together. One that divides the bar plays through it; two that do not divide each other run at
+  // the length they meet at (sqSetBar), as long as it is a bar the tier and the 64-step limit allow. Playing, that is done at
+  // once, like a change of the step count (the pattern keeps its place in the bar; only the notes in it change).
+  var ol = sqLayerLen(i ? 0 : 1), need = ol ? sqLcm(len, ol) : len, target;
+  var okSteps = function(n){ return n <= MAX_STEPS && (typeof freeAllowsSteps !== 'function' || freeAllowsSteps(n)); };
+  if(sqSteps % len === 0 && (!ol || sqSteps % ol === 0)){
+    // Fits where it is; a bar that only an earlier pairing made is given back when this one no longer needs it.
+    target = (sqLM.auto === sqSteps && need < sqSteps && okSteps(need)) ? need : sqSteps;
+  } else target = okSteps(need) ? need : 0;
+  var dp = i === 0 ? P : (sqLM[0].pat && sqLM[0].pat.len ? sqPatternById(sqLM[0].pat.id) : null);
+  var msig = dp ? dp.sig : (target === len ? P.sig : ''), mlen = dp ? (i === 0 ? len : sqLM[0].pat.len) : len;
+  if(target === 0){
+    // Too long a bar for the two together: the one pick takes the bar and the other layer is refitted. Not mid-bar (that is
+    // how it "adds beats"): playing, it waits for the bar line as a groove does, and the groove it belongs to comes with it.
     if(sqPlaying){
       var gn = P.r ? P.r.name : AUX_CUSTOM[P.custom].groove, gi = -1;
       for(var q = 0; q < RHYTHMS.length; q++) if(RHYTHMS[q].name === gn){ gi = q; break; }
@@ -58975,11 +59036,14 @@ window._sqLoadPattern = function(i, id, opts){
       return 'queued';
     }
     sqAdoptSteps(len, P.sig, i);
+  } else if(target !== sqSteps){
+    sqSetBar(target, msig, mlen);
+    if(target !== len) try{ showToast(SQ_LAYER_NAME[i] + ' ' + len + ' against ' + SQ_LAYER_NAME[i ? 0 : 1] + ' ' + ol + ': the bar is ' + target + ' steps'); }catch(e){}
   }
   // What was on Aux is kept in its pattern slot first, so loading a line is never the way another is lost.
   if(i === 1 && window._sqAuxHasPart()) sqAuxSavePat(sqAuxCur);
   var g = sqRolesToGrid(kit, rows, sqSteps);
-  L.grid = g; sqLM[i] = {pat:{id:P.id, sig:sqCellsSig(g, sqSteps)}};
+  L = sqLayers[i]; L.grid = g; sqLM[i] = {pat:{id:P.id, sig:sqCellsSig(g, sqSteps), len:len}};
   if(i === sqFocus){ sqGrid = g; sqMachGrids[sqMach] = JSON.parse(JSON.stringify(g)); }
   sqMach = sqLayers[sqFocus].mach; sqGrid = sqLayers[sqFocus].grid;
   if(i === 0 && P.r) sqCurGroove = RHYTHMS.indexOf(P.r);
@@ -61345,8 +61409,8 @@ function sqWire(){
     sqLayers[0].grid = sqGrooveGrid(sqLayers[0].mach, r, steps, false);
     sqLayers[1].grid = sqGrooveGrid(sqLayers[1].mach, r, steps, true);
     // Which pattern each layer is on, for the lists: Aux only if the groove wrote something there.
-    sqLM[0] = {pat:{id:r.name, sig:sqCellsSig(sqLayers[0].grid, steps)}};
-    sqLM[1] = sqCellsSig(sqLayers[1].grid, steps) ? {pat:{id:r.name, sig:sqCellsSig(sqLayers[1].grid, steps)}} : {};
+    sqLM[0] = {pat:{id:r.name, sig:sqCellsSig(sqLayers[0].grid, steps), len:steps}};
+    sqLM[1] = sqCellsSig(sqLayers[1].grid, steps) ? {pat:{id:r.name, sig:sqCellsSig(sqLayers[1].grid, steps), len:steps}} : {};
     sqMach = sqLayers[sqFocus].mach;
     sqGrid = sqLayers[sqFocus].grid;
     sqMachGrids[sqMach] = JSON.parse(JSON.stringify(sqGrid));
