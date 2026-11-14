@@ -89,6 +89,10 @@ replaytest: replaytest.cpp graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -pthread -o $@ replaytest.cpp graphpool.cpp graph.cpp
 
 # The voice bank's patching against voices the page records fresh: tests/seq/bank.test.js.
+# Which take of a recorded kit's lane the engine plays: tests/seq/layerbank.test.js.
+varianttest: varianttest.cpp seqplay.h seqcore.h voicebank.cpp voicebank.h graphpool.h graph.h
+	$(CXX) $(CXXFLAGS) -o $@ varianttest.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
+
 scoretest: scoretest.cpp seqplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graphpool.h graph.cpp graph.h
 	$(CXX) $(CXXFLAGS) -o $@ scoretest.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp fdlibm.cc
 

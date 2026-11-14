@@ -9424,7 +9424,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v7.1</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v7.1a</span></div>
  </div>
 </div>
 
@@ -10902,7 +10902,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v7.1</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v7.1a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12102,7 +12102,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '7.1';
+const MODRIFF_VERSION = '7.1a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -57857,8 +57857,17 @@ function _drumLayerFor(d, n){
 // synthesized stand-in for the instant before the files arrive.
 function sqLayerTrack(n, s, c, layers, gain, fb){
   var turn = 0;
-  return {n:n, s:s, c:c, layered:layers.length, rec:1, play:function(t,v,ac,ps){
+  return {n:n, s:s, c:c, layered:layers.length, layout:layers.map(function(l){ return l.length; }), rec:1, play:function(t,v,ac,ps){
     var vel = v*(ac?1.25:1);
+    // The engine's bank records each take of each layer as a voice of its own (_nsBank.build), so it names the one it wants:
+    // that recording or nothing. Falling back to a neighbour or to the synthesized stand-in would bank the wrong sound under
+    // that take's name, and the take counter would move with every probe.
+    var pick = window.__sqPick;
+    if(pick){
+      var pt = layers[pick.layer] && layers[pick.layer][pick.take];
+      if(!(pt && sqSample(pt, t, vel*gain, ps))) window.__sqPickMiss = true;
+      return;
+    }
     var d = (window.__sqDyn==null ? 1 : window.__sqDyn) * (ac?1.25:1);
     var L = layers.length, want = _drumLayerFor(d, L);
     turn++;
@@ -60017,9 +60026,9 @@ window._webDrumHit = function(msg){
   var M=SQM[msg.kit], track=M && M.tracks[msg.lane];
   if(!sqCtx()||!SQMG||!track||!track.play)return;
   var t=msg.at, vol=msg.vel, ac=msg.accent, ps=msg.pitch, ch=msg.part;
-  var _dyn=window.__sqDyn; window.__sqDyn=msg.dyn; _sqPartCur=ch;
+  var _dyn=window.__sqDyn, _pick=window.__sqPick; window.__sqDyn=msg.dyn; window.__sqPick=msg.pick||null; _sqPartCur=ch;
   try{ _webDrumVoice(track,t,vol,ac,ps,ch,msg.kit,msg.lane); }
-  finally{ window.__sqDyn=_dyn; _sqPartCur=null; }
+  finally{ window.__sqDyn=_dyn; window.__sqPick=_pick; _sqPartCur=null; }
 };
 function _webDrumVoice(track,t,vol,ac,ps,ch,kit,lane){
   // The Mixer's Drums channel — level, mute AND solo — did nothing at all
@@ -61712,23 +61721,51 @@ window._nsBank = {
   }
   return out;
  },
- // The entry for one lane (voicebank.h's layout), or {ok:false, why}.
+ // The entries for one lane (voicebank.h's layout): one, or for a recorded kit's lane one per take of each velocity layer, which
+ // the engine picks between by how hard the stroke is and by alternating (voicebank.h findVariant). {ok, entries:[Float64Array]}
+ // or {ok:false, why}, with `transient` when the refusal is only that its recordings had not arrived yet (it is not remembered).
  build: async function(part, kit, lane){
+  var M = SQM[kit], T = M && M.tracks[lane], lay = T && T.layout;
+  var own = _webSmpSlot(smpKeyDrum(kit, lane));      // a recording dropped on the lane plays instead of the kit's, one voice
+  if(!lay || own){
+   var r = await this._buildOne(part, kit, lane, null, lane);
+   return r.ok ? {ok: true, entries: [r.entry], slots: r.slots} : r;
+  }
+  // One recording, one entry under the lane's own number. Still named, so that a recording that has not arrived is a refusal and not
+  // the synthesized stand-in banked under its name.
+  if(lay.length === 1 && lay[0] === 1){
+   var one = await this._buildOne(part, kit, lane, {layer: 0, take: 0}, lane);
+   return one.ok ? {ok: true, entries: [one.entry], slots: one.slots} : one;
+  }
+  if(lane >= 64 || lay.length > 8 || lay.some(function(n){ return n > 8; })) return {ok: false, why: 'more layers or takes than the bank holds'};
+  var entries = [];
+  for(var li = 0; li < lay.length; li++) for(var tk = 0; tk < lay[li]; tk++){
+   var v = await this._buildOne(part, kit, lane, {layer: li, take: tk}, lane + 64 * (1 + li * 8 + tk));
+   if(!v.ok) return {ok: false, why: 'layer ' + li + ' take ' + tk + ': ' + v.why, transient: v.transient};
+   entries.push(v.entry);
+  }
+  return {ok: true, entries: entries};
+ },
+ // One voice's entry: `pick` names the take of a recorded lane (null for any other), `id` the number it is held under.
+ _buildOne: async function(part, kit, lane, pick, id){
   if(!MODGRAPH.on || !MODGRAPH.parts[part]) return {ok: false, why: 'the ' + part + ' part is not on the graph path (Native sound)'};
   var self = this, ctx = audioCtx, sr = ctx.sampleRate;
   var LEAD = this.LEADF / sr, AT0 = LEAD;
   var R = async function(o, chokeAt, perVoice){
    if(typeof window._chokeReset==='function') window._nsBank.resetProbeChokes();
-   return self.record(Object.assign({kind: 'hit', part: part, id: 1, kit: kit, lane: lane, vel: 0.9, accent: false, pitch: 0, dyn: null, at: AT0}, o), chokeAt, perVoice);
+   if(pick) window.__sqPickMiss = false;
+   return self.record(Object.assign({kind: 'hit', part: part, id: 1, kit: kit, lane: lane, vel: 0.9, accent: false, pitch: 0, dyn: null, at: AT0, pick: pick}, o), chokeAt, perVoice);
   };
   await R({});                                   // the first recording of a voice builds caches that draw random numbers: thrown away
   // The reference is recorded with its chokes: what the page's hat-choke does to each node the voice registered, once
   // per registration (_nsBank.record). A lane in no group registers nothing and gets an empty list.
   var ref = await R({}, AT0, true);
+  if(pick && window.__sqPickMiss) return {ok: false, why: 'its recording has not loaded', transient: true};
   if(!ref) return {ok: false, why: 'makes no voice (or more than one)'};
   if(ref.edits) return {ok: false, why: 'edits itself after it starts'};
   var P0 = ref.prog, n = P0.length;
   var rec = async function(o){ var r = await R(o); return r && r.prog.length === n && !r.edits ? r.prog : null; };
+  // With a pick the take no longer follows `dyn`, so this passes; a layered lane without one (no layout) is refused here.
   var dy = await rec({dyn: 0.5});
   if(!dy || dy.some(function(x, i){ return x !== P0[i]; })) return {ok: false, why: 'layered: picks its recording by stroke strength'};
   var v1 = await rec({vel: 0.45}), v2 = await rec({vel: 0.7}), ac = await rec({accent: true}), p1 = await rec({pitch: -2}), p2 = await rec({pitch: 3});
@@ -61758,9 +61795,11 @@ window._nsBank = {
   var fp = this._fit(P0, 1, p1, x2(-2), p2, x2(3)), fpl = fp.slots.map(function(q){ return [q[0], q[1], 0]; });
   if(fp.bad.length){
    var f2 = this._fit(P0, 0, p1, -2, p2, 3), ok2 = {}; f2.slots.forEach(function(q){ ok2[q[0]] = q[1]; });
-   var rest = fp.bad.filter(function(i){ return ok2[i] === undefined; });
+   // Where a recorded sample stops: its length over the playback rate, so a line in 1 / frequency (basis 2).
+   var f3 = this._fit(P0, 1, p1, 1 / x2(-2), p2, 1 / x2(3)), ok3 = {}; f3.slots.forEach(function(q){ ok3[q[0]] = q[1]; });
+   var rest = fp.bad.filter(function(i){ return ok2[i] === undefined && ok3[i] === undefined; });
    if(rest.length) return {ok: false, why: rest.length + ' pitch slots follow neither frequency nor note number'};
-   fp.bad.forEach(function(i){ fpl.push([i, ok2[i], 1]); });
+   fp.bad.forEach(function(i){ if(ok2[i] !== undefined) fpl.push([i, ok2[i], 1]); else fpl.push([i, ok3[i], 2]); });
   }
   var ft = this._fit(P0, AT0, t1, AT0 + 0.02, t2, AT0 + 0.05);
   if(ft.bad.length) return {ok: false, why: ft.bad.length + ' time slots do not move with the start time (a voice that draws noise from the clock)'};
@@ -61770,7 +61809,7 @@ window._nsBank = {
   if(!jn) return {ok: false, why: 'the joint recording changes size'};
   var touch = {};
   var tally = function(list, x0, x, basis){ list.forEach(function(q){ (touch[q[0]] = touch[q[0]] || []).push([q[1], x0, x]); }); };
-  tally(fv.slots, 0.9, 0.45); tally(fa, 0, 1); tally(fpl.filter(function(q){ return !q[2]; }), 1, x2(-2)); tally(fpl.filter(function(q){ return q[2]; }), 0, -2);
+  tally(fv.slots, 0.9, 0.45); tally(fa, 0, 1); tally(fpl.filter(function(q){ return !q[2]; }), 1, x2(-2)); tally(fpl.filter(function(q){ return q[2] === 1; }), 0, -2); tally(fpl.filter(function(q){ return q[2] === 2; }), 1, 1 / x2(-2));
   var mul = [];
   for(var k in touch){
    var L = touch[k]; if(L.length < 2) continue;
@@ -61780,7 +61819,7 @@ window._nsBank = {
    if(near(add)) continue;
    if(near(mu)) mul.push(+k); else return {ok: false, why: 'slot ' + k + ' follows several parameters in a way that is neither a sum nor a product'};
   }
-  var d = [1, part === 'auxperc' ? 1 : 0, window._nsKitCode(kit), lane, ++this.gen, AT0, LEAD, 0.9, n];
+  var d = [1, part === 'auxperc' ? 1 : 0, window._nsKitCode(kit), id, ++this.gen, AT0, LEAD, 0.9, n];
   for(var j = 0; j < n; j++) d.push(P0[j]);
   var put = function(list, withBasis){ d.push(list.length); list.forEach(function(q){ d.push(q[0], q[1], withBasis ? (q[2] || 0) : 0); }); };
   put(fv.slots.map(function(q){ return [q[0], q[1], 0]; }), true); put(fa.map(function(q){ return [q[0], q[1], 0]; }), true); put(fpl, true);
@@ -62775,6 +62814,11 @@ window._nsBank = {
   }
   return rep;
  },
+ // A built lane's entries to the engine; false when it refuses one.
+ send: async function(P, r){
+  for(var i = 0; i < r.entries.length; i++){ var sent = await P.seqBank({entry: _mgB64(r.entries[i])}); if(sent && sent.ok === false) return false; }
+  return true;
+ },
  // What a recording of this lane has baked in: the Drums (or Aux) fader, and the lane's Shape. The same lane recorded under
  // another signature is another voice.
  signature: function(part, kit, lane){
@@ -62793,8 +62837,8 @@ window._nsBank = {
    if(this.have[key] === sig){ rep.kept++; continue; }
    if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings' + (this.badWhy[key] ? ' (first refusal: ' + this.badWhy[key] + ')' : '')}); continue; }
    var r = await this.build(part, L.mach, ti);
-   if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
-   else { this.bad[key] = sig; this.badWhy[key] = r.why; delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
+   if(r.ok && await this.send(P, r)){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
+   else { if(r.ok) r = {ok: false, why: 'the engine refused a bank entry'}; if(!r.transient){ this.bad[key] = sig; this.badWhy[key] = r.why; } delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
   }
   return rep;
  },
@@ -62812,8 +62856,8 @@ window._nsBank = {
     if(this.have[key] === sig){ rep.kept++; continue; }
    if(this.bad[key] === sig){ rep.failed.push({key: key, why: 'this voice was refused under the current settings' + (this.badWhy[key] ? ' (first refusal: ' + this.badWhy[key] + ')' : '')}); continue; }
     var r = await this.build(part, L.mach, ti);
-    if(r.ok){ await P.seqBank({entry: _mgB64(r.entry)}); this.have[key] = sig; delete this.bad[key]; rep.built++; }
-    else { this.bad[key] = sig; this.badWhy[key] = r.why; delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
+    if(r.ok && await this.send(P, r)){ this.have[key] = sig; delete this.bad[key]; rep.built++; }
+    else { if(r.ok) r = {ok: false, why: 'the engine refused a bank entry'}; if(!r.transient){ this.bad[key] = sig; this.badWhy[key] = r.why; } delete this.have[key]; rep.failed.push({kit: L.mach, lane: ti, name: M.tracks[ti].n, why: r.why}); }
    }
   }
   return rep;
@@ -63454,7 +63498,7 @@ window._nsDrumQueue={
   for(var key of Object.keys(needed)){
    var v=needed[key],bank=window._nsBank,bs=bank.signature(v.part,v.kit,v.lane);if(bank.have[key]===bs)continue;
    await sqPreloadKit(v.kit);var r=await bank.build(v.part,v.kit,v.lane);if(!r.ok)return r;
-   var result=await P.seqBank({entry:_mgB64(r.entry)});if(!result||!result.ok)return {ok:false,why:'queued drum bank refused'};bank.have[key]=bs;
+   if(!await bank.send(P,r))return {ok:false,why:'queued drum bank refused'};bank.have[key]=bs;
   }
   var out=await P.seqDrumQueue({score:_mgB64(Float64Array.from(payload))});if(out&&out.ok){me.sig=sig;var keep=new Set((me.activeTags||[]).concat(newTags,[me.currentTag]));Object.keys(me.states).forEach(function(k){if(!keep.has(+k))delete me.states[k];});me.activeTags=newTags;}return out;
  },

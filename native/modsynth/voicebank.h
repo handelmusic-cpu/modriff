@@ -43,7 +43,7 @@ struct DurSlot {
 struct BankChoke {
   double until = 0;          // seconds after the onset the voice ends by itself; a choke after that finds nothing to cut
   std::vector<double> ops;
-};   // basis 0: linear in the quantity, 1: linear in the semitones (pitch only)
+};   // basis 0: linear in the quantity, 1: linear in the semitones, 2: linear in 1 / the quantity (pitch only; a sample stops after duration / rate)
 
 struct BankEntry {
   struct TuneSlot { int i, mode; }; // 0 additive cents, 1 multiplicative frequency
@@ -184,6 +184,25 @@ class DrumBank {
     return it == entries_.end() ? nullptr : it->second.get();
   }
 
+  // A recorded kit's lane is not one voice but one per take of each velocity layer (the page's sqLayerTrack picks the layer by how hard the
+  // stroke is and alternates the takes). Each is its own entry under the lane number moved up by 64 * (1 + layer * 8 + take); the layers and
+  // takes that exist are whichever of those keys are held, so the page's layout is not sent twice. A lane that is one voice is under its own number.
+  static constexpr int kVariantStep = 64, kMaxLayers = 8, kMaxTakes = 8;
+  static int variantLane(int lane, int layer, int take) { return lane + kVariantStep * (1 + layer * kMaxTakes + take); }
+  // The take for a hit of `dyn` (how hard the stroke is within its step) on its `turn`th play of the lane, or null for a lane with no
+  // variants. The same arithmetic as the page's: _drumLayerFor, then turn % takes (index.html, sqLayerTrack).
+  const BankEntry *findVariant(int part, int kit, int lane, double dyn, bool accent, uint64_t turn) const {
+    if (lane < 0 || lane >= kVariantStep) return nullptr;
+    int layers = 0;
+    while (layers < kMaxLayers && find(part, kit, variantLane(lane, layers, 0))) layers++;
+    if (!layers) return nullptr;
+    const double d = dyn * (accent ? 1.25 : 1.0), f = std::floor((d - 0.2) / 1.1 * layers);
+    const int want = f != f ? 0 : f < 0 ? 0 : f > layers - 1 ? layers - 1 : (int)f;
+    int takes = 0;
+    while (takes < kMaxTakes && find(part, kit, variantLane(lane, want, takes))) takes++;
+    return find(part, kit, variantLane(lane, want, (int)(turn % (uint64_t)(takes ? takes : 1))));
+  }
+
   // The voice for a hit: its program patched for this velocity, accent and pitch, and where and when to begin it.
   // `onsetFrame` is the frame the note should sound on; `notBefore` the earliest frame a voice can still be begun at
   // (a hit that is already late starts there).
@@ -196,10 +215,11 @@ class DrumBank {
     std::vector<unsigned char> cnt(n, 0);
     for (const auto *l : {&e.vel, &e.accent, &e.pitch, &e.from, &e.level, &e.pan, &e.gtime}) for (const BankSlot &s : *l) if (s.i >= 0 && (size_t)s.i < n) cnt[(size_t)s.i]++;
     // Each parameter has one or two bases (a slot is linear in either): the value now and the reference's, per basis.
-    auto apply = [&](const std::vector<BankSlot> &l, double xA, double x0A, double xB, double x0B) {
+    // basis 2 is the reciprocal of basis 0 (the pitch's 1/ratio): a recorded sample stops after duration / playbackRate.
+    auto apply = [&](const std::vector<BankSlot> &l, double xA, double x0A, double xB, double x0B, double xC = 0, double x0C = 0) {
       for (const BankSlot &s : l) {
         if (s.i < 0 || (size_t)s.i >= n) continue;
-        const double x0 = s.basis ? x0B : x0A, x = s.basis ? xB : xA;
+        const double x0 = s.basis == 2 ? x0C : s.basis ? x0B : x0A, x = s.basis == 2 ? xC : s.basis ? xB : xA;
         const double p = e.prog[(size_t)s.i];
         if (cnt[(size_t)s.i] > 1 && e.mul[(size_t)s.i]) {
           if (p != 0) out.prog[(size_t)s.i] *= ((p - s.b * x0) + s.b * x) / p;
@@ -211,7 +231,7 @@ class DrumBank {
     apply(e.vel, vel, e.refVel, vel, e.refVel);
     apply(e.accent, accent ? 1.0 : 0.0, 0.0, accent ? 1.0 : 0.0, 0.0);
     pitchSemis -= e.refPitch;
-    apply(e.pitch, std::pow(2.0, pitchSemis / 12.0), 1.0, pitchSemis, 0.0);
+    apply(e.pitch, std::pow(2.0, pitchSemis / 12.0), 1.0, pitchSemis, 0.0, std::pow(2.0, -pitchSemis / 12.0), 1.0);
     if (!e.level.empty()) apply(e.level, level, e.refLevel, level, e.refLevel);
     if (!e.pan.empty()) apply(e.pan, pan, e.refPan, pan, e.refPan);
     if (!e.gtime.empty()) apply(e.gtime, gtime, e.refGtime, gtime, e.refGtime);

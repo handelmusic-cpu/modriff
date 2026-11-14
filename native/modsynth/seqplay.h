@@ -6,6 +6,7 @@
 #pragma once
 #include <cstdint>
 #include <functional>
+#include <map>
 
 #include "seqcore.h"
 #include "voicebank.h"
@@ -22,10 +23,13 @@ struct DrumPlayer {
   std::function<bool(int, const double *, size_t)> edit;
   uint64_t hits = 0, misses = 0, silent = 0, refused = 0, lateStarts = 0, cuts = 0, cutEdits = 0;
   int lastMissPart = -1, lastMissKit = -1, lastMissLane = -1;
+  // How many times each recorded-kit lane has played: the page's sqLayerTrack alternates a layer's takes by it.
+  std::map<uint64_t, uint64_t> turns;
 
   void resetCounters() {
     hits = misses = silent = refused = lateStarts = cuts = cutEdits = 0;
     for (auto &g : groups) g.clear();
+    turns.clear();
   }
 
   // `now` is the render clock (engine frames): a voice can no longer be begun before it.
@@ -41,9 +45,16 @@ struct DrumPlayer {
       if (sent) { cuts++; cutEdits += (uint64_t)sent; }
     }
     const BankEntry *en = bank.find(e.part, e.kit, e.lane);
+    double pitch = e.pitch;
+    if (!en) {
+      // A recorded kit's lane: its layer and take, and the page's clamp of the playback rate to two octaves either way.
+      const uint64_t k = ((uint64_t)(e.part & 0xff) << 40) | ((uint64_t)(e.kit & 0xffffff) << 16) | (uint64_t)(e.lane & 0xffff);
+      en = bank.findVariant(e.part, e.kit, e.lane, e.dyn, e.accent, turns[k]++);
+      if (en) pitch = pitch < -24 ? -24 : pitch > 24 ? 24 : pitch;
+    }
     if (!en) { misses++; lastMissPart = e.part; lastMissKit = e.kit; lastMissLane = e.lane; return; }
     PatchedVoice v;
-    bank.patch(*en, e.vel, e.accent, e.pitch, e.frame, sr, (uint64_t)now, v);
+    bank.patch(*en, e.vel, e.accent, pitch, e.frame, sr, (uint64_t)now, v);
     const int h = begin(v.prog.data(), v.prog.size(), v.timeBase, v.startFrame);
     if (h < 0) { refused++; return; }
     hits++;

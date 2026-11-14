@@ -74,7 +74,9 @@ What this does **not** show yet (the spike in section 6 must): that a program pa
 *audibly identical* to a freshly recorded one (the 1.1225 ratio is exact for a pitch step, but a filter
 cutoff that tracks pitch or a velocity-dependent filter would show up as slots that do not scale
 uniformly), and what a layered kit does (`dyn` picks a recording by stroke strength: that is a different
-program, not a scaled one, so it is part of the key).
+program, not a scaled one, so it is part of the key). Settled at 7.1a: a recorded lane is one bank entry per take of
+each velocity layer (lane number + 64 * (1 + layer * 8 + take)); the engine picks the layer from the hit's `dyn` and
+alternates the takes (`DrumBank::findVariant`), and a sample's stop time is a line in 1 / playback rate (pitch basis 2).
 
 ## 4. Design
 
