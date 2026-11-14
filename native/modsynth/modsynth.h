@@ -14,6 +14,7 @@
 #include <memory>
 #include <vector>
 #include "jsnum.h"
+#include "../macroosc/macrovoice.h"
 #include "params_gen.h"
 
 namespace modsynth {
@@ -31,7 +32,7 @@ constexpr int MOTION_MAX = 16;
 constexpr double TWO_PI = js::PI * 2;
 constexpr double OUT_TRIM = 0.5;
 constexpr int N_OSC = 3;
-constexpr int N_DST = 42;
+constexpr int N_DST = 46;
 constexpr int N_SRC = 32;
 constexpr int PD_N = 8192, PD_R = 32;
 
@@ -109,6 +110,9 @@ struct Voice {
   double alt = 1, randA = 0, randB = 0;
   double lastAmp = 0;
   double choke = 1; bool choking = false;
+  // The macro oscillator source (native/macroosc), one per voice, built with the Processor so the render
+  // thread never allocates. Not in dsp.js: the worklet has no such source, so the null test never turns it on.
+  std::unique_ptr<macroosc::MacroVoice> macro;
 
   explicit Voice(int id);
   void reset();
@@ -139,6 +143,8 @@ struct Voice::Snap {
   uint8_t lfoSync[3] = {}; int32_t lfoMode[3] = {}; f32 lfoPw[3];
   struct M { bool on = false; int steps = 1; double div = 1, rate = 0; bool sync = false; double slew = 0; int mode = 0; double depth = 0; } mot[2];
   bool crushOn = false; double crushBits = 1, crushRate = 0.02, crushMix = 0;
+  // Macro oscillator (native only; see Voice::macro).
+  double macroMix = 0, macroHarm = 0.5, macroTimb = 0.5, macroMorph = 0.5, macroEnv = 0, macroOct = 0; int macroModel = 0;
 };
 using Snap = Voice::Snap;
 

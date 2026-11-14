@@ -52,6 +52,14 @@
     ['hollow',   'Hollow'],     // odd partials with a formant tilt — clarinet-ish
   ];
 
+  // Macro oscillator models (native/macroosc/macrovoice.cc kModelInfo, same ids and order; check.sh
+  // compares them). Named by how they sound. Appended, never inserted: a patch stores the id.
+  const MACRO_MODELS = [
+    ['filtered', 'Filtered Analog'], ['bend', 'Phase Bend'], ['ensemble', 'Ensemble'], ['chip', 'Chip'],
+    ['analog', 'Dual Analog'], ['shaper', 'Wave Shaper'], ['fm', 'FM Pair'], ['grain', 'Grain'],
+    ['additive', 'Additive'], ['swarm', 'Swarm'], ['string', 'Plucked String'], ['modal', 'Modal Bar'],
+  ];
+
   const SUB_WAVES   = [['sine', 'Sine'], ['tri', 'Tri'], ['square', 'Square'], ['saw', 'Saw']];
   const NOISE_TYPES = [['white', 'White'], ['pink', 'Pink'], ['blue', 'Blue'], ['crackle', 'Crackle']];
 
@@ -160,6 +168,8 @@
     // stay last: the host takes the FX destinations as slice(-6).
     ['osc3.fine', 'Osc 3 Pitch'], ['osc3.shape', 'Osc 3 Shape'], ['osc3.level', 'Osc 3 Level'],
     ['mix.fm3', 'FM from Osc 3'],
+    // Macro Osc (native engine only; the worklet ignores these). Before the FX block, as osc 3's were.
+    ['mix.mosc', 'Macro Level'], ['mosc.harmonics', 'Macro Harmonics'], ['mosc.timbre', 'Macro Timbre'], ['mosc.morph', 'Macro Morph'],
     ['fx.drive.amount', 'FX Drive'], ['fx.delay.mix', 'Delay Mix'],
     ['fx.reverb.mix', 'Reverb Mix'], ['fx.chorus.mix', 'Chorus Mix'],
     ['fx.phaser.rate', 'Phaser Rate'], ['fx.crush.mix', 'Crush Mix'],
@@ -471,6 +481,20 @@
   i('arp.ratchet', 'Ratchet', 1, 4, 1, H);
   f('arp.chance',  'Chance', 0, 1, 1, H);
 
+  /* ════════════════ MACRO OSCILLATOR (native engine only) ════════════════
+     One more source beside the pluck and sub, a synthesis model with three
+     controls whose meaning changes with the model. Played by the C++ engine
+     (native/macroosc); the web worklet has no such source and ignores these, so
+     the free web page keeps them out of its patch list. Appended after every
+     other parameter so no index moves. */
+  f('mix.mosc',       'Macro Osc',  0, 1, 0);
+  e('mosc.model',     'Model',      MACRO_MODELS, 'filtered');
+  f('mosc.harmonics', 'Harmonics',  0, 1, 0.5);
+  f('mosc.timbre',    'Timbre',     0, 1, 0.5);
+  f('mosc.morph',     'Morph',      0, 1, 0.5);
+  f('mosc.env',       'Timbre Env', -1, 1, 0);
+  i('mosc.oct',       'Octave',     -3, 2, 0);
+
   /* ════════════════ Derived tables ════════════════ */
   const DSP_PARAMS  = PARAMS.filter(p => p.target === 'dsp');
   const HOST_PARAMS = PARAMS.filter(p => p.target === 'host');
@@ -589,6 +613,7 @@
 
   MS.WAVES = WAVES;
   MS.SUB_WAVES = SUB_WAVES;
+  MS.MACRO_MODELS = MACRO_MODELS;
   MS.NOISE_TYPES = NOISE_TYPES;
   MS.FILTER_MODELS = FILTER_MODELS;
   MS.FILTER_ROUTES = FILTER_ROUTES;

@@ -3,13 +3,23 @@
 # rounding (FMA, the default on ARM), and the engine stops matching dsp.js in
 # the last bit. Any other build of these files (the iOS app's) needs it too.
 CXX ?= c++
-CXXFLAGS ?= -std=c++17 -O2 -ffp-contract=off -Wall -Wno-misleading-indentation -Wno-maybe-uninitialized
+CXXFLAGS ?= -std=c++17 -O2 -ffp-contract=off -Wall -Wno-misleading-indentation -Wno-maybe-uninitialized -I../macroosc
 
-render: render.cpp modsynth.cpp fdlibm.cc modsynth.h jsnum.h params_gen.h
-	$(CXX) $(CXXFLAGS) -o $@ render.cpp modsynth.cpp fdlibm.cc
+# The macro oscillator's synthesis models (native/macroosc), linked into every build of modsynth.cpp.
+MACROLIB = ../macroosc/libmacroosc.a
+.PHONY: $(MACROLIB)
+$(MACROLIB):
+	@$(MAKE) -s -C ../macroosc libmacroosc.a
+
+render: render.cpp modsynth.cpp fdlibm.cc modsynth.h jsnum.h params_gen.h $(MACROLIB)
+	$(CXX) $(CXXFLAGS) -o $@ render.cpp modsynth.cpp fdlibm.cc $(MACROLIB)
 
 params_gen.h: ../../modsynth/params.js gen-params.js
 	node gen-params.js
+
+# The macro oscillator through the real Processor: levels against one default oscillator, peaks, CPU.
+macrolevel: macrolevel.cpp modsynth.cpp fdlibm.cc modsynth.h params_gen.h $(MACROLIB)
+	$(CXX) $(CXXFLAGS) -o $@ macrolevel.cpp modsynth.cpp fdlibm.cc $(MACROLIB)
 
 # The effects rack: fxtest measures each stage, fxwire proves a matrix macro
 # reaches it through the engine. Neither is a null test (see fxrack.h).
@@ -17,10 +27,10 @@ fxtest: fxtest.cpp fxrack.cpp fxrack.h params_gen.h
 	$(CXX) $(CXXFLAGS) -o $@ fxtest.cpp fxrack.cpp
 sendtest: sendtest.cpp fxrack.cpp fxrack.h params_gen.h
 	$(CXX) $(CXXFLAGS) -o $@ sendtest.cpp fxrack.cpp
-fxwire: fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc fxrack.h modsynth.h params_gen.h
-	$(CXX) $(CXXFLAGS) -o $@ fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc
-hangtest: hangtest.cpp modsynth.cpp fdlibm.cc modsynth.h params_gen.h
-	$(CXX) $(CXXFLAGS) -o $@ hangtest.cpp modsynth.cpp fdlibm.cc
+fxwire: fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc fxrack.h modsynth.h params_gen.h $(MACROLIB)
+	$(CXX) $(CXXFLAGS) -o $@ fxwire.cpp fxrack.cpp modsynth.cpp fdlibm.cc $(MACROLIB)
+hangtest: hangtest.cpp modsynth.cpp fdlibm.cc modsynth.h params_gen.h $(MACROLIB)
+	$(CXX) $(CXXFLAGS) -o $@ hangtest.cpp modsynth.cpp fdlibm.cc $(MACROLIB)
 mixfxtest: mixfxtest.cpp mixfx.cpp mixfx.h dspkit.h modfxproc.cpp modfxproc.h fdlibm.cc
 	$(CXX) $(CXXFLAGS) -o $@ mixfxtest.cpp mixfx.cpp modfxproc.cpp fdlibm.cc
 wkrender: wkrender.cpp modfxproc.cpp modfxproc.h jsnum.h fdlibm.cc
@@ -36,14 +46,14 @@ capturetest: capturetest.cpp capture.h
 	$(CXX) $(CXXFLAGS) -pthread -o $@ capturetest.cpp
 # The capture path through the real ModEngineHost.mm (macOS only).
 HOSTDIR = ../../ios/App/App/ModEngine
-graphhosttest: synthseq.h graphhosttest.mm seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
-	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ graphhosttest.mm $(HOSTDIR)/ModEngineHost.mm graphpool.cpp graph.cpp basscore.cpp seqcore.cpp voicebank.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+graphhosttest: synthseq.h graphhosttest.mm seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp $(MACROLIB)
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -I../macroosc -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ graphhosttest.mm $(HOSTDIR)/ModEngineHost.mm graphpool.cpp graph.cpp basscore.cpp seqcore.cpp voicebank.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp $(MACROLIB)
 
-hosttest: synthseq.h hosttest.mm seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
-	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ hosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+hosttest: synthseq.h hosttest.mm seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp $(MACROLIB)
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -I../macroosc -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ hosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp $(MACROLIB)
 # The speaker hears nothing while a part is warmed up (macOS only).
-warmtest: synthseq.h warmtest.mm seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
-	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ warmtest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+warmtest: synthseq.h warmtest.mm seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp $(MACROLIB)
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -I../macroosc -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ warmtest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp $(MACROLIB)
 # The master EQ against the browser's BiquadFilterNode responses.
 eqtest: eqtest.cpp master.cpp master.h dspkit.h mixfx.cpp mixfx.h modfxproc.cpp modfxproc.h fdlibm.cc
 	$(CXX) $(CXXFLAGS) -o $@ eqtest.cpp master.cpp mixfx.cpp modfxproc.cpp fdlibm.cc
@@ -53,12 +63,12 @@ fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimt
 	./trimtest | tail -1 && ./eqtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js && node ../../tests/modsynth/mixfx-order.test.js && node ../../tests/modsynth/gatepat.test.js
 
 # The sequencer's thread in the real host: steps on the render clock with no page, mirror, tempo, stop (macOS only).
-seqhosttest: extraseq.h chordplay.h chordcomp.h synthseq.h seqhosttest.mm arpcore.h arpplay.h melcore.h melplay.h melcell.h seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h songvoice.h voicing.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
-	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp songcore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+seqhosttest: extraseq.h chordplay.h chordcomp.h synthseq.h seqhosttest.mm arpcore.h arpplay.h melcore.h melplay.h melcell.h seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h songvoice.h voicing.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp $(MACROLIB)
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -I../macroosc -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ seqhosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp songcore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp $(MACROLIB)
 
 # Ableton Link steering through the real host, the session faked (no SDK).
-linkhosttest: linksteer.h extraseq.h chordplay.h chordcomp.h synthseq.h linkhosttest.mm arpcore.h arpplay.h melcore.h melplay.h melcell.h seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h songvoice.h voicing.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp
-	$(CXX) -std=c++17 -O2 -ffp-contract=off -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ linkhosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp songcore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp
+linkhosttest: linksteer.h extraseq.h chordplay.h chordcomp.h synthseq.h linkhosttest.mm arpcore.h arpplay.h melcore.h melplay.h melcell.h seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h songvoice.h voicing.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp $(MACROLIB)
+	$(CXX) -std=c++17 -O2 -ffp-contract=off -I../macroosc -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ linkhosttest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp songcore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp $(MACROLIB)
 
 clean:
 	rm -f chartedittest seqobservetest synthseqtest melseqtest meltool arpseqtest arptool songtool tempotest banktest chordtool chordtest chordseqtest bassscoretest scoretest basstool seqhosttest seqtool graphhosttest sendtest eqtest render fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest hosttest warmtest wkrender

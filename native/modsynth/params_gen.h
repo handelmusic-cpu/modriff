@@ -1,7 +1,7 @@
 // Generated from modsynth/params.js by gen-params.js. Do not edit.
 #pragma once
 namespace modsynth {
-constexpr int PARAM_COUNT = 262;
+constexpr int PARAM_COUNT = 269;
 struct ParamInfo { const char* id; int index; float def; };
 static const ParamInfo PARAM_INFO[PARAM_COUNT] = {
   {"voice.poly", 0, 8.00000000f},
@@ -266,6 +266,13 @@ static const ParamInfo PARAM_INFO[PARAM_COUNT] = {
   {"fx.crush.bits", 259, 12.0000000f},
   {"fx.crush.rate", 260, 1.00000000f},
   {"fx.crush.mix", 261, 1.00000000f},
+  {"mix.mosc", 262, 0.00000000f},
+  {"mosc.model", 263, 0.00000000f},
+  {"mosc.harmonics", 264, 0.500000000f},
+  {"mosc.timbre", 265, 0.500000000f},
+  {"mosc.morph", 266, 0.500000000f},
+  {"mosc.env", 267, 0.00000000f},
+  {"mosc.oct", 268, 0.00000000f},
 };
 constexpr int HOST_FX_COUNT = 56;
 struct HostFxInfo { const char* id; float def, min, max; int kind; };
