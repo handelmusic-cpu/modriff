@@ -245,11 +245,13 @@ Profile: Handel.modRiff` embedded and the sandbox entitlements present. Not done
 Store Connect (a build cannot be uploaded until it exists), then upload, and the purchase flow on the Mac through
 StoreKit. Audio and bounce saving work on the Mac (owner-tested).
 
-Three **iPhone app preview videos** are in `docs/app-store/previews/2026-11-13/`: Play in key,
-Build a groove, Shape a song. Each is 24 seconds of native Simulator footage with the app's own audio,
-captions and an IAP disclosure, exported at 886 × 1920 / 30 fps (H.264 + stereo AAC). The folder has
-5-second poster frames, measured export checks and the capture/edit sources. Not uploaded or processed
-by App Store Connect; not heard on a physical iPhone. iPad and Mac need their own footage.
+The current **iPhone app preview** is `docs/app-store/previews/high-impact/modriff-in-motion-app-store.mp4`:
+27.1 seconds of native Simulator footage at 124 BPM, kinetic captions, an original score made with the
+app's C++ synth engine, and an IAP disclosure. Export: 886 × 1920 / 30 fps, H.264 + stereo AAC. The same
+folder has a separate campaign film with motion graphics, poster frames, measured audio/video checks
+and editable sources. The campaign film is for web/social, not the App Store upload. Not uploaded or
+processed by App Store Connect; not heard on a physical iPhone. The three earlier 24-second cuts remain
+in `previews/2026-11-13/`. iPad and Mac need their own footage.
 
 The Duo draws its clock and status pill down the right edge and reports a right inset of 84pt (measured in the simulator:
 top 0, right 84, bottom 34, left 0). 1398 x 2034 is not one of the sizes App Store Connect lists, so the Duo set is a
