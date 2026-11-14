@@ -151,16 +151,16 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   // ── 6. A real drum loop from the app's own library.
   const real = await page.evaluate(async () => {
     const ctx = getCtx();
-    const bytes = await (await fetch('samples/loops/world/drumset.mp3')).arrayBuffer();
+    const bytes = await (await fetch('samples/loops/samba/pandeiro.mp3')).arrayBuffer();
     const buf = await ctx.decodeAudioData(bytes);
     const L = buf.getChannelData(0), R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
     const wav = await _floatsToWavBlob(L, R, buf.sampleRate, null).arrayBuffer();
-    const c = smpAddClip({ name: 'Drumset', src: 'rec' }, buf, wav, 'audio/wav');
+    const c = smpAddClip({ name: 'Pandeiro', src: 'rec' }, buf, wav, 'audio/wav');
     smpAttach('p:C:0', c.id); SMP_SLOTS['p:C:0'].start = 0; SMP_SLOTS['p:C:0'].end = 1;
     const hits = smpFindOnsets(c.id, 0, 1, 15);
     return { dur: buf.duration, hits: hits.map(h => +(h * buf.duration).toFixed(3)) };
   });
-  console.log('     drumset.mp3 (' + real.dur.toFixed(2) + ' s): hits at ' + real.hits.join(' '));
+  console.log('     pandeiro.mp3 (' + real.dur.toFixed(2) + ' s): hits at ' + real.hits.join(' '));
   check(real.hits.length >= 4 && real.hits.length <= 15, 'a real drum loop gives a plausible number of hits', real.hits.length);
   check(real.hits.every((h, k) => k === 0 || h - real.hits[k - 1] >= 0.04), 'none closer than 40 ms');
   // The loop is two bars of sixteenths, so a real hit sits on a multiple of dur/32.

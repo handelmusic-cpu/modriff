@@ -592,15 +592,6 @@ bateria at 110 and are the Samba Band; the rest are Samba Loops, with sets at
 
 surdo-f ← x-surdo-4bar-f ([36110](https://freesound.org/s/36110/)) · caixeta-f ← x-caixeta-4bar-f ([36111](https://freesound.org/s/36111/)) · pandeiro-f ← x-pandeiro-4barf ([36116](https://freesound.org/s/36116/)) · repinique-f ← x-repinique-4bar-f ([36117](https://freesound.org/s/36117/)) · shaker-f ← x-shake-4bar-f ([36120](https://freesound.org/s/36120/)) · tamborim-f ← x-tamb-4bar-f ([36132](https://freesound.org/s/36132/)) · repinique ← repinique-loop ([36108](https://freesound.org/s/36108/)) · repinique-a ← x-repinique-4bar-a ([36118](https://freesound.org/s/36118/)) · repinique-b ← x-repinique-5bar-b ([36119](https://freesound.org/s/36119/)) · surdo-d ← x-surdo-4bar-d ([36127](https://freesound.org/s/36127/)) · pandeiro-d ← x-pand-2bar-d ([36112](https://freesound.org/s/36112/)) · pandeiro-c2 ← x-pandeiro-2bar-c2 ([36114](https://freesound.org/s/36114/)) · tamborim-c ← x-tamb-2bar-c ([36129](https://freesound.org/s/36129/)) · tamborim-e ← x-tamp-2bar-e ([36133](https://freesound.org/s/36133/)) · shaker-e ← x-shake-1bar-e ([36122](https://freesound.org/s/36122/)) · pandeiro-c ← x-pandeiro-2bar-c ([36113](https://freesound.org/s/36113/)) · pandeiro-b ← x-pandero-2bar ([36134](https://freesound.org/s/36134/)) · surdo-b ← x-surdo-2barb ([36126](https://freesound.org/s/36126/)) · tamborim-b ← x-tamb-2-bar-b ([36128](https://freesound.org/s/36128/)) · shaker-b ← x-shake-1bar-b ([36121](https://freesound.org/s/36121/)) · pandeiro ← x-pandeiro-2bar ([36115](https://freesound.org/s/36115/)) · surdo ← x-surd-2bar ([36125](https://freesound.org/s/36125/)) · tamborim ← x-tamb-2bar ([36130](https://freesound.org/s/36130/)) · shaker ← x-shake-2bar ([36123](https://freesound.org/s/36123/)) · tamborim-slow ← x-tamb-4-bar ([36131](https://freesound.org/s/36131/)) · shaker-slow ← x-shake-4bar ([36124](https://freesound.org/s/36124/)) · repinique-call ← repinique-loop-intro ([36109](https://freesound.org/s/36109/))
 
-**World Loops** (`loops/world/`, 396 KB, stereo) — the owner's files
-`DrumSet_Groove`, `Electro_Hi_Drums`, `Weirdo_Drums`,
-`Woodblock_and_stuff_sfx` and `Udu_Groovoo`: the owner's own performance on an
-SPD-15. The first two are exact whole-bar exports (8 beats at 130.01, 16 at
-137.00) and are used whole. The other three were performances, so the beat
-grid was fitted to their onsets (least squares; 9.1, 5.6 and 7.5 ms RMS
-error) and whole bars cut from the first hit: 16 beats at 100.29 for Weirdo
-Drums and Woodblock, 12 at 83.98 — four bars of its 6/8 — for the udu.
-
 All loops have 5 ms fades at both ends. Each set downloads only when asked for
 (`PS_LOOP_SETS`), and a decoded loop is held to its computed length
 (`_psLoopTrim`) in case a decoder leaves mp3's encoder delay and padding in.

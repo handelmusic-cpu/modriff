@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Builds the sampler's recorded loops (4.9.9.3) — samples/loops/samba and
-# samples/loops/world — and prints each one's tempo for PS_FACTORY_KIT.
+# Builds the sampler's recorded loops (4.9.9.3) — samples/loops/samba
+# — and prints each one's tempo for PS_FACTORY_KIT.
 #
 #   python3 -I build/sampler-loops.py index.txt samples
 #
@@ -63,12 +63,6 @@ LOOPS = [
  # At ~100.
  ('36131__plotzki__x-tamb-4-bar.aiff',         'samba/tamborim-slow', 8, None),
  ('36124__plotzki__x-shake-4bar.aiff',         'samba/shaker-slow',   8, None),
- # The owner's.
- ('DrumSet_Groove.wav',                        'world/drumset',       8, None),
- ('Electro_Hi_Drums.wav',                      'world/electro',      16, None),
- ('Weirdo_Drums.wav',                          'world/weirdo',       16, (0.6128, 0.59827)),
- ('Woodblock_and_stuff_sfx.wav',               'world/woodblock',    16, (0.7339, 0.59827)),
- ('Udu_Groovoo.wav',                           'world/udu',          12, (2.2747, 0.71444)),
 ]
 # The pack's one-shot pickup ("repinique-loop-intro"): a call, not a loop.
 ONESHOT = [('36109__plotzki__repinique-loop-intro.aiff', 'samba/repinique-call')]

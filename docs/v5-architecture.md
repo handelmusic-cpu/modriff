@@ -384,9 +384,8 @@ end (what the handles already were), within the window between the handles. Hits
 the clip's power in ~6 ms frames, in log units: a jump of more than about 3x in a few frames, the
 strongest few at least 40 ms apart, each pulled back to the first sample that is a quarter of the
 peak after it. Undo (the toast's) puts back what the pads held, a pad that held nothing included.
-Measured in `tests/slice/probe.js`: eight known hits found within 2 ms, and the 15 hits it finds
-in the app's own `samples/loops/world/drumset.mp3` all lie within 4 ms of that loop's sixteenth-note
-grid. Resample (record what the app is playing into the library) was already there. Not done:
+Measured in `tests/slice/probe.js`: eight known hits found within 2 ms, and the hits it finds in the app's own
+`samples/loops/samba/pandeiro.mp3` number at most 15, none closer than 40 ms. Resample (record what the app is playing into the library) was already there. Not done:
 slicing a drum lane or a voice, a count between 17 and 32, and a slice that follows the tempo.
 
 **The practice trainer (4.9.9.9.9.9.9 to 9b).** Songs > Perform has a Practice row under
