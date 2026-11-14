@@ -9424,7 +9424,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.9.3</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.9.4</span></div>
  </div>
 </div>
 
@@ -10902,7 +10902,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.9.3</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.9.4</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12102,7 +12102,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.9.3';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.9.4';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -38168,31 +38168,32 @@ function _ppPatchCur(hostId, partKey){
  return { name: nm.replace(/\s*[\u25c6\u25c8]$/, ''), note: where };
 }
 function _ppDefine(){
- PP_SPECS.groove = { cell:'pp-cell-groove', cap:'Groove', color:function(){ return _ppPartColor('drum'); },
+ // The Groove box on the Drums page follows the layer the grid is editing, as the Kit box does: the same list of patterns, loaded on
+ // that layer only and on that layer's own kit. It used to load the groove on both layers, which is how a pick on Drums
+ // rewrote Aux and, on Aux, how the kit changed.
+ var _ppFocusPart = function(){ return (typeof window._sqFocusNow==='function' && window._sqFocusNow()===1) ? 'aux' : 'drums'; };
+ PP_SPECS.groove = { cell:'pp-cell-groove', cap:'Groove', color:function(){ return _ppPartColor(_ppFocusPart()==='aux' ? 'auxperc' : 'drum'); },
+  capNow:function(){ return _ppFocusPart()==='aux' ? 'Aux groove' : 'Groove'; },
   items:function(){
-   var btns = Array.prototype.slice.call(document.querySelectorAll('#sq-groove-presets > .groove-btn'));
-   var list = (typeof RHYTHMS !== 'undefined' ? RHYTHMS : []).map(function(r, i){
-    var b = btns[i];
-    return { sect: r.fam || 'More', label: r.name, title: (r.tip ? r.tip + ' ' : '') + '(' + r.sig + ')',
-             active: i === sqCurGroove, queued: i === sqPendGroove,
-             locked: !!(b && b.classList.contains('tier-locked')),
-             pick: function(){ if(b) b.click(); else sqLoadGroove(i, {autostart:true}); } };
-   });
-   var secs = _ppSections(PP_GROOVE_FAMS, list);
-   // Studio's groove dice sat at the head of the old row; with the row hidden
-   // it is the last line of the list, in Studio only, as it always was.
+   var part = _ppFocusPart();
+   var secs = starterGroups(part);
+   // Picking here is asking to hear it: the layer goes on and the beat starts, as a groove pick always has.
+   secs.forEach(function(sec){ sec.list.forEach(function(it){
+    var id = it.label, hit = starterList(part).filter(function(x){ return x.label === id; })[0];
+    if(hit) it.pick = function(){ starterApply(part, hit, {autostart:true}); };
+   }); });
+   // Studio's groove dice, last in the list, in Studio only, as it always was (drums only: the dice rolls a groove).
    var dice = document.querySelector('#sq-groove-presets .part-dice');
-   if(dice && !document.body.classList.contains('mode-basic'))
+   if(part==='drums' && dice && !document.body.classList.contains('mode-basic'))
     secs.foot = { label:'Roll a random groove', pick:function(){ dice.click(); } };
    return secs;
   },
   current:function(){
-   var r = (typeof RHYTHMS !== 'undefined') ? RHYTHMS : [];
-   var q = (sqPendGroove != null && r[sqPendGroove]) ? r[sqPendGroove] : null;
-   var c = r[sqCurGroove];
-   // Before a groove is picked: "Choose a groove" was cut to "Choose a gro…"
-   // in half a phone's width.
-   return { name: c ? c.name : 'None yet', note: q ? 'Next: ' + q.name : (c ? c.fam || '' : r.length + ' to choose from'), queued: !!q };
+   var part = _ppFocusPart(), id = starterCurrent(part), P = id ? sqPatternById(id) : null;
+   // Queued only for a pattern that changes the bar length while playing, and that goes through the groove (sqLoadGroove).
+   var q = (sqPendGroove != null && RHYTHMS[sqPendGroove]) ? RHYTHMS[sqPendGroove].name : null;
+   // Before a pattern is picked: "Choose a groove" was cut to "Choose a gro…" in half a phone's width.
+   return { name: P ? P.id : 'None yet', note: q ? 'Next: ' + q : (P ? P.fam : sqPatterns().length + ' to choose from'), queued: !!q };
   } };
  PP_SPECS.kit = { cell:'pp-cell-kit', cap:'Kit', keyColor:true,
   // The kit belongs to whichever layer the grid is editing, so the caption
@@ -56070,13 +56071,15 @@ function ftMelClick(){
 // the first press can only come after load, but the Live widget is mounted during
 // boot — before this line runs in file order — and reads these (CLAUDE.md,
 // "Temporal dead zone").
-var STARTERS = { on:true, drums:'4/4 Basic', bass:'funk', mel:'hook', aux:'PERC|Bossa Nova' };
+var STARTERS = { on:true, drums:'4/4 Basic', bass:'funk', mel:'hook', aux:'Bossa Nova' };
 (function(){
  try{
   var o = JSON.parse(modStore.getItem('modo-starters')||'null');
   if(o){
    if(typeof o.on==='boolean') STARTERS.on = o.on;
    ['drums','bass','mel','aux'].forEach(function(k){ if(typeof o[k]==='string') STARTERS[k] = o[k]; });
+   // Aux saved 'KIT|Style' until the pattern stopped naming a kit.
+   STARTERS.aux = String(STARTERS.aux).split('|').pop();
   }
  }catch(e){}
 })();
@@ -56118,30 +56121,40 @@ window.starterSaveOpen = starterSaveOpen;
 // family on a COMP_PATTERNS entry (the drum grooves carry one), so the split is made here.
 var ST_CHORD_PLAIN = {off:1, sustain:1, bars:1, backbeat:1, strum:1, eighths:1};
 // What a style row's Pattern list shows: the part's styles in groups, the way the Voice and Kit lists are grouped.
-//   drums   the groove's family (Rock & Pop, Funk & Hip Hop, ...), from RHYTHMS
-//   aux     the kit the line is written for
+//   drums, aux  the pattern's family (Rock & Pop, Funk & Hip Hop, ...), the same list on both; sqPatternFams
+//   puts the family that suits the layer's kit first
 //   bass, melody   Genre or Shape, whichever the part's own page leads with
 //   chords  Plain or Rhythmic
 // What you saved comes last, under its own heading. Returns the sections _ppFill draws.
+// The families in the order a layer's list opens: a percussion kit opens on the world and percussion families, any other on
+// the grooves, the way the Kit list opens on percussion when Aux is the layer.
+function sqPatternFams(layer){
+ var fams = PP_GROOVE_FAMS.concat(['Percussion lines']), kit = null;
+ try{ kit = layer ? window._sqAuxKit() : window._sqDrumKit(); }catch(e){}
+ if(kit && SQ_PERC_KITS[kit]) fams = ['Latin & World', 'Percussion lines'].concat(fams.filter(function(f){ return f!=='Latin & World' && f!=='Percussion lines'; }));
+ return fams;
+}
 function starterGroups(part){
- var cur = starterCurrent(part), famOf = {};
- try{ RHYTHMS.forEach(function(r){ famOf[r.name] = r.fam; }); }catch(e){}
- var items = [];
+ var cur = starterCurrent(part), items = [];
  starterList(part).forEach(function(x){
   var it = { label:x.label, active:x.id===cur, pick:function(){ starterApply(part, x); } };
   if(String(x.id).indexOf('bank:')===0) it.sect = 'Saved by you';
-  else if(part==='drums') it.sect = famOf[x.id] || 'More';
-  else if(part==='aux'){
-   var kp = String(x.id).split('|'), kl = typeof window._sqKitLabel==='function' ? window._sqKitLabel(kp[0]) : null;
-   it.sect = kl || kp[0]; it.label = kp[1];
+  else if(part==='drums' || part==='aux'){
+   var P = sqPatternById(x.id);
+   it.sect = P ? P.fam : 'More';
+   if(P){
+    // A line written for a kit says which: a hint for choosing an instrument, nothing that is loaded.
+    var hk = P.line ? (P.custom ? P.custom.split('|')[0] : (AUX_HOME[P.id] || ['PERC'])[0]) : null, hl = hk && typeof window._sqKitLabel==='function' ? window._sqKitLabel(hk) : null;
+    it.title = (P.tip ? P.tip + ' ' : '') + '(' + P.sig + ')' + (hl ? ' Percussion line written for ' + hl + '.' : '');
+    it.sig = P.sig;
+   }
   }
   else if(part==='chord') it.sect = ST_CHORD_PLAIN[x.id] ? 'Plain' : 'Rhythmic';
   else it.sect = PP_GENRES[x.id] ? 'Genre' : 'Shape';
   items.push(it);
  });
- var order = part==='drums' ? PP_GROOVE_FAMS.slice()
+ var order = (part==='drums' || part==='aux') ? sqPatternFams(part==='aux' ? 1 : 0)
            : part==='chord' ? ['Plain','Rhythmic']
-           : part==='aux' ? []
            : (items.length && items[0].sect==='Shape' ? ['Shape','Genre'] : ['Genre','Shape']);
  return _ppSections(order.concat(['More']), items.filter(function(i){ return i.sect!=='Saved by you'; }))
   .concat(_ppSections(['Saved by you'], items.filter(function(i){ return i.sect==='Saved by you'; })));
@@ -56180,24 +56193,140 @@ function starterPickSheet(part){
 // [{id, label}] for a part, in the order its own page lists them. A free-tier
 // player is offered only what the free tier allows, so rotating never lands on a
 // style that would answer with a "Pro" toast.
-// Aux styles (6.1b): a percussion kit and the groove whose Aux part is written for it, so each is the line that kit is
-// for. Kits that only ever get a generic shaker or tambourine (Hand Drums, Bells & FX) are not listed: there is no
-// idiom to offer. The part itself is AUX_PARTS[groove], read by the kit's own voice names, so adding a part there and a
-// line here is all a new style takes.
-var AUX_STYLES = [
- ['PERC','Bossa Nova'],['PERC','4/4 Funk'],['PERC','4/4 Rock'],['PERC','Motown'],['PERC','Disco'],['PERC','House'],['PERC','Hip Hop'],['PERC','Shuffle'],['PERC','12/8 Blues'],
- ['LATIN','Son Clave'],['LATIN','Cumbia'],['LATIN','Samba'],['LATIN','Bossa Nova'],
- ['SALSA','Son Clave'],['SAMBA','Samba'],['MARACATU','Samba'],
- ['AFRICA','Afrobeat'],['AFRICA','Afro 6/8'],['AFRICA','6/8 Feel'],['AFRICA','12/8 Slow'],['AFRICA','12/8 Blues'],
- ['DJEMBE','Kuku'],['BATA','Afro 6/8'],['MIDEAST','Maqsum'],['CLAY','Maqsum'],['CLAY','Afrobeat'],
- ['TABLA','Teental'],['TABLA','Keherwa'],['MEDIEVAL','3/4 Ballad'],['MEDIEVAL','6/8 Feel'],['ORCH','3/4 Ballad'],['ORCH','12/8 Slow'],
- ['HAND','Cajón & Palmas'],['HAND','Doum & Tek'],['HAND','Clap & Shaker'],['HAND','Frame Drum 6/8'],
- ['BELLSFX','Sleigh Ride'],['BELLSFX','Ballad Shimmer'],['BELLSFX','Zills & Bell'],['BELLSFX','Brake & Anvil'],['BELLSFX','Ocean & Nepal Bell']
-];
+// ── Voice roles ───────────────────────────────────────────────────────────────────────────────────────────────
+// A kit's voices are named for the kit (BD, TE, CV), so a pattern written against one kit's names meant nothing to another:
+// a groove on a Tabla kit kept one voice, a drum kit on Aux played nothing, and swapping kits kept the grid by lane NUMBER,
+// which is how a hat line landed on a snare (the Rock kit's lane 2 is a hat, the 808's is a tom). A role is what a voice DOES
+// in a groove, and every kit says which of its voices does it. A pattern is a set of roles; a kit plays a role with the
+// voice it has, or with the nearest one (SQ_ROLE_LADDER). Patterns and kits never need to know about each other.
+//   kick  the lowest drum, the downbeat      lo / hi   a second low and a high drum (toms, congas)   hi2  a second high one
+//   back  snare, slap, tek: the backbeat     clap, rim  the other backbeat voices                     foot a pedal hat
+//   time  the voice that carries the time (closed hat, shaker, the ride on a jazz kit)   time2 a second one (tambourine, brush)
+//   ride  a ride where the kit has one       open  the open hat or its nearest           air  crash, gong     extra: none of these
+//   bell, bell2  metal that keeps a timeline (cowbell, agogo, clave)
+var SQ_ROLES = {
+ '606':'BD:kick SD:back CH:time OH:open T1:hi T2:lo CY:air',
+ '808':'BD:kick SD:back LT:lo HT:hi CH:time OH:open CP:clap CB:bell',
+ '909':'BD:kick SD:back RS:rim CP:clap CH:time OH:open HT:hi LT:lo',
+ 'MOD':'BD:kick SD:back LT:lo HT:hi CH:time OH:open CP:clap CY:air',
+ 'CR78':'BD:kick SD:back RS:rim CH:time OH:open HB:hi LB:lo GU:time2',
+ 'LIN':'BD:kick SD:back CH:time OH:open PC:hi CG:lo',
+ 'IDM':'BD:kick SD:back GL:hi HH:time ZP:air MT:bell',
+ 'ACU':'BD:kick SD:back LT:lo HT:hi CH:time OH:open RD:ride CY:air',
+ 'JAZZ':'BD:kick SD:back SW:time2 SN:clap RM:rim TM:lo CH:extra OH:open FT:foot RD:time BL:bell',
+ 'BRS':'BD:kick SD:back CH:time OH:open RD:ride TM:lo',
+ 'ROCK':'BD:kick SD:back CH:time OH:open HT:hi LT:lo CY:air RD:ride',
+ 'STUDIO':'BD:kick SD:back SR:rim RS:extra CH:time OH:open FT:foot HT:hi LT:lo CY:air RD:ride BL:bell',
+ 'R808':'BD:kick SD:back CP:clap RS:rim CH:time OH:open LT:lo MT:hi2 HT:hi CB:bell CV:bell2 CG:extra MA:time2 CY:air',
+ 'HIPHOP':'BD:kick SD:back CP:clap RS:rim CH:time OH:open SH:time2 TB:bell',
+ 'BEATBOX':'BD:kick B2:lo SD:back S2:clap CH:time OH:open RS:rim TM:hi',
+ 'LATIN':'LC:kick CG:lo QN:hi HB:hi2 LB:back CB:bell CV:bell2 GU:time2 AH:rim AL:clap SH:time CA:open',
+ 'HAND':'BD:kick SD:back LT:lo RS:rim FD:hi CP:clap TB:time2 SH:time WB:bell',
+ 'MIDEAST':'DM:kick TK:back KA:rim T2:clap FL:lo FM:hi2 FH:hi TB:time ZL:bell SH:time2',
+ 'AFRICA':'LL:kick LH:lo BB:bell CB:bell2 AG:hi2 SK:time CP:clap BF:hi BC:time2',
+ 'SAMBA':'SU:kick CX:back RT:lo GH:bell GL:bell2 TB:time2 SH:time WH:air WL:open',
+ 'BELLSFX':'AN:kick BK:lo SL:back TB:time ZL:time2 MK:air BT:bell NB:bell2 VS:open RA:rim OD:hi',
+ 'TABLA':'GE:kick GO:lo NA:hi TI:hi2 TU:back TE:time RE:rim KE:clap',
+ 'DJEMBE':'DB:kick DX:lo DS:back DF:rim DT:time DR:hi',
+ 'BATA':'YO:kick YS:back IO:lo IS:rim OO:time OS:time2',
+ 'MARACATU':'AF:kick AR:rim CI:back CR:clap GN:bell SH:time',
+ 'SALSA':'TA:kick TS:back CO:lo CS:rim QT:hi QS:hi2 MB:time CC:bell WK:bell2 TH:time2 TL:extra TX:extra',
+ 'MEDIEVAL':'MD:kick MO:lo MN:back MS:rim PB:hi TB:time2 MC:clap SE:hi2 SP:open SH:time RK:bell',
+ 'CLAY':'UB:kick UM:lo DK:back DA:rim UT:time DD:hi',
+ 'ORCH':'BD:kick SD:back LT:lo HT:hi CY:air GG:bell2 TR:time',
+ 'PERC':'SH:time TB:time2 CG:hi CL:kick CV:bell2 CB:bell TR:air WB:rim'
+};
+// Where a role goes on a kit that has no voice for it: the nearest in feel, first one found. 'time' and 'kick' close every
+// list, so a hit is never lost to a kit with an odd set of voices.
+var SQ_ROLE_LADDER = {
+ kick:['kick','lo'], lo:['lo','kick','hi'], hi:['hi','hi2','back','rim'], hi2:['hi2','hi','rim','back'],
+ back:['back','clap','rim','hi'], clap:['clap','back','rim'], rim:['rim','back','clap'],
+ time:['time','time2','ride'], time2:['time2','time','ride'], ride:['ride','time','time2'], foot:['foot','time','time2'],
+ open:['open','time'], air:['air','open','bell','bell2'], bell:['bell','bell2','time2','ride'], bell2:['bell2','bell','time2'],
+ extra:['extra','hi2','time2','hi']
+};
+// What the codes in a groove's own rows (RHYTHMS) mean: a notional drum kit. A kit that is not in SQ_ROLES is read the same way.
+var SQ_BEAT_ROLE = {BD:'kick', SD:'back', SW:'time2', RM:'rim', RS:'rim', CP:'clap', CH:'time', HH:'foot', OH:'open', RD:'ride'};
+// Percussion kits: a pattern with a line of its own plays that line on one of these, and the beat on a drum kit, whichever
+// layer it sits on.
+var SQ_PERC_KITS = {LATIN:1, HAND:1, MIDEAST:1, AFRICA:1, SAMBA:1, BELLSFX:1, TABLA:1, DJEMBE:1, BATA:1, MARACATU:1, SALSA:1, MEDIEVAL:1, CLAY:1, PERC:1};
+// The kit (or kits, first one that has the voice) a groove's percussion line in AUX_PARTS was written against: the line is
+// read through their roles, then played on whatever kit is on the layer. Codes the home kits do not have are left out (the
+// Bata and Udu variants of lines that already have an Africa one).
+var AUX_HOME = {
+ '4/4 Rock':['PERC'], '4/4 Funk':['PERC'], 'Shuffle':['PERC'], '3/4 Ballad':['MEDIEVAL'], '6/8 Feel':['AFRICA'], '12/8 Slow':['AFRICA'],
+ '12/8 Blues':['AFRICA'], 'Bossa Nova':['PERC'], 'Jazz Bossa':['PERC'], 'Hip Hop':['PERC'], 'Motown':['PERC'], 'Disco':['PERC'],
+ 'House':['PERC'], 'Samba':['SAMBA'], 'Afrobeat':['AFRICA'], 'Cumbia':['LATIN'], 'Son Clave':['SALSA','LATIN'], 'Maqsum':['MIDEAST'],
+ 'Afro 6/8':['AFRICA'], 'Teental':['TABLA'], 'Keherwa':['TABLA'], 'Kuku':['DJEMBE']
+};
+var _sqRoleCache = {};
+function sqRoleMap(kit){
+ var m = _sqRoleCache[kit]; if(m) return m;
+ m = {}; String(SQ_ROLES[kit] || '').split(' ').forEach(function(p){ var a = p.split(':'); if(a.length === 2) m[a[0]] = a[1]; });
+ return (_sqRoleCache[kit] = m);
+}
+function sqRoleOf(kit, code){ return sqRoleMap(kit)[code] || SQ_BEAT_ROLE[code] || 'extra'; }
+// The lane a kit plays a role on.
+function sqRoleLane(kit, role){
+ var M = window._sqMachines && window._sqMachines()[kit]; if(!M) return -1;
+ var tr = M.tracks, lad = (SQ_ROLE_LADDER[role] || [role]).concat(['time','kick']);
+ for(var i = 0; i < lad.length; i++) for(var t = 0; t < tr.length; t++) if(sqRoleOf(kit, tr[t].s) === lad[i]) return t;
+ return 0;
+}
+// A groove's own beat as roles: [{role, cells}], cells as long as the groove.
+function sqBeatRoles(r){
+ var L = r.pat.length, rows = [];
+ var add = function(role, pat){ var c = []; for(var s = 0; s < L; s++) c.push(pat && pat[s] ? {v:1} : null); rows.push({role:role, cells:c}); };
+ if(r.rows) Object.keys(r.rows).forEach(function(code){ add(SQ_BEAT_ROLE[code] || 'extra', r.rows[code]); });
+ else { if(r.kick) add('kick', r.kick); if(r.snare) add('back', r.snare); if(r.pat) add('time', r.pat); }
+ return rows;
+}
+// The percussion line of a pattern as roles, or null.
+function sqLineRoles(P){
+ var rows = [], steps = P.steps, K = window._sqMachines ? window._sqMachines() : {};
+ var add = function(kit, code, pat){
+  var c = []; for(var s = 0; s < steps; s++) c.push(pat && pat[s] ? {v:1} : null);
+  rows.push({role:sqRoleOf(kit, code), cells:c});
+ };
+ if(P.custom){
+  var cu = AUX_CUSTOM[P.custom], kit = P.custom.split('|')[0];
+  Object.keys(cu.rows).forEach(function(code){ add(kit, code, cu.rows[code]); });
+ } else if(AUX_PARTS[P.id]){
+  var homes = AUX_HOME[P.id] || ['PERC'], ap = AUX_PARTS[P.id];
+  Object.keys(ap).forEach(function(code){
+   for(var h = 0; h < homes.length; h++){
+    var M = K[homes[h]];
+    if(M && M.tracks.some(function(t){ return t.s === code; })){ add(homes[h], code, ap[code]); return; }
+   }
+  });
+ }
+ return rows.length ? rows : null;
+}
+// Every pattern, in the order the lists show them: the grooves, then the percussion lines that have no groove of their own.
+// `line` says it has a percussion line (AUX_PARTS or AUX_CUSTOM), `r` the groove, if any.
+function sqPatterns(){
+ if(typeof RHYTHMS === 'undefined') return [];
+ if(sqPatterns._c && sqPatterns._n === RHYTHMS.length) return sqPatterns._c;
+ var out = [], by = {};
+ RHYTHMS.forEach(function(r){ by[r.name] = r; out.push({id:r.name, fam:r.fam || 'More', sig:r.sig, steps:r.pat.length, tip:r.tip || '', r:r, line:!!AUX_PARTS[r.name]}); });
+ Object.keys(AUX_CUSTOM).forEach(function(k){
+  var cu = AUX_CUSTOM[k], g = by[cu.groove];
+  out.push({id:k.split('|')[1], fam:'Percussion lines', sig:g ? g.sig : '4/4', steps:cu.steps, tip:'', r:null, line:true, custom:k});
+ });
+ sqPatterns._n = RHYTHMS.length;
+ return (sqPatterns._c = out);
+}
+function sqPatternById(id){ var l = sqPatterns(); for(var i = 0; i < l.length; i++) if(l[i].id === id) return l[i]; return null; }
+// Which of a pattern's parts a kit plays. A percussion kit plays the pattern's line; any other plays its beat; a pattern with
+// only one part gives it to either.
+function sqPatternPart(P, kit){
+ if(P.line && (SQ_PERC_KITS[kit] || !P.r)) return 'line';
+ return P.r ? 'beat' : 'line';
+}
 // Styles with no groove of their own to borrow a part from (6.1c). Hand Drums and Bells & FX reuse voice names that
 // the drum machines also have (BD, SD, LT, TB), so a part written for them under a groove's name in AUX_PARTS would
-// reach every kit that shares the name; these are keyed by kit and style, and written against the kit's own rows.
-// `groove` is the beat loaded with the part when the grid is not a whole number of its bars.
+// reach every kit that shares the name; these are keyed by kit and style, and written against the kit's own rows (their
+// roles are read from that kit, SQ_ROLES). `groove` names the groove whose time signature the part is in.
 var AUX_CUSTOM = {
  // A cajón for bass and slap, palms on the off-beat eighths: the flamenco rumba hand.
  'HAND|Cajón & Palmas': {steps:16, groove:'4/4 Funk', rows:{
@@ -56235,19 +56364,12 @@ function starterList(part){
   try{ rhyBankList('chord').forEach(function(e){ out.push({id:'bank:'+e.id, label:e.name}); }); }catch(e){}
   return out;
  }
- if(part==='aux'){
-  AUX_STYLES.forEach(function(x){
-   var kl = typeof window._sqKitLabel==='function' ? window._sqKitLabel(x[0]) : null; if(!kl) return;
-   if(typeof freeAllowsKit==='function' && !freeAllowsKit(x[0])) return;
-   out.push({id:x[0]+'|'+x[1], label:kl+' · '+x[1]});
-  });
-  return out;
- }
- if(part==='drums'){
-  if(typeof RHYTHMS==='undefined') return out;
-  RHYTHMS.forEach(function(r){
-   if(typeof freeAllowsGroove==='function' && !freeAllowsGroove(r.name)) return;
-   out.push({id:r.name, label:r.name});
+ if(part==='drums' || part==='aux'){
+  // One list for both layers (6.9.9.9.9.9.9.9.9.4): a pattern is not a kind of kit. Aux used to offer 'Kit · Style' pairs,
+  // and picking one swapped the kit; Drums offered only the grooves. Either layer takes any of them now, on its own kit.
+  sqPatterns().forEach(function(P){
+   if(P.r && typeof freeAllowsGroove==='function' && !freeAllowsGroove(P.id)) return;
+   out.push({id:P.id, label:P.id});
   });
  } else {
   var attr = part==='bass' ? 'data-blstyle' : 'data-mlstyle';
@@ -56282,13 +56404,12 @@ function starterCurrent(part){
   var L = BANK_LOADED[part];
   if(L && L.sig && rhyBankGet(L.id) && L.sig===bankSig(part)) return 'bank:'+L.id;
  }catch(e){}
- if(part==='aux'){
-  var al = starterList('aux');
-  for(var ai=0;ai<al.length;ai++){ var ap = al[ai].id.split('|'); if(window._sqAuxStyleIs && window._sqAuxStyleIs(ap[0], ap[1])) return al[ai].id; }
-  return null;
- }
- if(part==='drums'){
-  var r = (typeof RHYTHMS!=='undefined' && typeof sqCurGroove==='number') ? RHYTHMS[sqCurGroove] : null;
+ if(part==='aux' || part==='drums'){
+  // Per layer: what was last loaded on it, for as long as it is still what is there. A layer loaded some other way (a saved
+  // setup) falls back to the groove the app last loaded, for Drums, and to Custom for Aux.
+  var lp = typeof window._sqLayerPat==='function' ? window._sqLayerPat(part==='aux' ? 1 : 0) : undefined;
+  if(lp !== undefined) return lp;
+  var r = (part==='drums' && typeof RHYTHMS!=='undefined' && typeof sqCurGroove==='number') ? RHYTHMS[sqCurGroove] : null;
   return r ? r.name : null;
  }
  if(part==='bass') return (typeof window._blGenStyle==='function') ? window._blGenStyle() : null;
@@ -56304,7 +56425,7 @@ function starterHasPattern(part){
 // Put `id` on the part and write it. Drums load the groove (at the next bar if the
 // beat is running, as a groove always has); Bass and Mel set the style and
 // generate over the last chord, which a running part takes at its next loop.
-function starterLoad(part, id){
+function starterLoad(part, id, opts){
  if(part==='chord'){
   if(id==='off'){ CR.on = false; crStop(); crSave(); crSyncUI(); return true; }
   if(String(id).indexOf('bank:')===0){
@@ -56315,31 +56436,11 @@ function starterLoad(part, id){
   crSetRhythm(id, null); return true;
  }
  if(String(id).indexOf('bank:')===0){ var be = rhyBankGet(String(id).slice(5)); return !!(be && bankLoad(be)); }
- if(part==='aux'){
-  var kp = String(id).split('|'), kit = kp[0], gname = kp[1];
-  if(typeof window._sqAuxStyle!=='function') return false;
-  var done = window._sqAuxStyle(kit, gname);
-  if(done==='groove'){
-   // The part is a different length from the beat that is loaded, so the beat it was written for comes with it.
-   var cu = AUX_CUSTOM[kit+'|'+gname], bname = cu ? cu.groove : gname;
-   var gi = -1; if(typeof RHYTHMS!=='undefined') for(var q=0;q<RHYTHMS.length;q++) if(RHYTHMS[q].name===bname){ gi = q; break; }
-   if(gi<0 || typeof sqLoadGroove!=='function') return false;
-   window._sqSetAuxKit(kit);
-   // The groove writes the Aux layer from AUX_PARTS; a style of its own is laid over that when the groove arrives.
-   if(cu) window._auxPendStyle = [kit, gname];
-   sqLoadGroove(gi);
-   try{ showToast('Aux: '+gname+' is a '+RHYTHMS[gi].sig+' part, so its groove loaded too'); }catch(e){}
-   return true;
-  }
-  return !!done;
- }
- if(part==='drums'){
-  if(typeof RHYTHMS==='undefined' || typeof sqLoadGroove!=='function') return false;
-  var idx = -1;
-  for(var i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name===id){ idx = i; break; }
-  if(idx<0) return false;
-  sqLoadGroove(idx);
-  return true;
+ if(part==='drums' || part==='aux'){
+  // The layer's own kit stays as it is, whatever the pattern was written for. 'KIT|Style' ids are what Aux saved before it
+  // stopped pairing the two (a saved starter): the style is still the pattern.
+  if(typeof window._sqLoadPattern!=='function') return false;
+  return !!window._sqLoadPattern(part==='aux' ? 1 : 0, String(id).split('|').pop(), opts);
  }
  if(part==='bass'){
   if(typeof window.setBlGenStyle!=='function' || typeof window.blGenerate!=='function') return false;
@@ -56368,8 +56469,8 @@ function starterRotate(part, dir){
  starterApply(part, list[(at<0 ? (dir>0 ? 0 : list.length-1) : (at + dir + list.length) % list.length)]);
 }
 // Put a chosen style on the part and switch the part on (see starterRotate).
-function starterApply(part, next){
- if(!starterLoad(part, next.id)) return;
+function starterApply(part, next, opts){
+ if(!starterLoad(part, next.id, opts)) return;
  if(part==='drums' && typeof drumsEnabled!=='undefined' && !drumsEnabled) ftDrumClick();
  else if(part==='aux'){ if(typeof window._sqLayerOn==='function' && !window._sqLayerOn(1)) window._sqSetLayerOn(1, true); }
  else if(part==='bass' && !blEnabled) ftBassClick();
@@ -58755,66 +58856,146 @@ function sqAuxPick(idx){
     sqRenderPSlots();
   }
 }
-// An Aux style is a kit and the part a groove names for it (AUX_PARTS), which is how every idiomatic Aux line in the app
-// is already written. Picking one puts the kit on the Aux layer and writes the part, tiled to the grid when the grid is
-// a whole number of the groove's bars. When it is not (a 12-step part on a 16-step grid) the part cannot be laid over
-// the beat that is there, so this answers 'groove' and the caller loads the groove, which writes both layers.
-function sqAuxStyleGrid(kit, name){
-  var cu = (typeof AUX_CUSTOM!=='undefined') ? AUX_CUSTOM[kit+'|'+name] : null;
-  if(cu && SQM[kit]){
-    if(!(sqSteps>0) || sqSteps % cu.steps !== 0) return null;
-    var tr = SQM[kit].tracks || [], cg = {};
-    for(var ti=0;ti<tr.length;ti++){ cg[ti] = []; for(var sc=0;sc<sqSteps;sc++) cg[ti].push(sqMkCell()); }
-    Object.keys(cu.rows).forEach(function(sh){
-      var row = -1; for(var ri=0;ri<tr.length;ri++) if(tr[ri].s===sh){ row = ri; break; }
-      if(row<0) return;
-      for(var st=0;st<sqSteps;st++) if(cu.rows[sh][st % cu.steps]) cg[row][st].v = 1;
-    });
-    return cg;
+// ── Roles to lanes and back (6.9.9.9.9.9.9.9.9.4) ─────────────────────────────────────────────────────────────
+// A grid is lanes of a kit; a role row is what a lane does (SQ_ROLES). Both directions go through the role, so a pattern can be
+// laid on any kit and a kit can be swapped without the hits changing what they are.
+//   hits only, so an empty cell and a missing one read the same
+// What each layer was last given, kept beside the layers and not on them: the layers are serialised whole (undo, the rig), and
+// the remembered grid would ride along in every copy. Stale after a restore, which is safe: both are checked against the grid.
+var sqLM = [{}, {}];
+function sqCellsSig(grid, steps){
+  var out = [];
+  for(var k in grid){ var row = grid[k] || []; for(var s = 0; s < steps; s++){ var c = row[s]; if(c && c.v > 0) out.push(k + ':' + s + ':' + c.v + ':' + (c.vel || '') + ':' + (c.orn || 0)); } }
+  return out.join('|');
+}
+function sqGridToRoles(kit, grid, steps){
+  var tr = (SQM[kit] || {}).tracks || [], out = [];
+  for(var ti = 0; ti < tr.length; ti++){
+    var row = grid[ti]; if(!row) continue;
+    var cells = [], any = false;
+    for(var s = 0; s < steps; s++){ var c = row[s]; if(c && c.v > 0){ cells.push(c); any = true; } else cells.push(null); }
+    if(any) out.push({role:sqRoleOf(kit, tr[ti].s), cells:cells});
   }
-  if(!SQM[kit] || typeof AUX_PARTS==='undefined' || !AUX_PARTS[name] || typeof RHYTHMS==='undefined') return null;
-  var r = null; for(var i=0;i<RHYTHMS.length;i++) if(RHYTHMS[i].name===name){ r = RHYTHMS[i]; break; }
-  if(!r || !r.pat || !(sqSteps>0) || sqSteps % r.pat.length !== 0 || typeof window._sqGrooveGrid!=='function') return null;
-  var len = r.pat.length, base = window._sqGrooveGrid(kit, r, len, true), g = {};
-  Object.keys(base).forEach(function(k){
-    var row = []; for(var st=0;st<sqSteps;st++){ var c = sqMkCell(), b = base[k][st % len]; if(b && b.v>0) c.v = b.v; row.push(c); }
-    g[k] = row;
+  return out;
+}
+// Role rows laid on a kit, tiled to `steps`. Two roles that land on one voice (a kit with fewer voices than the pattern has
+// parts) share it; the louder hit wins a step.
+function sqRolesToGrid(kit, rows, steps){
+  var tr = (SQM[kit] || {}).tracks || [], g = {}, ti, s;
+  for(ti = 0; ti < tr.length; ti++){ g[ti] = []; for(s = 0; s < steps; s++) g[ti].push(sqMkCell()); }
+  rows.forEach(function(rw){
+    var lane = sqRoleLane(kit, rw.role), L = rw.cells.length; if(lane < 0 || !g[lane] || !L) return;
+    for(s = 0; s < steps; s++){
+      var c = rw.cells[s % L]; if(!c) continue;
+      var d = g[lane][s]; if(d.v > 0 && d.v >= (c.v || 1)) continue;
+      var cc = JSON.parse(JSON.stringify(c)); if(!(cc.v > 0)) cc.v = 1;
+      g[lane][s] = Object.assign(sqMkCell(), cc);
+    }
   });
   return g;
 }
-window._sqAuxStyle = function(kit, name, afterGroove){
-  var isCustom = (typeof AUX_CUSTOM!=='undefined') && !!AUX_CUSTOM[kit+'|'+name];
-  if(!SQM[kit] || (!isCustom && (typeof AUX_PARTS==='undefined' || !AUX_PARTS[name]))) return false;
+// Put `nk` on a layer. The hits move by role, not by lane number. Swapping to a kit and back is exact: the layer remembers
+// the grid it had before the first swap and, until it is edited, a swap is made from that rather than from the last result.
+function sqRemapLayer(i, nk){
+  var L = sqLayers[i], M = sqLM[i], old = L.mach;
+  if(old === nk || !SQM[nk]) return;
+  var steps = sqSteps, cur = sqCellsSig(L.grid || {}, steps), rm = M.rm, srcKit = old, srcGrid = L.grid || {};
+  if(rm && rm.outKit === old && rm.outSig === cur && rm.steps === steps){ srcKit = rm.homeKit; srcGrid = rm.homeGrid; }
+  var ng = srcKit === nk ? JSON.parse(JSON.stringify(srcGrid)) : sqRolesToGrid(nk, sqGridToRoles(srcKit, srcGrid, steps), steps);
+  var out = sqCellsSig(ng, steps), pat = M.pat;
+  M.rm = {homeKit:srcKit, homeGrid:JSON.parse(JSON.stringify(srcGrid)), outKit:nk, outSig:out, steps:steps};
+  if(pat && pat.sig === cur) M.pat = {id:pat.id, sig:out};
+  L.mach = nk; L.grid = ng;
+  if(i === sqFocus){ sqMach = nk; sqGrid = ng; }
+}
+// The bar length changes to `len` for a pattern going on layer `keep`. The other layer is refitted: tiled when the new bar is a
+// whole number of its old one, cut to its first bars when the old one is a whole number of the new, and emptied when neither
+// (a 12-step bar cannot be laid on a 16-step line without making it a different line). Meter and the linked bass and melody
+// follow, as they do for a groove (sqApplyGroove).
+function sqAdoptSteps(len, sig, keep){
+  var old = sqSteps; if(len === old) return;
   sqStashFocused();
-  var g = sqAuxStyleGrid(kit, name); if(!g) return 'groove';
-  // Not saved when a groove has just written over the layer: what it wrote is not the line being replaced.
-  if(!afterGroove && window._sqAuxHasPart()) sqAuxSavePat(sqAuxCur);
-  sqLayers[1].mach = kit; sqLayers[1].grid = g; sqPreloadKit(kit);
-  if(sqFocus===1){ sqMach = kit; sqGrid = g; sqEnsureGrid(); }
-  sqRender(); sqSyncLayerUI();
-  if(typeof window._syncAuxTransport==='function') window._syncAuxTransport();
-  return true;
-};
-// Whether the Aux layer is, note for note, the part this style would write on this kit.
-window._sqAuxStyleIs = function(kit, name){
-  sqStashFocused();
-  if(sqLayers[1].mach !== kit) return false;
-  var g = sqAuxStyleGrid(kit, name); if(!g) return false;
-  var a = sqLayers[1].grid || {};
-  for(var k in g){
-    for(var st=0;st<sqSteps;st++){
-      var x = a[k] && a[k][st] && a[k][st].v>0, y = g[k][st].v>0;
-      if(!!x !== !!y) return false;
+  var oth = sqLayers[keep ? 0 : 1], og = oth.grid || {}, ng = {}, any = false, k, s, say = null;
+  for(k in og) for(s = 0; s < old; s++) if(og[k] && og[k][s] && og[k][s].v > 0) any = true;
+  for(k in og){
+    ng[k] = [];
+    for(s = 0; s < len; s++){
+      var src = (len % old === 0) ? og[k][s % old] : (old % len === 0 ? og[k][s] : null);
+      ng[k].push(src ? JSON.parse(JSON.stringify(src)) : sqMkCell());
     }
   }
-  for(var k2 in a){ if(!g[k2]){ for(var s2=0;s2<(a[k2]||[]).length;s2++) if(a[k2][s2] && a[k2][s2].v>0) return false; } }
+  if(any && len % old !== 0 && old % len !== 0) say = SQ_LAYER_NAME[keep ? 0 : 1] + ' cleared: its ' + old + ' steps do not fit a bar of ' + len;
+  oth.grid = ng; sqLM[keep ? 0 : 1] = {};
+  // The focused layer's grid is sqGrid: left pointing at the old one, the next stash would put it back.
+  if(sqFocus === (keep ? 0 : 1)) sqGrid = ng;
+  sqSteps = len;
+  var d = document.getElementById('sq-stepsDisp'); if(d) d.textContent = sqSteps;
+  try{
+    var sg = /^(\d+)\/(\d+)$/.exec(sig || '');
+    if(sg && typeof setMeter === 'function'){
+      var b = +sg[1], u = +sg[2];
+      if(b * Math.round(16 / u) === len && (b !== METER.beats || u !== METER.unit)) setMeter(b, u, {keepSteps:true});
+    }
+  }catch(e){}
+  if(typeof stepCountLock !== 'undefined' && stepCountLock){
+    if(typeof setSeqStepCount === 'function') setSeqStepCount('sq', len);
+    if(typeof window.blGenerate === 'function'){ try{ window.blGenerate(); }catch(e){} }
+    if(typeof window.mlGenerate === 'function'){ try{ window.mlGenerate(); }catch(e){} }
+  }
+  if(say){ try{ showToast(say); }catch(e){} }
+}
+// A pattern on a layer: the layer's own kit stays, whatever the pattern was written for, and the other layer is left alone
+// (unless the bar length has to change, sqAdoptSteps). The kit decides which part of the pattern it plays (sqPatternPart).
+window._sqLoadPattern = function(i, id, opts){
+  var P = sqPatternById(id); if(!P) return false;
+  i = i ? 1 : 0;
+  if(P.r && typeof freeAllowsGroove === 'function' && !freeAllowsGroove(P.id)){
+    if(typeof freeBlocked === 'function') freeBlocked(P.id + ' groove', 'groove', {groove:P.id});
+    return false;
+  }
+  sqStashFocused();
+  var L = sqLayers[i], kit = L.mach, part = sqPatternPart(P, kit);
+  var rows = part === 'line' ? sqLineRoles(P) : sqBeatRoles(P.r);
+  if(!rows) return false;
+  var len = part === 'line' ? P.steps : P.r.pat.length;
+  if(!(len === sqSteps || (len > 0 && sqSteps % len === 0))){
+    // A different bar length is not something to do mid-bar (that is how it "adds beats"): playing, it waits for the bar
+    // line as a groove does, and the groove it belongs to comes with it, so both layers are the one length.
+    if(sqPlaying){
+      var gn = P.r ? P.r.name : AUX_CUSTOM[P.custom].groove, gi = -1;
+      for(var q = 0; q < RHYTHMS.length; q++) if(RHYTHMS[q].name === gn){ gi = q; break; }
+      if(gi < 0) return false;
+      sqLoadGroove(gi);
+      return 'queued';
+    }
+    sqAdoptSteps(len, P.sig, i);
+  }
+  // What was on Aux is kept in its pattern slot first, so loading a line is never the way another is lost.
+  if(i === 1 && window._sqAuxHasPart()) sqAuxSavePat(sqAuxCur);
+  var g = sqRolesToGrid(kit, rows, sqSteps);
+  L.grid = g; sqLM[i] = {pat:{id:P.id, sig:sqCellsSig(g, sqSteps)}};
+  if(i === sqFocus){ sqGrid = g; sqMachGrids[sqMach] = JSON.parse(JSON.stringify(g)); }
+  sqMach = sqLayers[sqFocus].mach; sqGrid = sqLayers[sqFocus].grid;
+  if(i === 0 && P.r) sqCurGroove = RHYTHMS.indexOf(P.r);
+  if(opts && opts.autostart){
+    if(!L.on) sqSetLayerOn(i, true);
+    if(!sqPlaying) sqStart({auto:true});
+  }
+  sqRender(); sqSyncLayerUI();
+  if(typeof sqBuildGroovePresets === 'function') sqBuildGroovePresets();
+  if(typeof window._syncAuxTransport === 'function') window._syncAuxTransport();
   return true;
+};
+// The pattern a layer is on, as long as it is still what is there: its id, null once edited, undefined if nothing was loaded here.
+window._sqLayerPat = function(i){
+  sqStashFocused();
+  var L = sqLayers[i ? 1 : 0], pat = sqLM[i ? 1 : 0].pat; if(!pat) return undefined;
+  return pat.sig === sqCellsSig(L.grid || {}, sqSteps) ? pat.id : null;
 };
 window._sqSetAuxKit = function(nk){
   if(!SQM[nk]) return false;
-  sqStashFocused();
-  sqLayers[1].mach = nk; sqPreloadKit(nk);
-  if(sqFocus===1){ sqMach = nk; sqEnsureGrid(); }
+  sqStashFocused(); sqRemapLayer(1, nk); sqPreloadKit(nk);
+  if(sqFocus === 1) sqEnsureGrid();
   sqRender(); return true;
 };
 window._sqPendingKit = function(){ return sqPendMach; };
@@ -58823,9 +59004,8 @@ function sqAuxNextKit(dir){
   var keys=Object.keys(SQM).filter(function(k){ return typeof freeAllowsKit!=='function' || freeAllowsKit(k); });
   if(!keys.length) return;
   var at=keys.indexOf(sqLayers[1].mach), nk=keys[((at<0?0:at)+(dir||1)+keys.length)%keys.length];
-  sqStashFocused();
-  sqLayers[1].mach=nk; sqPreloadKit(nk);
-  if(sqFocus===1){ sqMach=nk; sqEnsureGrid(); }
+  sqStashFocused(); sqRemapLayer(1,nk); sqPreloadKit(nk);
+  if(sqFocus===1) sqEnsureGrid();
   sqRender();
 }
 var sqPlaying=false, sqSchedID=null, sqRafID=null;
@@ -59506,14 +59686,11 @@ window._sqAuxHasPart = function(){
   return false;
 };
 function sqDoSwap(key){
-  // sqGrid is ONE shared pattern across every kit — switching machines only changes
-  // which synth plays each track, never the programmed steps. Track index ti keeps
-  // its identity (0=kick, 1=snare, ...) across kits; sqEnsureGrid pads/truncates the
-  // grid to the new machine's visible track count and current sqSteps, but never
-  // deletes data beyond that count, so hidden tracks reappear intact if you switch
-  // back to a kit with more tracks. sqSteps/sqSwing are never touched here, so step
-  // count and duration always stay exactly as they were before the swap.
-  sqMach=key;
+  // The hits follow their ROLE to the new kit (sqRemapLayer), not their lane number. This used to keep the grid as it was
+  // ("sqGrid is ONE shared pattern across every kit"), which is right only while two kits happen to put a kick, a snare and
+  // a hat in the same three lanes: from the 808 to the Rock kit the closed-hat line landed on the high tom, and a groove that
+  // was fine on one kit had a snare playing time on another.
+  sqStashFocused(); sqRemapLayer(sqFocus,key);
   sqPreloadKit(key);
   sqEnsureGrid();
   sqPendMach=null;sqRender();
@@ -61161,13 +61338,12 @@ function sqWire(){
     // snare onto the congas and left the real kit untouched.
     sqLayers[0].grid = sqGrooveGrid(sqLayers[0].mach, r, steps, false);
     sqLayers[1].grid = sqGrooveGrid(sqLayers[1].mach, r, steps, true);
+    // Which pattern each layer is on, for the lists: Aux only if the groove wrote something there.
+    sqLM[0] = {pat:{id:r.name, sig:sqCellsSig(sqLayers[0].grid, steps)}};
+    sqLM[1] = sqCellsSig(sqLayers[1].grid, steps) ? {pat:{id:r.name, sig:sqCellsSig(sqLayers[1].grid, steps)}} : {};
     sqMach = sqLayers[sqFocus].mach;
     sqGrid = sqLayers[sqFocus].grid;
     sqMachGrids[sqMach] = JSON.parse(JSON.stringify(sqGrid));
-    // An Aux style that came with its groove (its bar is not the grid's length) is written over what the groove just
-    // put on the layer, now that the step count is the one it needs. A groove that waits for the bar line gets here
-    // at the bar line, so this is the same moment either way.
-    if(window._auxPendStyle){ var _ps = window._auxPendStyle; window._auxPendStyle = null; window._sqAuxStyle(_ps[0], _ps[1], true); }
     sqRender();
     if(typeof sqSyncLayerUI==='function') sqSyncLayerUI();
     if(typeof window._syncAuxTransport==='function') window._syncAuxTransport();
@@ -61179,85 +61355,16 @@ function sqWire(){
   // Hoisted within this scope; reached from the Aux style code above through the window.
   window._sqGrooveGrid = sqGrooveGrid;
   function sqGrooveGrid(machKey, r, steps, isAux){
-    var M = SQM[machKey], tracks = (M && M.tracks) ? M.tracks : [];
-    var grid = {};
-    for(var ti=0;ti<tracks.length;ti++){
-      grid[ti]=[]; for(var s=0;s<steps;s++) grid[ti].push(sqMkCell());
-    }
-    // Map groove data to the correct track by shortname (s field), not by raw index.
-    // Every machine has BD=kick, SD=snare, and one of CH/HH/CL/CY for the hihat/pattern part.
-    function findTrack(shorts){
-      for(var i=0;i<tracks.length;i++){
-        for(var j=0;j<shorts.length;j++){
-          if(tracks[i].s===shorts[j]) return i;
-        }
-      }
-      return -1;
-    }
-    // The second layer plays only what a groove names for it, and most name
-    // nothing. Same shortname mapping, no kick/snare/hat fallbacks: a conga
-    // kit has no business receiving a backbeat it was never written.
-    if(isAux){
-      var ap = (typeof AUX_PARTS!=='undefined') ? AUX_PARTS[r.name] : null;
-      if(ap) Object.keys(ap).forEach(function(sh){
-        var row = findTrack([sh]); if(row < 0) return;
-        var pat = ap[sh];
-        for(var sa=0;sa<steps;sa++) if(pat[sa]) grid[row][sa].v=1;
-      });
-      return grid;
-    }
-    var bdRow  = findTrack(['BD']);
-    var sdRow  = findTrack(['SD']);
-    // Hihat: prefer closed hat, fall back to open, generic HH, cymbal, percussion
-    // A machine can nominate the row a groove's pattern belongs on. In a jazz
-    // kit that is the RIDE — the ride carries the time, and dropping the
-    // pattern on the foot hi-hat (the first HH match) put it on the one voice
-    // that should only be marking 2 and 4.
-    var patPref = (M && M.patShort) ? [M.patShort] : [];
-    // The nominated row first, on its own. findTrack returns the first TRACK
-    // matching any of the names, in kit order, so the nomination used to lose
-    // to whatever hat came earlier in the kit — the Jazz kit's Cl Hat sits
-    // before its Ride, so its patShort:'RD' never took effect, and the
-    // Orchestral kit put the time on its crash rather than its triangle.
-    var hhRow  = (patPref.length && findTrack(patPref) >= 0) ? findTrack(patPref)
-               : findTrack(['CH','HH','OH','CY','PC']);
-    if(r.rows){
-      // Full per-voice pattern, addressed by track shortname. Any row whose
-      // voice this machine does not have is simply skipped, so a jazz groove
-      // dropped on an 808 still puts its kick and snare somewhere sensible.
-      Object.keys(r.rows).forEach(function(sh){
-        var row = findTrack([sh]);
-        if(row < 0){
-          // Fall back to the nearest equivalent so nothing is silently lost.
-          if(sh==='RD') row = findTrack(['CY','OH','CH','HH']);
-          else if(sh==='SW'||sh==='SD') row = sdRow;
-          else if(sh==='RM') row = findTrack(['RS','CP','PC']);
-          else if(sh==='HH') row = findTrack(['CH','HH','OH']);
-          else if(sh==='BD') row = bdRow;
-          // The voices 4.9.9's grooves are written for. A closed hat goes to
-          // whichever row the kit keeps its time on; a clap or a rim with no
-          // row of its own lands on the snare, so a house groove on a jazz
-          // kit still has a backbeat.
-          else if(sh==='CH') row = hhRow;
-          // Not the crash: a kit with no open hat (Orchestral, the hand and
-          // Latin kits) put a crash on every offbeat that way. It goes where
-          // the kit keeps its time instead.
-          else if(sh==='OH') row = findTrack(['HH','RD']) >= 0 ? findTrack(['HH','RD']) : hhRow;
-          else if(sh==='CP') row = findTrack(['RS','SD']);
-          else if(sh==='RS') row = findTrack(['RM','CP','SD']);
-        }
-        if(row < 0) return;
-        var pat = r.rows[sh];
-        for(var s3=0;s3<steps;s3++) if(pat[s3]) grid[row][s3].v=1;
-      });
-    } else {
-      for(var s2=0;s2<steps;s2++){
-        if(r.kick  && r.kick[s2]  && bdRow>=0) { grid[bdRow][s2].v=1; }
-        if(r.snare && r.snare[s2] && sdRow>=0) { grid[sdRow][s2].v=1; }
-        if(r.pat   && r.pat[s2]   && hhRow>=0) { grid[hhRow][s2].v=1; }
-      }
-    }
-    return grid;
+    // A groove is a set of roles (SQ_ROLES) laid on whatever kit the layer holds, so any kit plays any groove: a hat line
+    // lands on a hat, or on the shaker where a kit has none. This used to match the groove's voice names against the kit's
+    // and skip what it did not have, which is why a Tabla kit on Drums kept one voice of a groove and a drum kit on Aux
+    // played nothing at all.
+    // The second layer plays only a groove's percussion line, and only on a percussion kit: a drum kit there would repeat
+    // the beat. The first plays the line on a percussion kit and the beat on any other.
+    var P = sqPatternById(r.name), rows = null;
+    if(isAux){ if(P && P.line && SQ_PERC_KITS[machKey]) rows = sqLineRoles(P); }
+    else rows = (P && sqPatternPart(P, machKey) === 'line' ? sqLineRoles(P) : null) || sqBeatRoles(r);
+    return sqRolesToGrid(machKey, rows || [], steps);
   }
 
   // ── Vary: perturb the pattern instead of replacing it ──────────────────
