@@ -9418,7 +9418,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.9b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v6.9.9.9.9.9.9.9.9.1</span></div>
  </div>
 </div>
 
@@ -10896,7 +10896,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.9b</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v6.9.9.9.9.9.9.9.9.1</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12098,7 +12098,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.9b';
+const MODRIFF_VERSION = '6.9.9.9.9.9.9.9.9.1';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -30893,7 +30893,7 @@ const FIND_INDEX = [
   note:'The first row of the Melody panel. Pick a pattern under it.',
   go:()=>_findGo({tab:'accomp', sub:()=>setAccompMode('melody'), el:'ml-gen-go'})},
  {name:'mõdFX filter — Clean, Ladder, Screamer', where:'Studio › mõdFX', keys:'filter moog ms20 ms-20 ladder cutoff resonance lowpass character modfx pad kaoss',
-  note:'The Filter button in the pad\u2019s header flips its character. The synth voices have their own filter too, in their sound menu.',
+  note:'The Filter button in the pad\u2019s header flips its character; turn Resonance right up and either one sings. The synth voices have their own filter too, in their sound menu.',
   go:()=>_findGo({tab:'perform', sub:()=>setPerformMode('fx'), el:'fx-flt-btn'})},
  {name:'Metronome (Click)', where:'More', keys:'metronome click count beat time tick',
   note:'♩ Click in the sheet under the transport bar.',
@@ -48599,7 +48599,7 @@ Two effects at once under one finger. Pick what each axis does with the <strong>
 <strong>Presets</strong> are axis pairs, not sounds: tap one to load an X/Y combination, <strong>+ Save</strong> keeps the current pair and channel selection as your own.<br><br>
 <strong>Motion</strong> records a move and loops it in time with the transport, so a sweep you played once keeps going while you play something else. Tap <strong>● Rec</strong> to arm it: recording starts when you touch the pad, and the moment you lift off it loops.<br><br>
 <strong>Stutter, Reverse, Crush</strong> and <strong>Time warp</strong> work on live audio and need AudioWorklet. On a device that has not provided it the rest still works and the panel says so.<br><br>
-<strong>Filter</strong> in the header picks the pad's filter character: <strong>Clean</strong>, a <strong>Ladder</strong>, or a <strong>Screamer</strong> — tap to flip between them. Cutoff, Resonance and LP sweep use whichever is showing. The synth voices have a filter of their own, separate from this — in each part's Sound menu, under Edit sound.<br><br>
+<strong>Filter</strong> in the header picks the pad's filter character: <strong>Clean</strong>, a <strong>Ladder</strong>, or a <strong>Screamer</strong> — tap to flip between them. Cutoff, Resonance and LP sweep use whichever is showing. Turn Resonance right up on either and it sings on its own, at the cutoff — the Screamer is the harsher of the two. The synth voices have a filter of their own, separate from this — in each part's Sound menu, under Edit sound.<br><br>
 <strong>Release</strong> is how long the effect takes to fall away after you lift off.`
  },
  'transport': {
@@ -70747,6 +70747,12 @@ const FX_PARAMS = {
 // doing the most work, backing off at the open end so a parked axis is not
 // permanently ringing.
 function _fxGangQ(v){ return 0.25 + (1-Math.max(0,Math.min(1,v)))*0.55; }
+// The same idea for the Ladder and Screamer, which have their own, far steeper,
+// resonance: 0.55 at the open end is already a vocal peak, and from about the
+// middle of the sweep down it is past the point where either one rings. The
+// biquad's profile above topped out at 0.8, which on the Screamer is a gentle
+// bump — the reason the pad's LP sweep never screamed.
+function _fxLadGang(v){ return 0.55 + (1-Math.max(0,Math.min(1,v)))*0.45; }
 const FX_PARAM_KEYS = Object.keys(FX_PARAMS);
 // What the X/Y pad can be assigned to: everything, sends included.
 //
@@ -70892,28 +70898,53 @@ class ModFxProc extends AudioWorkletProcessor {
   // which is exactly the sweep this is for.
   _ladder(c, x){
     const S=this.fs[c], G=this.fg, k=this.fk, drv=this.fdrv, a=1-G;
+    const d=drv*x, xd = d<-3?-1:d>3?1:(d*(27+d*d)/(27+9*d*d));
     if(this.fmode===2){
-      // Two-pole Sallen-Key, MS-20 flavour. The clip sits in the RESONANCE
-      // path rather than the signal path, which is why the real one screams
-      // where a Moog politely peaks.
-      const G2=G*G;
-      const S1=S[0]*a, S2=S[1]*a;
-      const y2e=(G2*x + G*S1 + S2)/(1 + k*G2 + 1e-9);
-      const t=k*y2e, ax=t<-3?-1:t>3?1:(t*(27+t*t)/(27+9*t*t));
-      const u=x - ax;
-      let v=(u-S[0])*G, y=v+S[0]; S[0]=y+v; const o1=y;
-      v=(o1-S[1])*G; y=v+S[1]; S[1]=y+v;
-      return y;
+      // Sallen-Key two-pole with its resonance fed back POSITIVELY through the
+      // first capacitor, as the real MS-20 filter does: H = 1/(s^2+(3-K)s+1),
+      // Q = 1/(3-K), self-oscillating at K = 3. The state is the voltage
+      // across that capacitor (S[0], a one-pole running at twice the cutoff)
+      // and the output node (S[1]).
+      //
+      // This used to be two poles with NEGATIVE feedback around them, which
+      // can never resonate: the closed loop's poles keep a real part of -1 for
+      // any gain, so its Q stopped at about 0.7 and "Screamer" was a gentle
+      // low-pass that did not scream at any setting (measured: +11 dB peak,
+      // flat from Resonance 0.5 to 1, and it never rang).
+      //
+      // The diode clip sits in the feedback only, so the signal stays clean
+      // while the resonance is what distorts. Solved without a delay: first
+      // the linear answer predicts the output node, the clip is applied to
+      // that, and the loop is then closed with the clipped feedback (the
+      // same trick the ladder uses). Past K = 3 nothing is stable, and the
+      // clip is what holds it at a steady scream instead of running away.
+      const G2=2*G/(1+G), h=G*G2*0.5, a2=1-G2;
+      const Sq=S[0]*a2, Sb=S[1]*a;
+      const base=h*xd + G*Sq + Sb;
+      const t=base/(1 - G*k - h*(1-2*k));
+      const f=k*(t<-3?-1:t>3?1:(t*(27+t*t)/(27+9*t*t)));
+      const vb=(base + G*a2*f)/(1-h);
+      const q=G2*0.5*(xd+vb) - G2*f + Sq;
+      S[0]=2*q-S[0]; S[1]=2*vb-S[1];
+      return vb;
     }
     // Moog ladder: four poles inside one feedback loop, saturating at the
     // loop input. Resonance pulls the low end out as it climbs, which is the
     // behaviour people recognise.
+    //
+    // The feedback is clipped too, and k runs past 4, where a linear ladder
+    // oscillates: the clip is what turns "past the edge" into a steady,
+    // singing tone at the cutoff instead of a blow-up. With a linear loop
+    // capped at 3.85 the ladder only ever peaked (+38 dB at the very top) and
+    // never rang, which is the half of a Moog filter people reach for.
     const G2=G*G, G3=G2*G, G4=G3*G;
     const S1=S[0]*a, S2=S[1]*a, S3=S[2]*a, S4=S[3]*a;
-    const d=drv*x, xd = d<-3?-1:d>3?1:(d*(27+d*d)/(27+9*d*d));
     const Sig = G3*S1 + G2*S2 + G*S3 + S4;
-    const y4 = (G4*xd + Sig)/(1 + k*G4);
-    const u = xd - k*y4;
+    // The clip is tight (0.35, not 1) so the ring settles at a level the mix
+    // can take: at 1 it sat at about 3x the programme and clipped the master.
+    const t=(G4*xd + Sig)/(1 + k*G4)*(1/0.35);
+    const f=k*0.35*(t<-3?-1:t>3?1:(t*(27+t*t)/(27+9*t*t)));
+    const u = xd - f;
     let v=(u-S[0])*G, y=v+S[0]; S[0]=y+v; const o1=y;
     v=(o1-S[1])*G; y=v+S[1]; S[1]=y+v; const o2=y;
     v=(o2-S[2])*G; y=v+S[2]; S[2]=y+v; const o3=y;
@@ -71058,19 +71089,25 @@ class ModFxProc extends AudioWorkletProcessor {
       const OS = 2, fsOS = sampleRate*OS;
       if(fc > fsOS*0.45) fc = fsOS*0.45;
       this.fg = Math.tan(Math.PI*fc/fsOS)/(1+Math.tan(Math.PI*fc/fsOS));
-      // Moog self-oscillates near k=4; stop just short so a parked axis rings
-      // rather than runs away.
-      this.fk = fmode===2 ? res*1.85 : res*3.85;
+      // Both run PAST their self-oscillation point (the ladder's at k=4, the
+      // screamer's at K=3), which is the top ~10% of the Resonance travel: the
+      // clip in each feedback path holds the ring steady, so a parked axis sings
+      // at the cutoff instead of running away. The screamer starts at K=1.4,
+      // Q~0.6, a plain two-pole low-pass.
+      this.fk = fmode===2 ? 1.4 + res*1.9 : res*4.6;
       this.fdrv = 1 + drv*7;
       this.fmode = fmode;
-      // Drive makes up level, so take that back. Resonance does the opposite:
-      // both topologies feed -k·y back, so the passband sits at 1/(1+k) — at
+      // Drive makes up level, so take that back. Resonance does the opposite
+      // on the ladder: it feeds -k·y back, so the passband sits at 1/(1+k) — at
       // the pad's typical k≈2 that is 9dB down, and touching the pad read as
       // "quieter" rather than "filtered". Half of it is made back, which keeps
       // the Moog's thinning-as-it-rings (the thing people recognise) without
       // the level dive; full compensation would put the resonant peak 9dB
       // over the dry signal at the top of the travel.
-      const norm = (1 + this.fk*(fmode===2?0.6:0.5))/(1 + drv*1.6);
+      // The ladder's make-up stops growing at k 3.2: past that it only raised
+      // the level of the ring, which the clip has already settled. The screamer
+      // has none to make up, since its passband stays at unity as it resonates.
+      const norm = (fmode===2 ? 1 : 1 + (this.fk<3.2?this.fk:3.2)*0.5)/(1 + drv*1.6);
       for(let c=0;c<chn;c++){
         const o=out[c];
         let z=this.fz[c];
@@ -72117,15 +72154,25 @@ function fxApplyChannel(ch){
    // The channel's own filter is the floor; an engaged pad axis overrides it
    // on the channels the pad is pointed at, exactly as the sends behave.
    const L=_fxEngSends(ch);
+   let padLadDrv=0;
    if(padLad){
     // The same frequency the biquad would have gone to, re-expressed on the
     // ladder's 20Hz·900^x travel, so switching character does not move the
     // sweep. The ganged resonance profile is scaled to stay under the
     // ladder's own self-oscillation (k≈4 Moog, ≈2 MS-20).
+    // Resonance reaches the whole travel now, self-oscillation included: it was
+    // held to 0.95 and a ganged 0.72, which kept both filters politely under
+    // the point where they sing. Past ~0.87 is the scream; the clip in each
+    // feedback path keeps it steady.
+    const ladRes = lpOn ? _fxLadGang(lpV) : v('reso');
     pr.get('fltmode').setValueAtTime(P.flt, t);
     pr.get('fltcut').setValueAtTime(Math.max(0,Math.min(1,Math.log(lpSweepHz/20)/Math.log(900))), t);
-    pr.get('fltres').setValueAtTime(lpOn ? _fxGangQ(lpV)*0.9 : v('reso')*0.95, t);
-    nat.fltmode=P.flt; nat.fltcut=Math.max(0,Math.min(1,Math.log(lpSweepHz/20)/Math.log(900))); nat.fltres=lpOn ? _fxGangQ(lpV)*0.9 : v('reso')*0.95;
+    pr.get('fltres').setValueAtTime(ladRes, t);
+    nat.fltmode=P.flt; nat.fltcut=Math.max(0,Math.min(1,Math.log(lpSweepHz/20)/Math.log(900))); nat.fltres=ladRes;
+    // A resonant filter into a clean input is a sine at the cutoff; into a
+    // pushed one it is a voice. The drive follows the resonance, so the more it
+    // rings the harder the input is hit, unless Ladder drive asks for more.
+    padLadDrv = 0.3*ladRes;
    } else {
     // The part's own filter only runs while it plays a synth voice.
     pr.get('fltmode').setValueAtTime(_fxEngFilterApplies(ch) ? (L.lmode||0) : 0, t);
@@ -72133,8 +72180,9 @@ function fxApplyChannel(ch){
     pr.get('fltres').setValueAtTime(_fxPadDriving(ch,'ladres') ? v('ladres') : (L.lres||0), t);
     nat.fltmode=_fxEngFilterApplies(ch) ? (L.lmode||0) : 0; nat.fltcut=_fxPadDriving(ch,'ladder') ? v('ladder') : (L.lcut==null?1:L.lcut); nat.fltres=_fxPadDriving(ch,'ladres') ? v('ladres') : (L.lres||0);
    }
-   pr.get('fltdrv').setValueAtTime(_fxPadDriving(ch,'laddrv') ? v('laddrv') : (L.ldrv||0), t);
-   nat.fltdrv=_fxPadDriving(ch,'laddrv') ? v('laddrv') : (L.ldrv||0);
+   const ldrv=Math.max(_fxPadDriving(ch,'laddrv') ? v('laddrv') : (L.ldrv||0), padLadDrv);
+   pr.get('fltdrv').setValueAtTime(ldrv, t);
+   nat.fltdrv=ldrv;
   }
   if(pr.get('srate')){ pr.get('srate').setValueAtTime(v('srate'), t); nat.srate=v('srate'); }
   if(pr.get('grain')){

@@ -96,6 +96,11 @@ scenario('sample-rate reduction', [{ at: 60, set: { srate: 0.4 } }, { at: 300, s
 scenario('crush and rate together over a stutter', [{ at: 60, set: { crush: 0.7, srate: 0.5, stutter: 0.05 } }]);
 scenario('Moog ladder', [{ at: 50, set: { fltmode: 1, fltcut: 0.5, fltres: 0.6, fltdrv: 0.3 } }, { at: 300, set: { fltcut: 0.2, fltres: 0.95 } }, { at: 550, set: { fltmode: 0 } }]);
 scenario('MS-20 ladder', [{ at: 50, set: { fltmode: 2, fltcut: 0.6, fltres: 0.7, fltdrv: 0.5 } }, { at: 400, set: { fltcut: 0.15 } }]);
+// Past the self-oscillation point (ladder k>4, screamer K>3): the feedback clip has to hold the ring steady
+// and the two implementations have to agree on it, including a cutoff swept through it and heavy input drive.
+scenario('Moog ring at full resonance', [{ at: 30, set: { fltmode: 1, fltcut: 0.55, fltres: 1 } }, { at: 300, set: { fltcut: 0.3 } }, { at: 500, set: { fltcut: 0.9, fltdrv: 1 } }]);
+scenario('MS-20 ring at full resonance', [{ at: 30, set: { fltmode: 2, fltcut: 0.55, fltres: 1 } }, { at: 300, set: { fltcut: 0.3 } }, { at: 500, set: { fltcut: 0.95, fltdrv: 1 } }]);
+scenario('MS-20 swept closed to open at full resonance', [{ at: 30, set: { fltmode: 2, fltcut: 0.05, fltres: 0.98 } }, { at: 150, set: { fltcut: 0.4 } }, { at: 300, set: { fltcut: 0.8 } }, { at: 450, set: { fltcut: 1 } }]);
 scenario('ladder over warp', [{ at: 50, set: { warp: 0.75, fltmode: 1, fltcut: 0.4, fltres: 0.5 } }]);
 
 // Random schedules: any mode, any knob, changed every few blocks.
@@ -116,5 +121,30 @@ for (let t = 0; t < 40; t++) {
   }
   scenario('random schedule ' + t, sch, 700, 100 + t);
 }
+// What the filters are FOR, checked on the JavaScript alone: Resonance up must scream. A noise burst, then
+// silence. At full resonance both have to go on ringing at the cutoff — steadily, not running away — and at a
+// moderate setting both have to die away, so "rings" is the top of the travel and not everything above zero.
+// (The Screamer was once a two-pole loop that could not resonate at any setting; this is what catches that.)
+function ringAfterBurst(mode, res) {
+  const proc = makeProc(), blk = 128, burst = 160, total = 700;
+  let tail = 0, tailN = 0, peak = 0;
+  let q = 99;
+  for (let b = 0; b < total; b++) {
+    const il = new Float32Array(blk), ir = new Float32Array(blk), ol = new Float32Array(blk), or = new Float32Array(blk);
+    if (b < burst) for (let i = 0; i < blk; i++) { q ^= q << 13; q ^= q >>> 17; q ^= q << 5; il[i] = ir[i] = 0.25 * ((q >>> 0) / 4294967296 * 2 - 1); }
+    const params = {}; NAMES.forEach(k => { params[k] = [REST[k]]; });
+    params.fltmode = [mode]; params.fltcut = [0.55]; params.fltres = [res];
+    proc.process([[il, ir]], [[ol, or]], params);
+    if (b >= total - 40) for (const v of ol) { tail += v * v; tailN++; peak = Math.max(peak, Math.abs(v)); }
+  }
+  return { rms: Math.sqrt(tail / tailN), peak };
+}
+[['Moog ladder', 1], ['MS-20 screamer', 2]].forEach(([name, mode]) => {
+  const hi = ringAfterBurst(mode, 1), mid = ringAfterBurst(mode, 0.5);
+  total++;
+  const bad = !(hi.rms > 0.05 && hi.peak < 1.5) || !(mid.rms < 0.002);
+  if (bad) { fail++; console.log(`  FAIL ${name} ring: full resonance rms ${hi.rms.toFixed(3)} peak ${hi.peak.toFixed(2)} (want rms>0.05, peak<1.5), half resonance rms ${mid.rms.toExponential(1)} (want <0.002)`); }
+});
+
 console.log(`tests/modsynth/modfxproc.test.js: ${total} runs, ${total - fail} bit-identical, ${fail} different`);
 process.exit(fail ? 1 : 0);

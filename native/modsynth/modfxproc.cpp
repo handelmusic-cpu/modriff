@@ -18,24 +18,29 @@ ModFxProc::ModFxProc(double sampleRate) : sr(sampleRate) {
 double ModFxProc::ladder(int c, double x) {
   double* S = fs[c];
   const double G = fg, k = fk, drv = fdrv, a = 1 - G;
+  const double d = drv * x, xd = d < -3 ? -1 : d > 3 ? 1 : (d * (27 + d * d) / (27 + 9 * d * d));
   if (fmode == 2) {
-    // Two-pole Sallen-Key, MS-20 flavour.
-    const double G2 = G * G;
-    const double S1 = S[0] * a, S2 = S[1] * a;
-    const double y2e = (G2 * x + G * S1 + S2) / (1 + k * G2 + 1e-9);
-    const double t = k * y2e, ax = t < -3 ? -1 : t > 3 ? 1 : (t * (27 + t * t) / (27 + 9 * t * t));
-    const double u = x - ax;
-    double v = (u - S[0]) * G, y = v + S[0]; S[0] = y + v; const double o1 = y;
-    v = (o1 - S[1]) * G; y = v + S[1]; S[1] = y + v;
-    return y;
+    // Sallen-Key two-pole with positive feedback through the first capacitor
+    // (the MS-20): Q = 1/(3-K), self-oscillating at K = 3, the clip in the
+    // feedback holding it there. See _ladder in index.html for the derivation.
+    const double G2 = 2 * G / (1 + G), h = G * G2 * 0.5, a2 = 1 - G2;
+    const double Sq = S[0] * a2, Sb = S[1] * a;
+    const double base = h * xd + G * Sq + Sb;
+    const double t = base / (1 - G * k - h * (1 - 2 * k));
+    const double f = k * (t < -3 ? -1 : t > 3 ? 1 : (t * (27 + t * t) / (27 + 9 * t * t)));
+    const double vb = (base + G * a2 * f) / (1 - h);
+    const double q = G2 * 0.5 * (xd + vb) - G2 * f + Sq;
+    S[0] = 2 * q - S[0]; S[1] = 2 * vb - S[1];
+    return vb;
   }
-  // Moog ladder: four poles inside one feedback loop, saturating at the input.
+  // Moog ladder: four poles inside one feedback loop, the feedback clipped so
+  // that k past 4 settles into a steady ring at the cutoff.
   const double G2 = G * G, G3 = G2 * G, G4 = G3 * G;
   const double S1 = S[0] * a, S2 = S[1] * a, S3 = S[2] * a, S4 = S[3] * a;
-  const double d = drv * x, xd = d < -3 ? -1 : d > 3 ? 1 : (d * (27 + d * d) / (27 + 9 * d * d));
   const double Sig = G3 * S1 + G2 * S2 + G * S3 + S4;
-  const double y4 = (G4 * xd + Sig) / (1 + k * G4);
-  const double u = xd - k * y4;
+  const double t = (G4 * xd + Sig) / (1 + k * G4) * (1 / 0.35);
+  const double f = k * 0.35 * (t < -3 ? -1 : t > 3 ? 1 : (t * (27 + t * t) / (27 + 9 * t * t)));
+  const double u = xd - f;
   double v = (u - S[0]) * G, y = v + S[0]; S[0] = y + v; const double o1 = y;
   v = (o1 - S[1]) * G; y = v + S[1]; S[1] = y + v; const double o2 = y;
   v = (o2 - S[2]) * G; y = v + S[2]; S[2] = y + v; const double o3 = y;
@@ -141,10 +146,10 @@ void ModFxProc::process(const float* inL, const float* inR, float* outL, float* 
     const double OS = 2, fsOS = sr * OS;
     if (fc > fsOS * 0.45) fc = fsOS * 0.45;
     fg = js::tan(js::PI * fc / fsOS) / (1 + js::tan(js::PI * fc / fsOS));
-    fk = fm == 2 ? res * 1.85 : res * 3.85;
+    fk = fm == 2 ? 1.4 + res * 1.9 : res * 4.6;
     fdrv = 1 + drv * 7;
     fmode = fm;
-    const double norm = (1 + fk * (fm == 2 ? 0.6 : 0.5)) / (1 + drv * 1.6);
+    const double norm = (fm == 2 ? 1 : 1 + (fk < 3.2 ? fk : 3.2) * 0.5) / (1 + drv * 1.6);
     for (int c = 0; c < chn; c++) {
       float* o = out[c];
       double z = fz[c];
