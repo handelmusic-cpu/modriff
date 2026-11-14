@@ -119,9 +119,9 @@ const RAW_FILES = ['samples/hiphop/kick.mp3', 'samples/hiphop/hat.mp3', 'samples
     await psFactoryEnsure(true);
     const fk = SMP_BUF['factory:hh-kick'], rk = SMP_BUF['factory:rk-kick'];
     o.factory = { hhKick: fk ? lead(fk) : 'missing', rkKick: rk ? lead(rk) : 'missing' };
-    await psLoopSetEnsure('World Loops');   // a lazy set: only built when someone asks for it
-    const el = SMP_BUF['factory:wl-electro'];
-    o.loop = { electro: el ? lead(el) : 'missing' };
+    await psLoopSetEnsure('Samba Loops');   // a lazy set: only built when someone asks for it
+    const el = SMP_BUF['factory:sl-pandeiro'];
+    o.loop = { pandeiro: el ? lead(el) : 'missing' };
     return o;
   }, raw);
 
@@ -161,7 +161,7 @@ const RAW_FILES = ['samples/hiphop/kick.mp3', 'samples/hiphop/hat.mp3', 'samples
 
   ok(r.sq.played && r.sq.found && r.sq.offset === 0 && r.sq.bufLead < 1.1, 'sqSample starts the trimmed buffer at offset 0', JSON.stringify(r.sq));
   ok(typeof r.factory.hhKick === 'number' && r.factory.hhKick < 1.1 && r.factory.rkKick < 1.1, 'Sampler factory kicks open on the beat (' + JSON.stringify(r.factory) + ')', JSON.stringify(r.factory));
-  ok(typeof r.loop.electro === 'number' && r.loop.electro > 150, 'a loop keeps its opening rest (electro loop ' + r.loop.electro + ' ms)', JSON.stringify(r.loop));
+  ok(typeof r.loop.pandeiro === 'number' && r.loop.pandeiro > 150, 'a loop keeps its opening rest (pandeiro loop ' + r.loop.pandeiro + ' ms)', JSON.stringify(r.loop));
   ok(errs.length === 0, 'no page errors', errs.join(' | '));
 
   await browser.close(); srv.close();
