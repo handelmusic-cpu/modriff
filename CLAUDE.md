@@ -21,6 +21,7 @@ unless asked; `grep -n` it only when you need the old reasoning for one specific
 | background audio: moving the sequencers to the engine (design + checkpoint) | `docs/native-scheduling.md` |
 | the free web page at modriff.com/play: build, what is off, wiring | `docs/web-play.md` |
 | Ableton Link: licence, what is built and where, known limits, what the owner still has to ask Apple and Ableton | `docs/link.md` |
+| Macro Osc (synthesis models inside a mõdSynth voice, native only): licence record, what was left out and why, where it lives | `docs/macro-osc.md` |
 
 ## Shipping
 

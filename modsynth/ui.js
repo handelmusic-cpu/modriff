@@ -502,6 +502,13 @@
       mix.appendChild(this.row('Noise', this.select('mix.noiseType'), this.knob('mix.noiseFlt')));
       mix.appendChild(this.row('Pluck', this.knob('mix.pluck'), this.knob('pluck.decay'), this.knob('pluck.tone'), this.knob('pluck.oct')));
       mix.appendChild(this.row('Drive', this.select('mix.driveType'), this.knob('mix.drive')));
+      // The native engine's synthesis models; the web worklet has none, so the row is only built where patches-macro.js loaded.
+      if (MS.macroOscAvailable) {
+        mix.appendChild(this.sub('Macro Osc'));
+        mix.appendChild(this.row(this.select('mosc.model', { wide: true })));
+        mix.appendChild(this.knobs('mix.mosc', 'mosc.harmonics', 'mosc.timbre'));
+        mix.appendChild(this.knobs('mosc.morph', 'mosc.env', 'mosc.oct'));
+      }
       rack.appendChild(mix);
 
       [1, 2].forEach(n => {

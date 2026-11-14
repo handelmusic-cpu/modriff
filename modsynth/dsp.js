@@ -654,6 +654,7 @@ const SRC_ORDER = [
   'rand', 'rand2', 'unison', 'gate', 'alt',
   'chaos',
 ];
+// Destinations 36 to 39 (mix.mosc and the three mosc controls) belong to the native macro oscillator: reserved here, ignored by this processor.
 const DST_ORDER = [
   'none', 'pitch', 'osc1.fine', 'osc2.fine', 'osc1.shape', 'osc2.shape',
   'osc1.pw', 'osc2.pw', 'osc1.level', 'osc2.level', 'osc1.detune', 'osc2.detune',
@@ -663,6 +664,7 @@ const DST_ORDER = [
   'lfo1.rate', 'lfo2.rate', 'lfo3.rate', 'lfo1.depth', 'lfo2.depth', 'lfo3.depth',
   'env2.d', 'env1.r',
   'osc3.fine', 'osc3.shape', 'osc3.level', 'mix.fm3',
+  'mix.mosc', 'mosc.harmonics', 'mosc.timbre', 'mosc.morph',
   'fx.drive.amount', 'fx.delay.mix', 'fx.reverb.mix', 'fx.chorus.mix',
   'fx.phaser.rate', 'fx.crush.mix',
 ];
@@ -680,7 +682,8 @@ const D_PITCH = 1, D_O1FINE = 2, D_O2FINE = 3, D_O1SHAPE = 4, D_O2SHAPE = 5,
       D_F1CUT = 16, D_F1RES = 17, D_F1DRV = 18, D_F2CUT = 19, D_F2RES = 20, D_FBLEND = 21,
       D_AMP = 22, D_PAN = 23,
       D_L1RATE = 24, D_L1DEP = 27, D_E2D = 30, D_E1R = 31,
-      D_O3FINE = 32, D_O3SHAPE = 33, D_O3LVL = 34, D_FM3 = 35, D_FIRST_FX = 36;
+      D_O3FINE = 32, D_O3SHAPE = 33, D_O3LVL = 34, D_FM3 = 35,
+      D_MOSC = 36, D_MHARM = 37, D_MTIMB = 38, D_MMORPH = 39, D_FIRST_FX = 40;   // 36-39: the native-only macro oscillator, unused here
 const S_CHAOS = 31;           // source index of 'chaos' in SRC_ORDER
 const N_OSC = 3;
 const N_DST = DST_ORDER.length;

@@ -504,7 +504,8 @@ enum { D_PITCH = 1, D_O1FINE = 2, D_O2FINE = 3, D_O1SHAPE = 4, D_O2SHAPE = 5,
        D_FM = 12, D_RING = 13, D_SUB = 14, D_NOISE = 15,
        D_F1CUT = 16, D_F1RES = 17, D_F1DRV = 18, D_F2CUT = 19, D_F2RES = 20, D_FBLEND = 21,
        D_AMP = 22, D_PAN = 23, D_L1RATE = 24, D_L1DEP = 27, D_E2D = 30, D_E1R = 31,
-       D_O3FINE = 32, D_O3SHAPE = 33, D_O3LVL = 34, D_FM3 = 35, D_FIRST_FX = 36 };
+       D_O3FINE = 32, D_O3SHAPE = 33, D_O3LVL = 34, D_FM3 = 35,
+       D_MOSC = 36, D_MHARM = 37, D_MTIMB = 38, D_MMORPH = 39, D_FIRST_FX = 40 };
 static const int S_CHAOS = 31;
 // lfo1, lfo2, lfo3, mot1, mot2, bend, keytrack, rand, rand2, unison, alt, chaos
 static const bool SRC_BIPOLAR[N_SRC] = {
@@ -562,6 +563,7 @@ Voice::Voice(int id_) : id(id_),
   lfo[0] = Lfo((double)id_ * 7919 + 13);
   lfo[1] = Lfo((double)id_ * 104729 + 7);
   lfo[2] = Lfo((double)id_ * 15485863 + 3);
+  macro.reset(new macroosc::MacroVoice());
 }
 void Voice::reset() {
   f1.reset(); f2.reset();
@@ -595,6 +597,7 @@ void Voice::noteOn(double note_, double vel_, NoteId noteId_, const Snap& S, dou
   for (int o = 0; o < N_OSC; o++) for (int u = 0; u < MAX_UNI; u++) { fbA[o][u] = 0; fbB[o][u] = 0; }
   chW = rng3() * 0.6; chS = chW;
   if (S.pluck > 0.0001) ksExc = 1;
+  if (macro) macro->noteOn(vel_);
   for (int n = 0; n < 3; n++) env[n].gate(true);
   for (int n = 0; n < 3; n++) {
     const int mode = S.lfoMode[n];
@@ -605,6 +608,7 @@ void Voice::noteOn(double note_, double vel_, NoteId noteId_, const Snap& S, dou
 }
 void Voice::noteOff() {
   held = false; pedal = false;
+  if (macro) macro->noteOff();
   for (int n = 0; n < 3; n++) env[n].gate(false);
 }
 bool Voice::finished() const {
@@ -616,7 +620,7 @@ Processor::Processor(double sampleRate, const float* paramValues)
   : sr(sampleRate), gRng(0x51ed27) {
   for (int i = 0; i < PARAM_COUNT; i++) pv[i] = paramValues ? paramValues[i] : PARAM_INFO[i].def;
   bank = buildWavetables();
-  for (int v = 0; v < MAX_VOICES; v++) voices.emplace_back(new Voice(v));
+  for (int v = 0; v < MAX_VOICES; v++) { voices.emplace_back(new Voice(v)); voices.back()->macro->init(sampleRate); }
   gLfo[0] = Lfo(20011); gLfo[1] = Lfo(30013); gLfo[2] = Lfo(40009);
   for (auto& x : macros) x = 0;
   for (auto& l : motion) for (auto& x : l) x = 0;
@@ -763,6 +767,13 @@ const Snap& Processor::snapshot() {
   S.oFb[0] = g("osc1.fb"); S.oFb[1] = g("osc2.fb");
   S.fm3a = g("mix.fm3a"); S.fm3b = g("mix.fm3b");
   S.chaosRate = g("chaos.rate");
+  S.macroMix = g("mix.mosc");
+  S.macroModel = toi32(g("mosc.model"));
+  S.macroHarm = g("mosc.harmonics");
+  S.macroTimb = g("mosc.timbre");
+  S.macroMorph = g("mosc.morph");
+  S.macroEnv = g("mosc.env");
+  S.macroOct = g("mosc.oct");
   S.pluck = g("mix.pluck");
   S.pluckDecay = g("pluck.decay");
   S.pluckTone = g("pluck.tone");
@@ -1362,6 +1373,19 @@ void Processor::renderVoice(Voice& v, const Snap& S, float* L, float* R, int off
     }
   }
 
+  // The macro oscillator: rendered a block ahead of the mix loop, added like the pluck and sub. Its level and three
+  // controls take the matrix (destinations 36-39, which dsp.js reserves and ignores).
+  const double macroMixNow = clamp(S.macroMix + md[D_MOSC], 0, 1.5);
+  const bool macroOn = macroMixNow > 0.0001 && v.macro;
+  float mcBuf[CTRL];
+  const double macroGain = macroOn ? macroMixNow * macroosc::kModelTrim[std::max(0, std::min(S.macroModel, macroosc::kModels - 1))] : 0;
+  if (macroOn) {
+    const double harm = clamp(S.macroHarm + md[D_MHARM], 0, 1);
+    const double tim = clamp(S.macroTimb + md[D_MTIMB] + S.macroEnv * env2, 0, 1);
+    const double mor = clamp(S.macroMorph + md[D_MMORPH], 0, 1);
+    v.macro->render(S.macroModel, basePitch + S.macroOct * 12, (float)harm, (float)tim, (float)mor, mcBuf, blk);
+  }
+
   const f32* m0 = bM[0]; const f32* m1 = bM[1]; const f32* r0 = bR[0]; const f32* r1 = bR[1];
   const bool hear3 = needO3 && lvl2 > 0; const f32* m2 = bM[2]; const f32* r2 = bR[2];
   const f32* raw0 = bRaw[0]; const f32* raw1 = bRaw[1];
@@ -1400,6 +1424,7 @@ void Processor::renderVoice(Voice& v, const Snap& S, float* L, float* R, int off
       const double kg = y * S.pluck * 1.4;
       sL += kg; if (stereo) sR += kg;
     }
+    if (macroOn) { const double mg = (double)mcBuf[i] * macroGain; sL += mg; if (stereo) sR += mg; }
     if (noiseAmt > 0.0001) {
       double nz = v.rng();
       if (S.noiseType == 1) {
