@@ -245,8 +245,11 @@ Profile: Handel.modRiff` embedded and the sandbox entitlements present. Not done
 Store Connect (a build cannot be uploaded until it exists), then upload, and the purchase flow on the Mac through
 StoreKit. Audio and bounce saving work on the Mac (owner-tested).
 
-An **app preview video** (15 to 30 s) is optional; screen-record playing a progression over a beat.
-Consider short captions on a coloured background, which is what most music apps do.
+Three **iPhone app preview videos** are in `docs/app-store/previews/2026-11-13/`: Play in key,
+Build a groove, Shape a song. Each is 24 seconds of native Simulator footage with the app's own audio,
+captions and an IAP disclosure, exported at 886 × 1920 / 30 fps (H.264 + stereo AAC). The folder has
+5-second poster frames, measured export checks and the capture/edit sources. Not uploaded or processed
+by App Store Connect; not heard on a physical iPhone. iPad and Mac need their own footage.
 
 The Duo draws its clock and status pill down the right edge and reports a right inset of 84pt (measured in the simulator:
 top 0, right 84, bottom 34, left 0). 1398 x 2034 is not one of the sizes App Store Connect lists, so the Duo set is a
