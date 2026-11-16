@@ -219,6 +219,8 @@ const OVERFLOW = () => {
     await tapEl('#cr-on');
     const cr1 = await page.evaluate(() => document.getElementById('cr-on').getAttribute('aria-pressed'));
     check(cr0 !== cr1, 'touch: the chord rhythm switch in its new row toggles', cr0 + ' -> ' + cr1);
+    // Switching Bass on over an empty line writes its starter and starts the band (7.2); stop it so Play has something to start.
+    await page.evaluate(() => { if (isAnythingPlaying()) stopEverything(); });
     await tapEl('#ft-playstop-btn');
     const playing = await page.evaluate(() => document.getElementById('ft-playstop-btn').classList.contains('tp-stop'));
     check(playing, 'touch: Play starts the transport');

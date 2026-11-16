@@ -1,7 +1,7 @@
 /* Studio comfort (6.2a - 6.2c): fold carets, the drum grid's scrolling and ruler, and the type floor.
 
    Driven on the real window with real touch (CDP):
-     - Studio's Chords page has caret rows for Rhythm builder (open) and Chord voice (closed); each row is 44 pt
+     - Studio's Chords page has caret rows for Rhythm builder and Chord voice (both open, 7.2); each row is 44 pt
        or more; the pads stay above the builder;
      - the Borrowed & modal and Secondary dominants chords are all shown (6.3), under their own headings, and one
        small "More chords" caret in the "Play it" line hides both at once and shows them again; the row it replaced
@@ -58,10 +58,17 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const st = await page.evaluate(() => ({ hs: [...document.querySelectorAll('.st-fold-h:not(.st-fold-g)')].map(h => Math.round(h.getBoundingClientRect().height)),
     padsAbove: document.getElementById('chords-diatonic').getBoundingClientRect().top < document.getElementById('crh').getBoundingClientRect().top }));
   const k0 = await keys();
-  check(k0 === 'crh:true,cvoice:false', 'Rhythm builder is open and Chord voice closed; no caret rows for the chords', k0);
+  check(k0 === 'crh:true,cvoice:true', 'Rhythm builder and Chord voice are open; no caret rows for the chords', k0);
   check(st.hs.every(h => h >= 44), 'every caret row is 44 pt or more', st.hs.join());
   check(st.padsAbove, 'the chords stay above the rhythm builder');
+  check(await vis('#chord-voice-panel'), 'Chord voice, with its Sub switch, is on show');
+  // 7.2 order: the pads, what the colours mean, the sound they make, then the rhythm builder (a phone width).
+  const ord = await page.evaluate(() => { const t = id => document.querySelector(id).getBoundingClientRect().top;
+    return [t('#chords-diatonic'), t('#chords-col > .legend'), t('#chord-voice-panel .cv-sub-row'), t('#sub-on-btn'), t('#glide-btn'), t('#crh')]; });
+  check(ord.every((v, i) => i === 0 || v > ord[i - 1]), 'pads, then the legend, then Chord voice (Sub, glide), then the Rhythm builder', ord.map(Math.round).join());
+  await tap(hdr('cvoice'));
   check(!(await vis('#chord-voice-panel')), 'a closed block is out of the way');
+  await tap(hdr('cvoice'));
   const sh = await page.evaluate(() => { const q = id => document.getElementById(id), r = e => e.getBoundingClientRect(), b = q('ch-xt');
     const lbl = document.querySelector('#chords-col > .chord-section-lbl'), lh = r(lbl).height;
     return { n: [q('chords-borrowed').children.length, q('chords-secdom').children.length], vis: [r(q('chords-borrowed')).height > 0, r(q('chords-secdom')).height > 0],
@@ -82,10 +89,10 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(!(await vis('#crh-roll')), 'the Rhythm builder still folds');
   await tap(hdr('crh'));
   await tap(hdr('cvoice'));
-  check(await vis('#chord-voice-panel'), 'Chord voice opens');
+  check(!(await vis('#chord-voice-panel')), 'Chord voice folds');
   await boot();
   const kept = await keys();
-  check(kept === 'crh:true,cvoice:true', 'what is open is kept across a reload', kept);
+  check(kept === 'crh:true,cvoice:false', 'what is closed is kept across a reload', kept);
   await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); });
   check(!(await vis('.st-fold-h:not(.st-fold-g)')) && !(await vis('#ch-xt')), 'Live has no caret rows and no More chords caret');
   // Studio's hidden state must not leak into Live: hide the chords here, then open Live's own shelf.
