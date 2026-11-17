@@ -26,6 +26,9 @@ const PARTS = [['Chords', 'chord'], ['Melody', 'mel'], ['Bass', 'bass'], ['Mel S
       }
       const on = await page.evaluate(k => ({ on: _msxOnIt(k), name: (document.querySelector('.msx-pcard[data-msxpart="' + k + '"] .msx-pc-name') || {}).textContent }), key);
       R.check(on.on && !!on.name, vp + ' ' + name + ': Play on mõdSynth switches the part and the card names the patch', JSON.stringify(on));
+      await page.waitForTimeout(500);
+      const cardInk = await page.evaluate(k => { const c = document.querySelector('.msx-pcard[data-msxpart="' + k + '"] canvas.msx-wt'); if (!c || !c.width) return -1; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 20) n++; return n; }, key);
+      R.check(cardInk > 300, vp + ' ' + name + ': the card draws the wavetable', cardInk + ' px');
       const small = await page.evaluate(k => [].slice.call(document.querySelectorAll('.msx-pcard[data-msxpart="' + k + '"] button')).filter(b => { const r = b.getBoundingClientRect(); return r.height > 0 && (r.width < 43.5 || r.height < 43.5); }).map(b => b.textContent + ' ' + Math.round(b.getBoundingClientRect().width) + 'x' + Math.round(b.getBoundingClientRect().height)), key);
       R.check(small.length === 0, vp + ' ' + name + ': every card control is at least 44 pt', small.join('; '));
       const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
@@ -55,6 +58,20 @@ const PARTS = [['Chords', 'chord'], ['Melody', 'mel'], ['Bass', 'bass'], ['Mel S
       R.check(ed.open && ed.patch && ed.tabs === 7 && ed.chips === 0 && ed.macros === 8 && ed.shown === 8, 'Edit synth opens the editor layer (patch card, all eight macros shown, Osc/FM/Filter/Env/LFO/Matrix/FX, no part chips)', JSON.stringify(ed));
       const small = await page.evaluate(() => [].slice.call(document.querySelectorAll('#synth-ed .se-back')).map(b => Math.round(b.getBoundingClientRect().height)));
       R.check(small.every(x => x >= 44), 'Back is at least 44 pt', small.join());
+      // The wavetable view: drawn (ink on the canvas), named for the oscillator, and it follows the Shape knob and the chips.
+      const ink = sel => page.evaluate(s => { const c = document.querySelector(s); if (!c || !c.width) return -1; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 20) n++; return n; }, sel);
+      await page.evaluate(() => document.querySelector('#synth-ed .mu-tab[data-page="osc"]').click()); await page.waitForTimeout(700);
+      const big = '#synth-ed canvas.msx-wt.big';
+      const inkA = await ink(big), labA = await page.evaluate(s => document.querySelector(s).getAttribute('aria-label'), big);
+      R.check(inkA > 500 && /oscillator 1/.test(labA), 'the editor draws the wavetable of Osc 1', inkA + ' px; ' + labA);
+      await page.evaluate(() => { msxSetParam('bass', 'osc1.shape', 0.9); }); await page.waitForTimeout(400);
+      const labB = await page.evaluate(s => document.querySelector(s).getAttribute('aria-label'), big);
+      R.check(labB !== labA && /morph 90 percent/.test(labB), 'turning Shape redraws it', labB);
+      await page.evaluate(() => [].slice.call(document.querySelectorAll('#synth-ed .mu-subtab')).filter(b => b.dataset.title === 'Oscillator 2')[0].click()); await page.waitForTimeout(400);
+      R.check(/oscillator 2/.test(await page.evaluate(s => document.querySelector(s).getAttribute('aria-label'), big)), 'the Osc 2 chip shows oscillator 2');
+      await page.evaluate(() => { msxSetParam('bass', 'osc2.wave', 'pulse'); msxSetParam('bass', 'osc2.pw', 0.25); }); await page.waitForTimeout(400);
+      R.check(/Pulse, pulse width 25 percent/.test(await page.evaluate(s => document.querySelector(s).getAttribute('aria-label'), big)) && (await ink(big)) > 300, 'a Pulse wave draws as pulse width');
+      await page.evaluate(() => [].slice.call(document.querySelectorAll('#synth-ed .mu-subtab')).filter(b => b.dataset.title === 'Oscillator 1')[0].click());
       // The seven pages: each shows panels, nothing overflows, every tab and chip is at least 44 pt, and together they build every control once.
       for (const tab of ['osc', 'fm', 'filter', 'env', 'lfo', 'matrix', 'fx']) {
         await page.evaluate(k => document.querySelector('#synth-ed .mu-tab[data-page="' + k + '"]').click(), tab); await page.waitForTimeout(500);
