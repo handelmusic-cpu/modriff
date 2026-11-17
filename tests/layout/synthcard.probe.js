@@ -1,0 +1,74 @@
+/* Slice 4: mõdSynth on each part's own page.
+
+   - Chords, Melody, Bass, Mel Seq and Arp each carry one mõdSynth card, drawn, fitting the screen, every control at least 44 pt;
+   - on mõdSynth the card names the patch; ‹ › step it; Random rolls it; the caret folds it (and the fold is remembered);
+   - off mõdSynth the card offers "Play ... on mõdSynth" and that switches the part;
+   - Edit synth opens the editor layer (patch card, eight macros, Synth/Mod/FX pages) and Back closes it, leaving the page where it was;
+   - a free build shows the Studio Pack note instead of controls.
+
+   Run: node tests/layout/synthcard.probe.js */
+'use strict';
+const L = require('./lib.js');
+const PARTS = [['Chords', 'chord'], ['Melody', 'mel'], ['Bass', 'bass'], ['Mel Seq', 'melgen'], ['Arp', 'arp']];
+
+(async () => {
+  const h = await L.start(), R = L.reporter();
+  for (const vp of ['p430', 'p390', 'se375']) {
+    const { page, errs } = await L.boot(h, vp, 'studio');
+    await page.evaluate(() => msxLoadLib()); await page.waitForTimeout(300);
+    for (const [name, key] of PARTS) {
+      await L.goStudio(page, name);
+      const off = await page.evaluate(k => { const c = document.querySelector('.msx-pcard[data-msxpart="' + k + '"]'); const r = c.getBoundingClientRect(); return { n: document.querySelectorAll('.msx-pcard[data-msxpart="' + k + '"]').length, shown: r.height > 0, w: Math.round(r.width), vw: innerWidth, go: !!c.querySelector('.msx-pc-edit') && /Play/.test(c.querySelector('.msx-pc-edit').textContent) }; }, key);
+      R.check(off.n === 1 && off.shown && off.w <= off.vw, vp + ' ' + name + ': one mõdSynth card, drawn and fitting', JSON.stringify(off));
+      if (off.go) {
+        await page.evaluate(k => { document.querySelector('.msx-pcard[data-msxpart="' + k + '"] .msx-pc-edit').click(); }, key);
+        await page.waitForTimeout(900);
+      }
+      const on = await page.evaluate(k => ({ on: _msxOnIt(k), name: (document.querySelector('.msx-pcard[data-msxpart="' + k + '"] .msx-pc-name') || {}).textContent }), key);
+      R.check(on.on && !!on.name, vp + ' ' + name + ': Play on mõdSynth switches the part and the card names the patch', JSON.stringify(on));
+      const small = await page.evaluate(k => [].slice.call(document.querySelectorAll('.msx-pcard[data-msxpart="' + k + '"] button')).filter(b => { const r = b.getBoundingClientRect(); return r.height > 0 && (r.width < 43.5 || r.height < 43.5); }).map(b => b.textContent + ' ' + Math.round(b.getBoundingClientRect().width) + 'x' + Math.round(b.getBoundingClientRect().height)), key);
+      R.check(small.length === 0, vp + ' ' + name + ': every card control is at least 44 pt', small.join('; '));
+      const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      R.check(over <= 1, vp + ' ' + name + ': no sideways overflow', over + ' pt');
+    }
+    if (vp === 'p430') {
+      await L.goStudio(page, 'Bass');
+      const sel = '.msx-pcard[data-msxpart="bass"] ';
+      const n0 = await page.evaluate(s => document.querySelector(s + '.msx-pc-name').textContent, sel);
+      await page.click(sel + '.msx-pc-next'); await page.waitForTimeout(500);
+      const n1 = await page.evaluate(s => document.querySelector(s + '.msx-pc-name').textContent, sel);
+      R.check(n1 !== n0 && n1 === (await page.evaluate(() => MSX.state.bass.patch)), '› steps the patch (' + n0 + ' to ' + n1 + ')');
+      await page.click(sel + '.msx-pc-prev'); await page.waitForTimeout(500);
+      R.check((await page.evaluate(s => document.querySelector(s + '.msx-pc-name').textContent, sel)) === n0, '‹ steps back');
+      await page.click(sel + '.msx-pc-btn:not(.msx-pc-prev):not(.msx-pc-next):not(.msx-pc-caret):not(.msx-pc-name)'); await page.waitForTimeout(500);
+      const rolled = await page.evaluate(s => ({ name: document.querySelector(s + '.msx-pc-name').textContent, st: MSX.state.bass.name }), sel);
+      R.check(rolled.st === 'Random' || /Random/i.test(rolled.name) || rolled.name !== n0, 'the first button rolls a new sound', JSON.stringify(rolled));
+      // Fold.
+      await page.click(sel + '.msx-pc-caret'); await page.waitForTimeout(300);
+      const folded = await page.evaluate(s => ({ body: document.querySelector(s + '.msx-pc-body').getBoundingClientRect().height, saved: JSON.parse(localStorage.getItem('modo-msx-ui')).fold }), sel);
+      R.check(folded.body === 0 && folded.saved && folded.saved.bass === true, 'the caret folds the card and the fold is saved', JSON.stringify(folded));
+      await page.click(sel + '.msx-pc-caret'); await page.waitForTimeout(300);
+      // Editor.
+      const pre = await page.evaluate(() => scrollY);
+      await page.click(sel + '.msx-pc-edit'); await page.waitForTimeout(1200);
+      const ed = await page.evaluate(() => { const o = document.getElementById('synth-ed'); return { open: o.classList.contains('open'), macros: o.querySelectorAll('.mu-macro-slot').length, shown: [].slice.call(o.querySelectorAll('.mu-macro-slot')).filter(e => e.getBoundingClientRect().height > 0).length, tabs: o.querySelectorAll('.mu-tab').length, patch: !!o.querySelector('.msx-patch'), chips: o.querySelectorAll('.msx-part').length, title: document.getElementById('synth-ed-title').textContent }; });
+      R.check(ed.open && ed.patch && ed.tabs === 3 && ed.chips === 0 && ed.macros === 8 && ed.shown === 8, 'Edit synth opens the editor layer (patch card, all eight macros shown, Synth/Mod/FX, no part chips)', JSON.stringify(ed));
+      const small = await page.evaluate(() => [].slice.call(document.querySelectorAll('#synth-ed .se-back')).map(b => Math.round(b.getBoundingClientRect().height)));
+      R.check(small.every(x => x >= 44), 'Back is at least 44 pt', small.join());
+      await page.click('#synth-ed .se-back'); await page.waitForTimeout(400);
+      const back = await page.evaluate(() => ({ open: document.getElementById('synth-ed').classList.contains('open'), y: scrollY }));
+      R.check(!back.open && back.y === pre, 'Back closes the editor and the page has not moved', JSON.stringify(back) + ' was ' + pre);
+      // Mix > mõdSynth still draws.
+      await L.goMix(page, 'mõdSynth');
+      const mix = await page.evaluate(() => ({ chips: document.querySelectorAll('#mix-synth-pane .msx-part').length, patch: !!document.querySelector('#mix-synth-pane .msx-patch') }));
+      R.check(mix.chips === 5 && mix.patch, 'Mix > mõdSynth still draws its part chips and patch card', JSON.stringify(mix));
+      // Free build.
+      await page.evaluate(() => setModTier('free')); await page.waitForTimeout(500);
+      await L.goStudio(page, 'Arp');
+      const free = await page.evaluate(() => { const c = document.querySelector('.msx-pcard[data-msxpart="arp"]'); return { note: /mõdSynth Engine/.test(c.textContent), btns: c.querySelectorAll('.msx-pc-body button').length }; });
+      R.check(free.note && free.btns === 0, 'a free build shows the pack note and no controls', JSON.stringify(free));
+    }
+    R.check(errs.length === 0, vp + ': no page errors', errs.join(' | ').slice(0, 200));
+  }
+  await h.close(); R.done();
+})();
