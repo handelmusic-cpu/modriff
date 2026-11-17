@@ -22,7 +22,7 @@ set -euo pipefail
 bash "$(cd "$(dirname "$0")" && pwd)/link/fetch-linkkit.sh"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${OUT:-$HOME/Desktop/modRiff-ios-testflight}"
-DD="${TMPDIR:-/tmp}/modriff-dd-ios-rel"
+DD="${MODRIFF_DERIVED_DATA:-${TMPDIR:-/tmp}/modriff-dd-ios-rel}"
 TEAM="${MODRIFF_TEAM:-6985K934BS}"
 MODE="${1:-export}"
 BUILD="${MODRIFF_BUILD:-$(date +%y%m%d.%H%M)}"
@@ -30,38 +30,45 @@ PKG="$ROOT/ios/App/capacitor-swift-pm"
 export PATH="/opt/homebrew/bin:$HOME/.local/node/bin:$PATH"
 
 cd "$ROOT"
+case "$MODE" in export|upload) ;; *) echo "usage: $0 [export|upload]" >&2; exit 1 ;; esac
+# Two archives must not swap each other's SDKs or overwrite their backups.
+LOCK="$PKG/.ios-archive-lock"
+mkdir -p "$PKG"
+mkdir "$LOCK" 2>/dev/null || { echo "iOS archive already running ($LOCK); do not build Mac Catalyst concurrently" >&2; exit 1; }
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/modriff-ios-sdk.XXXXXX")" || { rmdir "$LOCK"; exit 1; }
+SAVED="$WORK/catalyst-backup"
+mkdir "$SAVED"
+restore() {
+  # Only restore entries actually moved: an early failure must not delete the
+  # untouched half of a framework pair, or lose the original .built-for stamp.
+  for name in Capacitor Cordova; do
+    if [ -f "$SAVED/$name.moved" ]; then
+      rm -rf "$PKG/$name.xcframework"
+      if [ -d "$SAVED/$name.xcframework" ]; then mv "$SAVED/$name.xcframework" "$PKG/"; fi
+      rm "$SAVED/$name.moved"
+    fi
+  done
+}
+cleanup() {
+  restore
+  rm -rf "$WORK"
+  rmdir "$LOCK"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 # Refuses a checkout that is off main or behind (MODRIFF_IOS_ANY=1 to archive a branch on purpose).
 node build/ios-check.mjs --pre
 npm run build >/dev/null
 npx cap sync ios >/dev/null
 node build/ios-check.mjs
 
-VER="$(node -p "require('$ROOT/node_modules/@capacitor/ios/package.json').version")"
-WORK="${TMPDIR:-/tmp}/modriff-capacitor-official-$VER"
-mkdir -p "$WORK" "$PKG"
+python3 ios/sdk-signatures.py prepare "$WORK/official"
 for name in Capacitor Cordova; do
-  [ -d "$WORK/official/$name.xcframework" ] || {
-    curl -fsSL -o "$WORK/$name.zip" "https://github.com/ionic-team/capacitor-swift-pm/releases/download/$VER/$name.xcframework.zip"
-    unzip -q -o "$WORK/$name.zip" -d "$WORK/official"
-  }
-  codesign --verify "$WORK/official/$name.xcframework" || { echo "official $name.xcframework has no valid signature"; exit 1; }
+  if [ -d "$PKG/$name.xcframework" ]; then mv "$PKG/$name.xcframework" "$SAVED/"; fi
+  touch "$SAVED/$name.moved"
+  cp -R "$WORK/official/$name.xcframework" "$PKG/"
 done
-
-SAVED="$WORK/catalyst-backup"
-restore() {
-  # Put back whatever was in the package before this run (nothing, on a fresh clone).
-  for name in Capacitor Cordova; do
-    rm -rf "$PKG/$name.xcframework"
-    [ -d "$SAVED/$name.xcframework" ] && mv "$SAVED/$name.xcframework" "$PKG/"
-  done
-  return 0
-}
-rm -rf "$SAVED"; mkdir -p "$SAVED"
-for name in Capacitor Cordova; do
-  [ -d "$PKG/$name.xcframework" ] && mv "$PKG/$name.xcframework" "$SAVED/"
-done
-trap restore EXIT
-for name in Capacitor Cordova; do cp -R "$WORK/official/$name.xcframework" "$PKG/"; done
 
 mkdir -p "$OUT"
 rm -rf "$OUT/modRiff.xcarchive" "$OUT/export"
@@ -69,19 +76,18 @@ xcodebuild archive -project ios/App/App.xcodeproj -scheme App -configuration Rel
   -destination 'generic/platform=iOS' -archivePath "$OUT/modRiff.xcarchive" -derivedDataPath "$DD" \
   CURRENT_PROJECT_VERSION="$BUILD" -allowProvisioningUpdates >"$OUT/archive.log" 2>&1 \
   || { grep error: "$OUT/archive.log" | head; exit 1; }
-# The archive must carry the SDK signatures Apple checks for; stop here if it does not.
-for name in Capacitor Cordova; do
-  ls "$OUT/modRiff.xcarchive/Signatures/$name.xcframework-ios.signature" >/dev/null \
-    || { echo "archive has no SDK signature for $name: Apple would reject it (ITMS-91065)"; exit 1; }
-done
-restore; trap - EXIT
+# Xcode also writes a .signature file for unsigned SDKs, with signed=false.
+# Check its contents and code hashes rather than treating existence as proof.
+python3 ios/sdk-signatures.py archive "$OUT/modRiff.xcarchive" --sdk "$WORK/official" \
+  | tee "$OUT/archive-signature-verification.log"
+restore
 
 cat >"$OUT/ExportOptions.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
  <key>method</key><string>app-store-connect</string>
- <key>destination</key><string>$([ "$MODE" = upload ] && echo upload || echo export)</string>
+ <key>destination</key><string>export</string>
  <key>signingStyle</key><string>automatic</string>
  <key>teamID</key><string>$TEAM</string>
  <key>uploadSymbols</key><true/>
@@ -90,5 +96,14 @@ PLIST
 xcodebuild -exportArchive -archivePath "$OUT/modRiff.xcarchive" -exportPath "$OUT/export" \
   -exportOptionsPlist "$OUT/ExportOptions.plist" -allowProvisioningUpdates >"$OUT/export.log" 2>&1 \
   || { grep -E "error:|Error" "$OUT/export.log" | head; exit 1; }
+python3 ios/sdk-signatures.py ipa "$OUT/export/App.ipa" --sdk "$WORK/official" --team "$TEAM" \
+  | tee "$OUT/signature-verification.log"
+# Export locally first so `upload` cannot bypass verification of the IPA.
+if [ "$MODE" = upload ]; then
+  /usr/libexec/PlistBuddy -c 'Set :destination upload' "$OUT/ExportOptions.plist"
+  xcodebuild -exportArchive -archivePath "$OUT/modRiff.xcarchive" -exportPath "$OUT/upload" \
+    -exportOptionsPlist "$OUT/ExportOptions.plist" -allowProvisioningUpdates >"$OUT/upload.log" 2>&1 \
+    || { grep -E "error:|Error" "$OUT/upload.log" | head; exit 1; }
+fi
 echo "done: $OUT/export ($MODE), version 1.0 build $BUILD"
 ls -la "$OUT/export"

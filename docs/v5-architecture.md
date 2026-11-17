@@ -20,6 +20,14 @@ are cheaper to make before code than after.
 
 **App Store submission** (listing text, privacy answers, review notes, screenshots, and the Xcode items still open) is in `docs/app-store.md`. The public site it links to (landing, support, privacy, terms) lives in its own repo at modriff.com.
 
+**iOS SDK signatures (7.5):** Capacitor/Cordova stay at 8.5.2; their official SDKs
+are signed by Drifty Co. (`9YN2HU59K8`). The local Catalyst repackaging changes
+the outer SDK signature, so iOS store archives must use `npm run ios:archive`.
+That command verifies pinned zip checksums, temporarily installs the vendor
+copies, validates Xcode's collected signature records and the distribution IPA,
+and restores the Mac copies. A build phase blocks iOS archives using non-vendor
+SDKs. Full upload gates and upgrade instructions are in `docs/app-store.md`.
+
 **Audio output (6.9.9.9.9.9.9.9.2):** Settings > Sound & response > Audio output.
 On Mac Catalyst, Core Audio lists output-capable devices by stable UID; selection changes only
 a playback-only Core Audio HAL output, leaving the system default alone. Catalyst's RemoteIO output

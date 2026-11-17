@@ -444,16 +444,50 @@ try-before-you-buy behaviour are in the one note under "App Review notes" above;
 3. New App: name, language English (U.S.), bundle ID, SKU (any unique string,
    for example `modriff-ios-1`).
 4. Paste the text above, upload screenshots, set price and availability.
-5. Build the packages: `ios/archive-ios-store.sh` (iPhone/iPad `App.ipa`) and
+5. Build the packages: `npm run ios:archive` (iPhone/iPad `App.ipa`) and
    `ios/mac-catalyst/archive-mac-store.sh` (Mac `App.pkg`). Both pick the build number
    (date and time) themselves. Upload the file with Transporter (drag it in; Xcode's own
    upload fails with "Credentials Error ... providerId" when its Apple ID session is stale).
    Apple rejects a build whose Capacitor/Cordova framework is unsigned (ITMS-91065): the iPhone
    script swaps in the official signed frameworks for the archive and restores ours on exit;
    the Mac frameworks, which need a Catalyst slice, are signed with the team's own certificate
-   by `build-capacitor-xcframeworks.sh`.
+   by `build-capacitor-xcframeworks.sh`. An iOS Xcode Archive using the Mac copies
+   now fails with instructions to use `npm run ios:archive`; signing the embedded
+   frameworks as part of app signing does not replace the SDK-origin signatures.
 6. Add the build to the version, answer App Privacy as above, submit for review.
 7. Once live: put the App Store URL on the landing page button (`#get-app` in
    `index.html` of the site repo) and in the Dutdut Records site's app entry.
 8. Open the app's Analytics dashboard and Sales and Trends; verify reports for the
    distributed release as described above. No analytics integration/upload is needed.
+
+### SDK signature upload gate (7.5)
+
+Capacitor **8.5.2 already ships signed SDKs**. No upgrade is needed for ITMS-91065.
+The upstream [8.5.2 Swift package](https://github.com/ionic-team/capacitor-swift-pm/blob/8.5.2/Package.swift)
+publishes both zip checksums; `ios/capacitor-sdk.json` pins those checksums and
+the vendor's signing team, `9YN2HU59K8` (Drifty Co.). Update that file deliberately
+alongside the npm and CapApp-SPM versions on a future upgrade. The shared fetcher
+never borrows an unknown SDK version from another project's DerivedData.
+
+[Apple requires SDK signatures](https://developer.apple.com/support/third-party-SDK-requirements/)
+for binary Capacitor and Cordova dependencies. `-create-xcframework` replaces the
+outer vendor signature when we add Catalyst. The iOS archive script therefore
+uses fresh copies extracted from checksum-verified vendor zips and verifies their
+signatures and privacy manifests. It restores the Mac copies on success, failure,
+SIGINT or SIGTERM. Do not build Mac Catalyst concurrently with an iOS archive.
+
+The old check for the existence of `Signatures/*.signature` was insufficient:
+Xcode can write such a file with `signed=false`. Before export, the script checks
+both records' signed flag, vendor, certificate data, platform and code hashes
+against the pinned SDKs. After export, it checks the records inside `App.ipa`,
+the distribution signatures on the app, extension and frameworks, the signing
+team, device architectures, privacy manifests and absence of `get-task-allow`.
+`archive-signature-verification.log` and `signature-verification.log` are saved
+beside the archive. These local checks
+establish upload readiness; successful App Store Connect processing is confirmed
+only after upload.
+
+Output defaults to `~/Desktop/modRiff-ios-testflight/export/App.ipa`. To use a
+different directory: `OUT=/absolute/output/path npm run ios:archive`. The optional
+`npm run ios:archive -- upload` first exports and verifies locally, then invokes
+Xcode's upload. The ordinary command exports only.
