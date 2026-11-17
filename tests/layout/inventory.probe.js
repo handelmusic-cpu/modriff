@@ -8,7 +8,9 @@
    agreed", never a silent deletion.
 
    Run: node tests/layout/inventory.probe.js           (checks)
-        node tests/layout/inventory.probe.js --write   (re-snapshot: only before the overhaul's first slice, or with the owner) */
+        node tests/layout/inventory.probe.js --write [section ...]
+            (snapshot: with names, only those sections, from the build BEFORE the slice that changes them; with none, all of them.
+             Sections are the Studio pages by name and the Mix pages as "Mix: Mixer", "Mix: Voices", "Mix: mõdSynth".) */
 'use strict';
 const fs = require('fs'), path = require('path');
 const L = require('./lib.js');
@@ -22,6 +24,10 @@ async function sweep(h) {
     await L.goStudio(page, name);
     out[name] = (await page.evaluate(L.SCAN)).map(c => c.key);
   }
+  for (const name of L.MIX) {
+    await L.goMix(page, name);
+    out['Mix: ' + name] = (await page.evaluate(L.SCAN)).map(c => c.key);
+  }
   await ctx.close();
   return out;
 }
@@ -29,8 +35,9 @@ async function sweep(h) {
 (async () => {
   const h = await L.start(), R = L.reporter();
   if (WRITE) {
-    const a = await sweep(h), b = await sweep(h), snap = {};
-    Object.keys(a).forEach(n => { snap[n] = a[n].filter(k => b[n].includes(k)).filter((k, i, arr) => arr.indexOf(k) === i); });
+    const only = process.argv.slice(process.argv.indexOf('--write') + 1).filter(x => !x.startsWith('--'));
+    const a = await sweep(h), b = await sweep(h), snap = fs.existsSync(SNAP) ? JSON.parse(fs.readFileSync(SNAP, 'utf8')) : {};
+    Object.keys(a).filter(n => !only.length || only.includes(n)).forEach(n => { snap[n] = a[n].filter(k => b[n].includes(k)).filter((k, i, arr) => arr.indexOf(k) === i); });
     fs.writeFileSync(SNAP, JSON.stringify(snap, null, 1) + '\n');
     if (!fs.existsSync(HOMES)) fs.writeFileSync(HOMES, '{}\n');
     Object.keys(snap).forEach(n => console.log(n.padEnd(10), snap[n].length, 'controls'));

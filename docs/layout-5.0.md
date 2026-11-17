@@ -37,7 +37,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
 
 ## Decided
 
-1. **Tabs along the bottom: Live | Studio | Song | Sound | caret.** Live and
+1. **Tabs along the bottom: Live | Studio | Song | Mix | caret.** (Sound was renamed Mix in 1.3.) Live and
    Studio become two tabs; the switch leaves the transport bar and the page.
    Settings stops being a tab and becomes the first row of the transport sheet
    (below). Accomp stops being a tab. Tabs are 52 pt tall.
@@ -200,12 +200,12 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     Chords & timing in full; the other pages are listed by their real rows and
     shortened, and the MIDI pane (long today) only by its top-level items. The group
     names are new; the rows are the app's own.
-14. **Part pages keep their voice controls too.** The Chords page in Studio carries
-    today's Chord Voice panel: octave, Attack, Release, Reverb and size, the voice
-    tone set (Tone, Reso, Sweep, Width, Drift), Sub with its wave and level,
-    Strum and its length, Chord under arp, Glide and its time, and the voicing with
-    Vary. The first mock left it out; the rule in decision 2 covers it. The Melody,
-    Bass and Arp voice panels still have to be checked the same way.
+14. **Part pages keep their voice controls too, except the shared voice tone.** The Chords page in Studio carries today's Chord
+    Voice panel: octave, Attack, Release, Reverb and size, Sub with its wave and level, Strum and its length, Chord under arp,
+    Glide and its time, and the voicing with Vary. The voice tone set (Tone, Reso, Sweep, Width, Drift) is one set shared by the
+    Chords, the Melody strip and the Arp, not a Chords control, so since 1.3 it is a card on Mix > Voices and Chords, Melody and
+    Arp each carry a link row to it. The rule in decision 2 covers the rest; the Melody, Bass and Arp voice panels still have to
+    be checked the same way.
 
 15. **The record dot and Keep stay in the widget headings.** Today the headings of
     Chords, Melody and the Sampler carry a record dot (the sheet's own Capture
