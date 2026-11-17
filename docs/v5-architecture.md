@@ -325,9 +325,11 @@ never opens it on its own.
 | mõdFX pad | Filter Sweep, Tape Stop, Dub Delay | **mõdSynth**: the other patches, the X/Y menus, saving your own |
 | Drum kits | Linn, 808 | **Groove**: all others, the Aux channel |
 | Grooves | 4/4 Basic, Shuffle, Half-Time Rock, 4/4 Funk, House, 3/4 Waltz, 12/8 Slow | **Groove**: the rest, including Bossa Nova |
-| Bass / melody styles | Rock, Funk / Hook, Rock | **Groove**: the rest, and Arrange |
+| Bass / melody styles | Rock, Funk / Hook, Rock | **Groove**: the rest |
 | Meters, steps | 4/4, 3/4, 12/8; 12, 16 or 24 (one bar of 12/8) | **Groove**: any meter, up to 64, a step length per part |
 | Live page | the standard layout | **Studio**: adding, swapping, moving, removing widgets |
+| Studio part pages: how a part is written | Generate (and the pickers, steps, rate, octave) | **Studio**: Arrange (a line per chord) and Play in (keys, MIDI or the home row into a roll or the grid; `noteInputArm`). Both show locked, not hidden (7.4) |
+| Studio part pages: sound shaping | the voice as picked, at its defaults | **Studio** (`soundShaping`): each part's Filter, Attack, Release, Reverb and the five voice-tone knobs (Tone, Reso, Sweep, Width, Drift). The sliders lock; a saved song or link that carries a value still plays it. Picking a voice, Sub, Strum, Glide, Drive and the mixer stay free (`soundShapingSync`) |
 | Audio / MIDI export | the whole mixed-down take / first 4 bars of MIDI | **Studio**: the whole MIDI; stems |
 | Saved songs | 5 (iReal charts count against them) | **Studio**: unlimited |
 | iReal import | one chart per import, counted against the slots | **Practice**: whole playlists, in a library outside the slots |
@@ -343,8 +345,8 @@ buyer-facing text promises packs added later.
 **Judgment calls the brief left open, all in the tables above and one line each to move:**
 the two free drum kits are Linn and 808 (606 and Jazz went to Groove); the free bass styles
 are Rock and Funk and the free melody styles Hook and Rock; Bossa Nova left the free grooves
-as a world groove; arp rates beyond 1/8 and 1/16 are Groove; Arrange (a line per chord) is
-Groove; the rotatable key colours stay free and only the fifths order is Theory; the chord
+as a world groove; arp rates beyond 1/8 and 1/16 are Groove; Arrange (a line per chord) moved
+from Groove to Studio in 7.4, with Play in and sound shaping (the owner's call: the Studio tab is where a sound is tweaked); the rotatable key colours stay free and only the fifths order is Theory; the chord
 vocabulary beyond the plain sevenths is Theory (it was already locked); the free sampler gets
 the first two preset banks; free steps are one bar of any free meter, up to 16, with 12/8's
 own 24-sixteenth bar allowed because the free 12/8 groove cannot be written without it.

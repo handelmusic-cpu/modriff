@@ -339,7 +339,7 @@ product is deleted, so check each one before creating it.
 | `Handel.modRiff.groove` | Groove Pack | Groove Pack | World grooves, odd meters, extra kits, aux | $3.99 |
 | `Handel.modRiff.theory` | Theory Pack | Theory Pack | Every mode, chord and voicing, neo-soul ready | $3.99 |
 | `Handel.modRiff.practice` | Practice & Perform Pack | Practice & Perform Pack | Speed trainer, loop bars, Stage, timeline | $3.99 |
-| `Handel.modRiff.studio` | Studio Pack | Studio Pack | Stems, full audio and MIDI export, no limits | $4.99 |
+| `Handel.modRiff.studio` | Studio Pack | Studio Pack | Sound shaping, Play in, Arrange, stems, MIDI | $4.99 |
 | `Handel.modRiff.sounds` | Sounds Pack | Sounds Pack | Tonewheel organ, e-piano, pads, vibes, bass | $1.99 |
 | `Handel.modRiff.fullstudio` | Full Studio | Full Studio | Every pack, in one purchase | $12.99 launch, $19.99 regular |
 | `Handel.modRiff.fullstudio.from1` | Full Studio Upgrade 1 Module | Complete Your Studio | Finish the set: every pack you don’t own yet | $10.99 launch, $15.99 regular |
