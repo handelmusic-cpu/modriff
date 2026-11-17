@@ -235,7 +235,7 @@ Contact: support@modriff.com
 ## Screenshots
 
 The upload set is `docs/app-store/screenshots/v6.9.9.9.9.9.9.9a/` (taken from build 6.9.9.9.9.9.9.9a in the iOS
-Simulator; the version shows on the splash shot). Tabs are Live, Studio, Song, Sound. No pack is locked in them and
+Simulator; the version shows on the splash shot). Tabs are Live, Studio, Song, Sound (the layout overhaul, 1.2 to 1.9.2, renamed Sound to Mix and changed Live, Studio, Mix and the editor: these shots predate it, so retake the set from a 1.9.2 or later build before it is uploaded; the Studio Pack promo image, `promo/Handel.modRiff.studio.png`, was remade for 1.8 and shows the EQ). No pack is locked in them and
 no other company's product name is visible. Everything older (`6.9in-` and `13in-` in this folder, `v6.9.2/`) shows
 retired tab names or the old kit names and is history only: do not upload it. `v6.9.6/` is the Duo layout reference.
 
