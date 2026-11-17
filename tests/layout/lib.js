@@ -75,6 +75,14 @@ async function goStudio(page, name) {
   await page.waitForTimeout(450);
 }
 
+/* The pages of Mix (the tab that was Sound until 1.3). Mixer and Voices are the two pages; mõdSynth is a third until slice 4 puts
+   it on the part pages. */
+const MIX = ['Mixer', 'Voices', 'mõdSynth'];
+async function goMix(page, name) {
+  await page.evaluate(n => { switchTab('mix'); setMixMode({ 'Mixer': 'mixer', 'Voices': 'voices', 'mõdSynth': 'synth' }[n]); }, name);
+  await page.waitForTimeout(name === 'mõdSynth' ? 1500 : 600);
+}
+
 /* Every visible interactive element on the page that is showing, with its box and a stable key. A control with an id is its
    id; one without is "tag.firstclass|label" (the label is its aria-label, title or text, trimmed). */
 const SCAN = () => {
@@ -120,4 +128,4 @@ function reporter() {
   return { check, done: () => { console.log(fails ? '\n' + fails + ' FAILED' : '\nall passed'); process.exit(fails ? 1 : 0); }, get fails() { return fails; } };
 }
 
-module.exports = { start, boot, goStudio, STUDIO, SCAN, PAGE_BOTTOM, VIEWPORTS, isSmall, KNOWN_SMALL, reporter, ROOT };
+module.exports = { start, boot, goStudio, goMix, STUDIO, MIX, SCAN, PAGE_BOTTOM, VIEWPORTS, isSmall, KNOWN_SMALL, reporter, ROOT };
