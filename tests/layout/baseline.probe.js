@@ -25,11 +25,13 @@ const VPS = ['p430', 'p390', 'se375'];
       const small = items.filter(L.isSmall).filter(c => !L.KNOWN_SMALL.some(rx => rx.test(c.key)));
       const bottom = await page.evaluate(L.PAGE_BOTTOM);
       now[vp][name] = { bottom, controls: items.length, small: small.length };
+      const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      R.check(over <= 1, vp + ' ' + name + ': no sideways overflow', over + ' pt');
     }
     const live = await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); return 1; });
     await page.waitForTimeout(500);
     const li = await page.evaluate(L.SCAN);
-    now[vp].Live = { bottom: await page.evaluate(L.PAGE_BOTTOM), controls: li.length, small: li.filter(L.isSmall).length };
+    now[vp].Live = { bottom: await page.evaluate(L.PAGE_BOTTOM), controls: li.length, small: li.filter(L.isSmall).filter(c => !L.KNOWN_SMALL.some(rx => rx.test(c.key))).length };
     R.check(errs.length === 0, 'no page errors at ' + vp, errs.slice(0, 2).join(' | '));
     await ctx.close();
   }
