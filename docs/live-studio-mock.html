@@ -5,111 +5,165 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Live and Studio mock</title>
 <!-- Throwaway mock, silent. Open through a local server so ../fonts/ resolves.
-     Live: the full stack, scrolling; chords in two rows, a tall melody keyboard, controls behind one button per widget.
-     Studio: one part per page, one selector (the strip on top), no parts row in the chrome. -->
+     Revision 2 (owner's answers): Studio strip has eight entries (Melody and Mel Seq apart); Live chords are two rows
+     of four SPLIT pads (7th on top, triad below) plus a borrowed-chords pad; one ··· sheet per widget; Arp has no roll;
+     Bass / Mel Seq show play keys only while the roll is empty; the Mix page keeps the Export row, the Voices page has the
+     Aux kit and the shared voice tone; the EQ is shown locked (Studio Pack) with five bands, shelf corner frequencies,
+     and a Clear EQ way out; small page and sheet animations (off under reduced motion). -->
 <style>
 @font-face{font-family:'Outfit';font-weight:400;src:url(../fonts/outfit-latin-400-normal.woff2) format('woff2')}
 @font-face{font-family:'Outfit';font-weight:600;src:url(../fonts/outfit-latin-600-normal.woff2) format('woff2')}
 @font-face{font-family:'Orbitron';font-weight:700;src:url(../fonts/orbitron-latin-700-normal.woff2) format('woff2')}
-:root{--bg:#0a0a13;--panel:#151624;--line:#2a2c42;--ink:#eceafb;--dim:#8d8fa8;
-  --chords:#b44df0;--drums:#e0524f;--bass:#d9b93a;--mel:#3fcf7a;--arp:#2fc7c0;--smp:#f08a3c;--fx:#5b8cff;--rec:#ff4466}
+:root{
+  /* Surfaces and text: the app's own tokens (index.html :root). */
+  --bg:#05060c;--surf:#090b17;--panel:#0d0f1e;--line:#20233a;--ink:#eef0ff;--dim:#9aa4cc;--play:#1b2142;--edge:#39427a;
+  /* The key colour. The app derives every accent from the key's hue; this is B-flat (hue 282, 80%, 60%). */
+  --kh:282;--ks:80%;--kl:60%;
+  --pv:hsl(var(--kh),var(--ks),var(--kl));--pb:hsl(calc(var(--kh) + 210),var(--ks),calc(var(--kl) + 6%));
+  --py:hsl(calc(var(--kh) + 60),calc(var(--ks) - 6%),calc(var(--kl) - 4%));--pr:hsl(calc(var(--kh) + 180),var(--ks),var(--kl));
+  --tonic:var(--pb);--subdom:var(--py);--dom:var(--pr);--modal:var(--pv);--accent:var(--pv);
+  /* PARTS in index.html: drum, auxperc, bass, melgen, arp, sampler, mel, chord. mõdFX has no colour of its own: it wears the accent. */
+  --drums:#ff5a5f;--aux:#ff9a3c;--bass:#ffd23f;--melq:#5fdc6a;--arp:#2ad4c8;--smp:#3a9bff;--mel:#6f7bff;--chords:#b46bff;--fx:var(--accent);
+  --alert:#ff9d3c;--rec:#ff4466}
 *{box-sizing:border-box;margin:0}
-body{background:#05050a;color:var(--ink);font:400 13px/1.25 Outfit,system-ui,sans-serif;padding:24px 16px 48px}
+body{background:#000;color:var(--ink);font:400 13px/1.25 Outfit,system-ui,sans-serif;padding:24px 16px 48px}
 h1{font:700 18px Orbitron,sans-serif;letter-spacing:.06em;text-align:center;margin-bottom:6px}
-.sub{color:var(--dim);text-align:center;margin-bottom:24px}
+.sub{color:var(--dim);text-align:center;margin-bottom:12px}
+.decided{max-width:900px;margin:0 auto 24px;color:var(--dim);font-size:12.5px;line-height:1.55;columns:2 380px;column-gap:28px}
+.decided b{color:var(--ink)}
 .wrap{display:flex;flex-wrap:wrap;gap:40px;justify-content:center;align-items:flex-start}
 .col{width:430px;max-width:100%}
 .col h2{font:700 13px Orbitron,sans-serif;letter-spacing:.14em;margin-bottom:10px;color:var(--dim)}
-.phone{width:430px;height:932px;background:var(--bg);border:1px solid var(--line);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.tog{display:flex;gap:6px;margin-bottom:10px;align-items:center;color:var(--dim);font-size:12px}
+.tog button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font:600 12px Outfit,sans-serif;cursor:pointer}
+.tog button.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.phone{width:430px;height:932px;background:var(--bg);border:1px solid var(--line);border-radius:44px;overflow:hidden;display:flex;flex-direction:column;position:relative;transition:width .25s ease}
 .status{height:54px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 34px 8px;font-weight:600;font-size:15px}
-.island{position:absolute;top:12px;left:50%;width:110px;height:32px;margin-left:-55px;background:#000;border-radius:18px}
+.island{position:absolute;top:12px;left:50%;width:110px;height:32px;margin-left:-55px;background:#000;border-radius:18px;z-index:2}
 .page{flex:1;min-height:0;padding:0 12px;display:flex;flex-direction:column;gap:8px}
 .page.scroll{overflow-y:auto;display:block}
 .page.scroll>*{margin-bottom:8px}
+.foldc .fhead{min-height:44px}
+.caret{width:44px;padding:0!important}
+.caret svg{transition:transform .2s}
+.foldc.shut .caret svg{transform:rotate(-90deg)}
+.fbody{display:grid;grid-template-rows:1fr;transition:grid-template-rows .22s ease}
+.fbody>.fin{overflow:hidden;min-height:0}
+.foldc.shut .fbody{grid-template-rows:0fr}
+.foldc.shut .fin{visibility:hidden}
+.swap{animation:pgin .2s ease-out}
+@keyframes pgin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .lbl{font:700 10px Orbitron,sans-serif;letter-spacing:.16em;color:var(--dim)}
 .row{display:flex;gap:6px;align-items:center}
 .sp{flex:1}
-.btn{min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:600 13px Outfit,sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;white-space:nowrap}
-.btn.on{border-color:var(--c,var(--chords));box-shadow:inset 0 0 0 1px var(--c,var(--chords));color:#fff}
-.btn.fill{background:var(--c,var(--chords));border-color:transparent;color:#fff}
+.btn{min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:600 13px Outfit,sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s}
+.btn.on{border-color:var(--c,var(--accent));box-shadow:inset 0 0 0 1px var(--c,var(--accent));color:#fff}
+.btn.fill{background:var(--c,var(--accent));border-color:transparent;color:#fff}
 .btn.sm{min-height:44px;padding:0 10px;font-size:12px}
-.dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--rec)}
+.btn.dash{border-style:dashed;color:var(--dim)}
+.dots{display:flex;gap:3px}.dots i{width:4px;height:4px;border-radius:50%;background:var(--ink)}
+.dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--rec);flex:none}
 .pads{display:grid;gap:5px}
-.cp{border:1px solid var(--line);border-top:2px solid var(--q);border-radius:10px;background:linear-gradient(#1b1d30,#12131f);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
-.cp small{font-size:10px;color:var(--dim)}
+.cp{border:1px solid var(--edge);border-top:2px solid var(--q);border-radius:10px;background:linear-gradient(#1f2650,var(--play));display:flex;flex-direction:column;overflow:hidden;cursor:pointer}
+.cp .h7,.cp .h3{flex:1;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;position:relative}
+.cp .h7{border-bottom:1px solid var(--line);background:#ffffff09}
+.cp small{position:absolute;left:6px;top:3px;font-size:9px;color:var(--dim)}
 .cp b{font-size:15px}
+.cp .h7 b{font-size:13px;color:#cfcbe8}
 .cp i{font:normal 600 9px Outfit;color:var(--q);letter-spacing:.08em}
-.cp.lit{border-color:var(--chords);box-shadow:0 0 14px #b44df088}
+.cp.lit{border-color:var(--accent);box-shadow:0 0 14px color-mix(in srgb,var(--accent) 55%,transparent)}
+.cp.more{align-items:center;justify-content:center;gap:4px;border-style:dashed}
+.cp.more b{font-size:22px;color:var(--accent)}
 .seg{display:flex;border:1px solid var(--line);border-radius:12px;overflow:hidden;flex:none}
-.seg button{flex:1;min-height:44px;background:none;border:0;color:var(--dim);font:700 11px Orbitron,sans-serif;letter-spacing:.12em;cursor:pointer}
+.seg button{flex:1;min-height:44px;background:none;border:0;color:var(--dim);font:700 11px Orbitron,sans-serif;letter-spacing:.12em;cursor:pointer;transition:background .15s,color .15s}
+.seg.sm button{font-size:9.5px;letter-spacing:.05em;padding:0 2px}
 .seg button.on{background:var(--c);color:#0a0a13}
-.surface{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px;padding-bottom:8px}
 .keys{flex:1;display:grid;grid-template-columns:repeat(8,1fr);gap:4px}
-.key{border:1px solid var(--line);border-top:3px solid var(--mel);border-radius:10px;background:linear-gradient(#20223a,#141523);display:flex;align-items:flex-end;justify-content:center;padding-bottom:10px;font-weight:600}
-.key.root{border-top-color:var(--chords)}
+.key{border:1px solid var(--edge);border-top:3px solid var(--mel);border-radius:10px;background:linear-gradient(#252d5a,var(--play));display:flex;align-items:flex-end;justify-content:center;padding-bottom:10px;font-weight:600}
+.key.root{border-top-color:var(--accent)}
 .spads{flex:1;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(3,1fr);gap:6px}
-.spad{border:1px solid var(--line);border-radius:12px;background:linear-gradient(#22202a,#15141c);display:flex;flex-direction:column;justify-content:space-between;padding:8px;font-size:11px;color:var(--dim)}
+.spad{border:1px solid var(--edge);border-radius:12px;background:linear-gradient(#252d5a,var(--play));display:flex;flex-direction:column;justify-content:space-between;padding:8px;font-size:11px;color:var(--dim)}
 .spad b{color:var(--smp);font:700 11px Orbitron}
-.xy{flex:1;border:1px solid var(--line);border-radius:14px;position:relative;background:
-  linear-gradient(#ffffff0a 1px,transparent 1px) 0 0/100% 25%,linear-gradient(90deg,#ffffff0a 1px,transparent 1px) 0 0/25% 100%,radial-gradient(circle at 62% 40%,#5b8cff44,transparent 45%),#10111c}
+.xy{flex:1;border:1px solid var(--edge);border-radius:14px;position:relative;background:
+  linear-gradient(#ffffff0a 1px,transparent 1px) 0 0/100% 25%,linear-gradient(90deg,#ffffff0a 1px,transparent 1px) 0 0/25% 100%,radial-gradient(circle at 62% 40%,color-mix(in srgb,var(--accent) 27%,transparent),transparent 45%),var(--play)}
 .xy::after{content:"";position:absolute;left:62%;top:40%;width:26px;height:26px;margin:-13px;border-radius:50%;border:2px solid var(--fx);box-shadow:0 0 16px var(--fx)}
 .xy span{position:absolute;font-size:10px;color:var(--dim)}
-.chrome{flex:none;border-top:1px solid var(--line);background:#0d0d18}
+.chrome{flex:none;border-top:1px solid var(--line);background:var(--surf)}
 .tp{height:48px;display:flex;align-items:center;gap:8px;padding:0 12px}
-.tp .k{border:1px solid var(--chords);border-radius:10px;padding:6px 12px;color:var(--chords);font-weight:600}
+.tp .k{border:1px solid var(--accent);border-radius:10px;padding:6px 12px;color:var(--accent);font-weight:600}
 .play{width:36px;height:36px;border-radius:50%;border:2px solid #fff;display:grid;place-items:center}
 .play::after{content:"";width:11px;height:11px;background:#fff;border-radius:2px}
 .recb{width:30px;height:30px;border-radius:50%;border:2px solid var(--rec);display:grid;place-items:center}
 .recb::after{content:"";width:12px;height:12px;border-radius:50%;background:var(--rec)}
 .parts{height:48px;display:flex;gap:5px;padding:2px 10px 6px}
-.parts div{flex:1;border-radius:8px;border:1px solid var(--c);background:color-mix(in srgb,var(--c) 28%,#0d0d18);display:grid;place-items:center;font-weight:600;font-size:11px;letter-spacing:.04em}
+.parts div{flex:1;border-radius:8px;border:1px solid var(--c);background:color-mix(in srgb,var(--c) 28%,var(--surf));display:grid;place-items:center;font-weight:600;font-size:11px;letter-spacing:.04em}
 .parts div.off{background:none;color:var(--dim);border-color:var(--line)}
 .tabs{height:52px;display:flex;padding-bottom:10px}
 .tabs div{flex:1;display:grid;place-items:center;font:700 10px Orbitron,sans-serif;letter-spacing:.14em;color:var(--dim)}
-.tabs div.on{color:#fff;box-shadow:inset 0 2px 0 var(--chords)}
-.strip{display:flex;gap:4px;flex:none;padding:2px 0 6px}
-.chip{flex:1;min-width:0;min-height:44px;padding:0;border-radius:10px;border:1px solid var(--line);border-bottom:2px solid var(--c);background:var(--panel);color:var(--dim);font:600 11.5px Outfit;display:flex;align-items:center;justify-content:center;cursor:pointer;white-space:nowrap}
+.tabs div.on{color:#fff;box-shadow:inset 0 2px 0 var(--accent)}
+.strip{display:flex;gap:3px;flex:none;padding:2px 0 6px}
+.strip.two{flex-wrap:wrap}
+.strip.two .chip{flex:0 0 calc(25% - 3px)}
+.chip{flex:1 1 auto;min-width:44px;min-height:44px;padding:0 5px;border-radius:10px;border:1px solid var(--line);border-bottom:2px solid var(--c);background:var(--panel);color:var(--dim);font:600 11px Outfit;display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer;white-space:nowrap;transition:background .18s,color .18s,border-color .18s}
 .chip.on{color:#fff;border-color:var(--c);background:color-mix(in srgb,var(--c) 24%,var(--panel))}
-.card{border:1px solid var(--line);border-radius:12px;padding:8px;background:#10111c}
+.chip u{width:5px;height:5px;border-radius:50%;background:var(--c);flex:none;text-decoration:none}
+.chip.off u{opacity:.25}
+.card{border:1px solid var(--line);border-radius:12px;padding:8px;background:var(--surf)}
 .grid{display:grid;gap:3px}
 .cell{height:26px;border-radius:5px;background:#1a1c2c}
 .cell.b{background:#222439}
 .cell.x{background:var(--c)}
 .rollrow{display:grid;grid-template-columns:34px 1fr;gap:6px;align-items:center;font-size:10px;color:var(--dim)}
-.wt{display:block;width:100%;border-radius:10px;background:#0b0c15}
+.wt{display:block;width:100%;border-radius:10px;background:var(--bg)}
 .knobs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
 .kn{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--dim)}
 .kn i{width:44px;height:44px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--c);border-right-color:var(--c);transform:rotate(var(--r,20deg));position:relative}
 .kn i::after{content:"";position:absolute;left:50%;top:3px;width:2px;height:10px;margin-left:-1px;background:var(--c);transform-origin:50% 18px;transform:rotate(calc(45deg - var(--r,20deg)))}
 .frow{display:flex;gap:5px;align-items:center;height:48px;flex:none}
-.ftrack{flex:1;height:44px;border:1px solid var(--line);border-radius:10px;background:#10111c;position:relative;overflow:hidden;cursor:pointer}
-.ffill{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--c) 38%,transparent);border-right:3px solid var(--c)}
+.ftrack{flex:1;height:44px;border:1px solid var(--line);border-radius:10px;background:var(--surf);position:relative;overflow:hidden;cursor:pointer}
+.ffill{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--c) 38%,transparent);border-right:3px solid var(--c);transition:width .18s ease}
 .ffill.pan{border-left:3px solid var(--c)}
 .fname{position:absolute;left:10px;top:0;bottom:0;display:flex;align-items:center;font:700 10.5px Orbitron,sans-serif;letter-spacing:.1em;color:#fff}
-.fval{position:absolute;right:10px;top:0;bottom:0;display:flex;align-items:center;font-size:11px;color:var(--ink)}
+.fval{position:absolute;right:0;top:0;bottom:0;min-width:64px;padding:0 10px;display:flex;align-items:center;justify-content:flex-end;font-size:11px;color:var(--ink);background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--surf) 87%,transparent) 30%)}
 .fmeter{position:absolute;left:0;bottom:0;height:3px;background:var(--c);opacity:.9}
-.ms{width:44px;height:44px;flex:none;border:1px solid var(--line);border-radius:10px;background:var(--panel);display:grid;place-items:center;font-weight:600;font-size:12px}
-.ms.on{background:var(--bass);color:#0a0a13;border-color:transparent}
+.ms{width:44px;height:44px;flex:none;border:1px solid var(--line);border-radius:10px;background:var(--panel);display:grid;place-items:center;font-weight:600;font-size:12px;cursor:pointer}
+.ms.on{background:var(--alert);color:#0a0a13;border-color:transparent}
 .kn5{grid-template-columns:repeat(5,1fr)}
 .note{margin-top:12px;color:var(--dim);font-size:12.5px;line-height:1.5}
 .note b{color:var(--ink)}
 .hint{font-size:10px;color:var(--dim);text-align:center}
+.eqbox{position:relative}
+.eqbox .eqin{opacity:.3;pointer-events:none}
+.eqlock{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:12px;font-size:12px;color:var(--ink)}
+.eqlock small{color:var(--dim);font-size:11px}
+.sheetbg{position:absolute;inset:0;background:#000a;opacity:0;pointer-events:none;transition:opacity .2s;z-index:5}
+.sheetbg.open{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:80%;overflow:auto;background:var(--surf);border-top:1px solid var(--line);border-radius:22px 22px 0 0;padding:14px 12px 28px;transform:translateY(105%);transition:transform .26s cubic-bezier(.2,.8,.2,1);z-index:6}
+.sheet.open{transform:none}
+.sheet h3{font:700 12px Orbitron,sans-serif;letter-spacing:.14em;margin-bottom:6px}
+.sg2{margin-top:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.tag{font:700 8px Orbitron;letter-spacing:.1em;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:2px 5px;margin-left:6px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 <h1>LIVE, STUDIO AND MIX</h1>
-<p class="sub">Silent mock at 430 x 932. Scroll Live; tap the part strip on Studio.</p>
+<p class="sub">Silent mock at 430 x 932, revision 2. Tap the part strip on Studio, the three dots on a Live widget, the Mix switches, a channel name, the locked EQ.</p>
+<div class="decided">
+<b>Decided:</b> Studio strip with eight entries (Melody and Mel Seq each get a page). Live chords: two rows of four split pads, the 7th on top and the triad below, and an eighth pad for borrowed chords. One three-dot button per Live widget. Mix: rows, the Level / Pan / Rev / Dly / Drv / Mix switch, a channel name opens its strip. EQ: five bands (HPF, Lo shelf, Mid, Hi shelf, LPF), shelf corner frequencies, shown locked in a free build. Bass and Mel Seq show play keys only while the roll is empty. Arp stays a settings page. Not drawn on purpose: a per-page Mute, drum play pads, the invented Chain card.
+</div>
 <div class="wrap">
   <div class="col">
-    <h2>LIVE: THE FULL STACK, FEWER CONTROLS</h2>
+    <h2>LIVE: THE FULL STACK</h2>
     <div class="phone" id="live">
       <div class="island"></div>
       <div class="status"><span>9:41</span><span></span></div>
       <div class="page scroll" id="livePage"></div>
       <div class="chrome">
-        <div class="tp"><span class="k">B♭</span><span>Dor</span><span style="color:var(--chords);font-weight:600">98</span><span class="sp"></span><span class="play"></span><span class="recb"></span><span class="sp"></span><div class="btn sm" style="min-height:34px">1/16</div><div class="btn sm" style="min-height:34px">SONG</div></div>
+        <div class="tp"><span class="k">B♭</span><span>Dor</span><span style="color:var(--accent);font-weight:600">98</span><span class="sp"></span><span class="play"></span><span class="recb"></span><span class="sp"></span><div class="btn sm" style="min-height:34px">1/16</div><div class="btn sm" style="min-height:34px">SONG</div></div>
         <div class="parts"><div style="--c:var(--drums)">DRUMS</div><div style="--c:var(--bass)">BASS</div><div class="off">MEL</div><div class="off">ARP</div><div style="--c:var(--chords)">CHORDS</div></div>
-        <div class="tabs"><div class="on">LIVE</div><div>STUDIO</div><div>SONG</div><div>SOUND</div><div>MORE</div></div>
+        <div class="tabs"><div class="on">LIVE</div><div>STUDIO</div><div>SONG</div><div>MIX</div><div>MORE</div></div>
       </div>
     </div>
     <p class="note" id="liveNote"></p>
@@ -117,27 +171,29 @@ h1{font:700 18px Orbitron,sans-serif;letter-spacing:.06em;text-align:center;marg
 
   <div class="col">
     <h2>STUDIO: ONE SELECTOR, ON TOP</h2>
+    <div class="tog">Phone width <button data-w="430" class="on">430</button><button data-w="375">375</button><span id="wnote"></span></div>
     <div class="phone" id="studio">
       <div class="island"></div>
       <div class="status"><span>9:41</span><span></span></div>
       <div style="padding:0 12px"><div class="strip" id="strip"></div></div>
       <div class="page scroll" id="studioPage"></div>
       <div class="chrome">
-        <div class="tp"><span class="k">B♭</span><span>Dor</span><span style="color:var(--chords);font-weight:600">98</span><span class="sp"></span><span class="play"></span><span class="recb"></span><span class="sp"></span><div class="btn sm" style="min-height:34px">1/16</div><div class="btn sm" style="min-height:34px">SONG</div></div>
+        <div class="tp"><span class="k">B♭</span><span>Dor</span><span style="color:var(--accent);font-weight:600">98</span><span class="sp"></span><span class="play"></span><span class="recb"></span><span class="sp"></span><div class="btn sm" style="min-height:34px">1/16</div><div class="btn sm" style="min-height:34px">SONG</div></div>
         <div class="parts"><div style="--c:var(--drums)">DRUMS</div><div style="--c:var(--bass)">BASS</div><div class="off">MEL</div><div class="off">ARP</div><div style="--c:var(--chords)">CHORDS</div></div>
-        <div class="tabs"><div>LIVE</div><div class="on">STUDIO</div><div>SONG</div><div>SOUND</div><div>MORE</div></div>
+        <div class="tabs"><div>LIVE</div><div class="on">STUDIO</div><div>SONG</div><div>MIX</div><div>MORE</div></div>
       </div>
     </div>
     <p class="note" id="studioNote"></p>
   </div>
   <div class="col">
     <h2>MIX: EVERY CHANNEL ON ONE SCREEN</h2>
+    <div class="tog">Preview as <button id="packoff" class="on">Free build</button><button id="packon">Studio Pack</button></div>
     <div class="phone" id="mix">
       <div class="island"></div>
       <div class="status"><span>9:41</span><span></span></div>
       <div class="page" id="mixPage"></div>
       <div class="chrome">
-        <div class="tp"><span class="k">B♭</span><span>Dor</span><span style="color:var(--chords);font-weight:600">98</span><span class="sp"></span><span class="play"></span><span class="recb"></span><span class="sp"></span><div class="btn sm" style="min-height:34px">1/16</div><div class="btn sm" style="min-height:34px">SONG</div></div>
+        <div class="tp"><span class="k">B♭</span><span>Dor</span><span style="color:var(--accent);font-weight:600">98</span><span class="sp"></span><span class="play"></span><span class="recb"></span><span class="sp"></span><div class="btn sm" style="min-height:34px">1/16</div><div class="btn sm" style="min-height:34px">SONG</div></div>
         <div class="parts"><div style="--c:var(--drums)">DRUMS</div><div style="--c:var(--bass)">BASS</div><div class="off">MEL</div><div class="off">ARP</div><div style="--c:var(--chords)">CHORDS</div></div>
         <div class="tabs"><div>LIVE</div><div>STUDIO</div><div>SONG</div><div class="on">MIX</div><div>MORE</div></div>
       </div>
@@ -148,151 +204,233 @@ h1{font:700 18px Orbitron,sans-serif;letter-spacing:.06em;text-align:center;marg
 
 <script>
 var $=function(s){return document.querySelector(s)};
-var Q={MIN:'#3fcf7a',MAJ:'#b44df0',DIM:'#e0524f'};
-var CH=[['i','B♭m','MIN'],['ii','Cm','MIN'],['♭III','D♭','MAJ'],['IV','E♭','MAJ',1],['v','Fm','MIN'],['vi°','G°','DIM'],['♭VII','A♭','MAJ'],['more','+','MAJ']];
-function chordPad(c){return '<div class="cp'+(c[3]?' lit':'')+'" style="--q:'+Q[c[2]]+'"><small>'+c[0]+'</small><b>'+c[1]+'</b>'+(c[0]==='more'?'<i>BORROWED</i>':'<i>'+c[2]+'</i>')+'</div>'}
+var Q={tonic:'var(--tonic)',subdom:'var(--subdom)',dom:'var(--dom)',modal:'var(--modal)'},QN={tonic:'TONIC',subdom:'SUBDOM',dom:'DOM',modal:'MODAL'};
+/* [degree, triad, seventh, quality, lit] */
+var CH=[['i','B♭m','B♭m7','tonic'],['ii','Cm','Cm7','subdom'],['♭III','D♭','D♭maj7','tonic'],['IV','E♭','E♭maj7','subdom',1],['v','Fm','Fm7','dom'],['vi°','G°','Gø7','dom'],['♭VII','A♭','A♭7','dom']];
+var BORROWED=[['iii','Dm','Dm7','modal'],['vii°','A°','Aø7','modal'],['♭VI','G♭','G♭maj7','modal']];
+var DOMS=[['V/ii','G','G7','dom'],['V/♭III','A♭','A♭7','dom'],['V/IV','B♭','B♭7','dom'],['V/v','C','C7','dom']];
+function chordPad(c){
+  return '<div class="cp'+(c[4]?' lit':'')+'" style="--q:'+Q[c[3]]+'"><div class="h7"><small>'+c[0]+'</small><b>'+c[2]+'</b></div><div class="h3"><b>'+c[1]+'</b><i>'+QN[c[3]]+'</i></div></div>'}
+function morePad(){return '<div class="cp more" style="--q:var(--modal)"><b>+</b><i>BORROWED</i></div>'}
+function padGrid(list,extra){return '<div class="pads" style="grid-template-columns:repeat(4,1fr);grid-auto-rows:96px">'+list.map(chordPad).join('')+(extra||'')+'</div>'}
 
-var MORE='<div class="btn sm" style="padding:0 14px">···</div>';
-function lhead(name,right){return '<div class="row"><span class="lbl">'+name+'</span><span class="sp"></span>'+(right||'')+MORE+'</div>'}
-function setSurf(){}
+var MORE='<div class="btn sm more" style="padding:0 14px;width:54px" data-sheet="';
+function lhead(name,right,key){return '<div class="row"><span class="lbl">'+name+'</span><span class="sp"></span>'+(right||'')+MORE+key+'"><span class="dots"><i></i><i></i><i></i></span></div></div>'}
+function pickRow(n,a,b){return '<div class="row"><span class="lbl" style="width:52px">'+n+'</span><div class="btn sm" style="width:44px;padding:0">‹</div><div class="btn sm" style="flex:1;justify-content:space-between;min-width:0">'+a+'<span style="color:var(--dim)">▾</span></div><div class="btn sm" style="width:44px;padding:0">›</div><div class="btn sm" style="width:44px;padding:0">‹</div><div class="btn sm" style="flex:1;justify-content:space-between;min-width:0">'+b+'<span style="color:var(--dim)">▾</span></div><div class="btn sm" style="width:44px;padding:0">›</div></div>'}
 function buildLive(){
   var pads=['Kick','Snare','Hat','Clap','Vox 1','Vox 2','Stab','Riser','Loop A','Loop B','Bell','Sub'];
   $('#livePage').innerHTML=
-   lhead('CHORDS','<span class="dot"></span>')+
-   '<div class="pads" id="diat" style="grid-template-columns:repeat(4,1fr);grid-auto-rows:66px">'+CH.map(chordPad).join('')+'</div>'+
-   lhead('MELODY')+
+   lhead('CHORDS','<span class="dot"></span>','chords')+padGrid(CH,morePad())+
+   lhead('MELODY','<span class="dot"></span>','melody')+
    '<div class="keys" id="lkeys" style="height:380px">'+['B♭4','C5','D♭5','E♭5','F5','G5','A♭5','B♭5'].map(function(n,i){return '<div class="key'+(i%7===0?' root':'')+'">'+n+'</div>'}).join('')+'</div>'+
-   lhead('SAMPLER')+
+   lhead('STYLES','','styles')+
+   '<div style="display:flex;flex-direction:column;gap:4px"><div class="row" style="padding-left:58px"><span class="lbl" style="flex:1;text-align:center">VOICE</span><span class="lbl" style="flex:1;text-align:center">STYLE</span></div>'+pickRow('Drums','Analog 1','Funk')+pickRow('Aux','Digital 1','Clave')+pickRow('Bass','Electric','Rock')+pickRow('Chords','Stab Keys','Pop')+pickRow('Melody','Glass Lead','Hook')+'</div>'+
+   lhead('SAMPLER','<span class="dot"></span>','sampler')+
    '<div class="spads" style="height:250px">'+pads.map(function(n,i){return '<div class="spad"><b>'+(i+1)+'</b>'+n+'</div>'}).join('')+'</div>'+
-   lhead('MÕDFX')+
+   lhead('MÕDFX','','fx')+
    '<div class="xy" style="height:220px"><span style="left:10px;bottom:8px">Filter Sweep</span></div>'+
-   lhead('DRUMS')+'<div class="card">'+grid(6,16,'--drums',['Kick','Snare','Hat','Open','Clap','Aux'])+'</div>'+
-   lhead('BASS')+'<div class="card">'+grid(5,16,'--bass',['B♭','A♭','F','E♭','B♭'])+'</div>'+
-   lhead('MELODY GRID')+'<div class="card">'+grid(5,16,'--mel',['B♭','A♭','F','E♭','B♭'])+'</div>'+
-   lhead('STYLES')+'<div class="row"><div class="btn sm on" style="flex:1">Funk</div><div class="btn sm" style="flex:1">Rock</div><div class="btn sm" style="flex:1">Hook</div></div>'+
-   lhead('ENDINGS')+'<div class="row"><div class="btn sm" style="flex:1">Hit</div><div class="btn sm" style="flex:1">Ritard</div><div class="btn sm" style="flex:1">Fade</div></div>';
+   '<div class="row"><div class="btn sm" style="flex:1"><span class="dot"></span>Record a move</div><div class="btn sm" style="flex:1">Loop</div><div class="btn sm" style="flex:1">Clear</div></div>'+
+   lhead('BOUNCE','','bounce')+
+   '<div class="row"><div class="btn sm fill" style="--c:var(--rec);flex:2"><span class="dot" style="border-color:#fff"></span>Bounce audio + MIDI</div><div class="btn sm" style="flex:1">Stems</div></div>'+
+   lhead('ENDINGS','','endings')+
+   '<div class="row">'+['Ritard','Tag','Big Fin','Fade','Cold'].map(function(n){return '<div class="btn sm" style="flex:1;padding:0">'+n+'</div>'}).join('')+'</div>'+
+   '<div class="btn dash" style="width:100%">Add / reorder widgets · Studio Pack</div>';
 }
-var PARTS=[['Drums','--drums'],['Bass','--bass'],['Melody','--mel'],['Arp','--arp'],['Chords','--chords'],['Sampler','--smp'],['FX','--fx']];
-function grid(rows,steps,color,names){
+/* What each widget's ··· holds: every control the widget has, then the arrangement rows. */
+var SH={
+ chords:['CHORDS',[['Sound',['*Stab Keys','Roll a new sound','Sub','Sine / Warm']],['Variants',['Root','sus2','sus4','add9','power','/5','/b6','/6','/b7','/7','More qualities']],['Rhythm',['Every beat ▾','On','Keep playing','Edit rhythm']],['Voice',['Oct −','Oct +']],['More',['Chords on the grid','Chord Forms','mõdFX + mix','Voice tone (shared) ›']]]],
+ melody:['MELODY',[['Sound',['*Glass Lead','Roll a new sound']],['Playing',['*Keys','Strip','Oct −','Oct +','Hold','Glide','Mode: Auto']],['Touch Mod',['*On','Bright','Wah','Vibrato','Tremolo','Depth','Speed','Axis']],['More',['Notes on the strip','Key width: Auto','Do Re Mi','mõdFX + mix','Voice tone (shared) ›']]]],
+ styles:['STYLES',[['Patterns',['Save…','Open']]]],
+ sampler:['SAMPLER',[['Pads',['Hold','Roll','Stop','Load','Trim…','Reset']],['Bank',['*Preset','User','*A Mix','B Drums','C Phrases','D FX']],['Timing',['Quantize 1/16','Triplets','1 bar','2','4','8']],['Patterns',['*1','2','3','4','5','6','7','8','Rec','Cap','Play','Clear','Undo']],['Selected pad',['Pitch −','Pitch +','*One-shot','Gate','Loop','Reverse','Sync','Key','Warp','Mute group']],['Sends',['Delay','Reverb','More…']]]],
+ fx:['MÕDFX',[['Patch',['*Filter Sweep','Sample','Hold','Clean ▾','Release']],['Axes',['X: cutoff','Y: resonance','Knob A','Knob B']],['Send through the pad',['*Drums','Aux','*Bass','Mel Seq','Arp','Sampler','Melody','*Chords']],['Motion',['Arm','Loop','Clear']],['',['About']]]],
+ bounce:['BOUNCE',[]],
+ endings:['ENDINGS',[]]
+};
+var ARR=['Move up','Move down','Swap with…','Take off the Live page','Back to the standard layout'];
+function chips(a){return '<div class="chips">'+a.map(function(i){var on=i.charAt(0)==='*';return '<div class="btn sm'+(on?' on':'')+'">'+(on?i.slice(1):i)+'</div>'}).join('')+'</div>'}
+function sheetHtml(k){var d=SH[k];return '<div class="row"><h3 style="flex:1">'+d[0]+' · CONTROLS</h3><div class="btn sm" data-close="1">Done</div></div>'+
+  d[1].map(function(g){return '<div class="sg2">'+(g[0]?'<span class="lbl">'+g[0].toUpperCase()+'</span>':'')+chips(g[1])+'</div>'}).join('')+
+  (d[1].length?'':'<p class="hint" style="margin-top:10px;text-align:left">Nothing else on this widget. Its controls are on the page.</p>')+
+  '<div class="sg2"><span class="lbl">ARRANGE THIS WIDGET</span><span class="tag">STUDIO PACK</span>'+chips(ARR)+'</div>'}
+function sheet(ph,html){
+  var p=$(ph),bg=p.querySelector('.sheetbg'),sh=p.querySelector('.sheet');
+  if(!bg){bg=document.createElement('div');bg.className='sheetbg';sh=document.createElement('div');sh.className='sheet';p.appendChild(bg);p.appendChild(sh);
+    bg.addEventListener('click',function(){closeSheet(p)});
+    sh.addEventListener('click',function(e){if(e.target.closest('[data-close]'))closeSheet(p);if(e.target.closest('[data-unlock]')){setPack(true);closeSheet(p)}})}
+  sh.innerHTML=html;sh.scrollTop=0;void sh.offsetWidth;bg.classList.add('open');sh.classList.add('open')}
+function closeSheet(p){p.querySelectorAll('.sheetbg,.sheet').forEach(function(e){e.classList.remove('open')})}
+$('#livePage').addEventListener('click',function(e){var b=e.target.closest('[data-sheet]');if(b)sheet('#live',sheetHtml(b.dataset.sheet))});
+
+/* ── Studio ── */
+var PARTS=[['Drums','--drums'],['Bass','--bass'],['Melody','--mel'],['Mel Seq','--melq'],['Arp','--arp'],['Chords','--chords'],['Sampler','--smp'],['mõdFX','--fx']];
+var ON={Drums:1,Bass:1,Chords:1};
+function grid(rows,steps,color,names,empty){
   var h='';
   for(var r=0;r<rows;r++){
     h+='<div class="rollrow"><span>'+(names?names[r]:'')+'</span><div class="grid" style="grid-template-columns:repeat('+steps+',1fr);--c:var('+color+')">';
-    for(var s=0;s<steps;s++){var on=((s*7+r*5+r*s)%(r+3))===0;h+='<div class="cell'+(s%4===0?' b':'')+(on?' x':'')+'"></div>'}
+    for(var s=0;s<steps;s++){var on=!empty&&((s*7+r*5+r*s)%(r+3))===0;h+='<div class="cell'+(s%4===0?' b':'')+(on?' x':'')+'"></div>'}
     h+='</div></div>';
   }
   return h;
 }
-var SYN={Bass:'Rubber Sub',Melody:'Glass Lead',Arp:'Pluck Stack',Chords:'Stab Keys'},synthEdit=false,curPart='Drums';
-function knobs(c,names){return '<div class="knobs" style="--c:var('+c+')">'+names.map(function(n,i){return '<div class="kn"><i style="--r:'+(i*37%140-40)+'deg"></i>'+n+'</div>'}).join('')+'</div>'}
-function synthCard(c,name){return '<div class="card" style="border-color:color-mix(in srgb,var('+c+') 55%,var(--line))">'+
-  '<div class="row" style="margin-bottom:6px"><span class="lbl">MÕDSYNTH</span><span class="sp"></span><div class="btn sm" style="padding:0 14px">‹</div><div class="btn sm on" style="--c:var('+c+')">'+SYN[name]+'</div><div class="btn sm" style="padding:0 14px">›</div></div>'+
-  '<canvas class="wt" data-c="'+c+'" style="height:96px"></canvas>'+
-  '<div class="row" style="margin-top:8px"><div class="btn sm" style="flex:1">Random</div><div class="btn sm" style="flex:1">Patches</div><div class="btn sm fill" data-edit="1" style="--c:var('+c+');flex:1.4">Edit synth</div></div></div>'}
+var SYN={Bass:'Rubber Sub',Melody:'Glass Lead','Mel Seq':'Soft Pluck',Arp:'Pluck Stack',Chords:'Stab Keys'},synthEdit=false,curPart='Melody';
+function knobsC(c,names,cols){return '<div class="knobs" style="--c:var('+c+');grid-template-columns:repeat('+(cols||4)+',1fr)">'+names.map(function(n,i){return '<div class="kn"><i style="--r:'+(i*37%140-40)+'deg"></i>'+n+'</div>'}).join('')+'</div>'}
+function knobs(c,n){return knobsC(c,n,4)}
+function segc(c,labels,on,cls){return '<div class="seg '+(cls||'')+'">'+labels.map(function(l,i){return '<button'+(i===on?' class="on"':'')+' style="--c:var('+c+')">'+l+'</button>'}).join('')+'</div>'}
+function lnk(t){return '<div class="btn sm" style="justify-content:space-between;width:100%;flex:none">'+t+'<span style="color:var(--dim)">›</span></div>'}
+var FOLD={};
+var CARET='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+/* A card whose body folds away behind a caret. State is per part and per card, kept while the page is open. */
+function fold(key,title,body,o){o=o||{};var k=curPart+'|'+key,shut=FOLD[k]===true;
+  return '<div class="card foldc'+(shut?' shut':'')+'" data-fold="'+k+'"'+(o.c?' style="border-color:color-mix(in srgb,var('+o.c+') 55%,var(--line))"':'')+'><div class="row fhead"><span class="lbl">'+title+'</span><span class="sp"></span>'+(o.right||'')+
+  '<div class="btn sm caret" data-caret="'+k+'" role="button" aria-label="Hide or show '+title.toLowerCase()+'">'+CARET+'</div></div><div class="fbody"><div class="fin"><div style="padding-top:6px">'+body+'</div></div></div></div>'}
+function synthCard(c,name){return fold('syn','MÕDSYNTH',
+  '<canvas class="wt" data-c="'+c+'" style="height:96px"></canvas><div class="row" style="margin-top:8px"><div class="btn sm" style="flex:1">Random</div><div class="btn sm" style="flex:1">Patches</div><div class="btn sm fill" data-edit="1" style="--c:var('+c+');flex:1.4">Edit synth</div></div>',
+  {c:c,right:'<div class="btn sm" style="width:44px;padding:0">‹</div><div class="btn sm on" style="--c:var('+c+')">'+SYN[name]+'</div><div class="btn sm" style="width:44px;padding:0">›</div>'})}
 function synthEditor(c,name){return '<div class="row"><div class="btn sm" data-edit="0">‹ '+name+'</div><span class="sp"></span><div class="btn sm on" style="--c:var('+c+')">'+SYN[name]+'</div><div class="btn sm">Save</div></div>'+
   '<canvas class="wt" data-c="'+c+'" data-big="1" style="height:190px"></canvas>'+
-  '<div class="seg"><button class="on" style="--c:var('+c+')">OSC</button><button>FM</button><button>FILTER</button><button>ENV</button><button>LFO</button><button>MATRIX</button></div>'+
+  '<div class="seg sm">'+['OSC','FM','FILTER','ENV','LFO','MATRIX'].map(function(t,i){return '<button'+(i?'':' class="on"')+' style="--c:var('+c+')">'+t+'</button>'}).join('')+'</div>'+
   '<div class="row"><div class="btn sm on" style="--c:var('+c+');flex:1">Osc 1</div><div class="btn sm" style="flex:1">Osc 2</div><div class="btn sm" style="flex:1">Osc 3</div></div>'+
-  '<div class="card"><div class="row"><span class="lbl">WAVE SET</span><span class="sp"></span><div class="btn sm">‹</div><div class="btn sm">Saw to square</div><div class="btn sm">›</div></div>'+knobs(c,['Morph','Unison','Detune','Level'])+knobs(c,['Octave','Fine','Pan','Phase'])+'</div>'+
-  '<div class="card"><span class="lbl">MACROS</span>'+knobs(c,['Bright','Move','Bite','Space'])+'</div>'}
-function head(a,b){return '<div class="row"><div class="btn sm" style="flex:1;justify-content:space-between">'+a+'<span style="color:var(--dim)">▾</span></div><div class="btn sm" style="flex:1;justify-content:space-between">'+b+'<span style="color:var(--dim)">▾</span></div><div class="btn sm">Mute</div></div>'}
-function mode(c){return '<div class="seg"><button class="on" style="--c:var('+c+')">GENERATE</button><button>ARRANGE</button><button>PLAY IN</button></div>'}
+  '<div class="card"><div class="row"><span class="lbl">WAVE SET</span><span class="sp"></span><div class="btn sm" style="width:44px;padding:0">‹</div><div class="btn sm">Saw to square</div><div class="btn sm" style="width:44px;padding:0">›</div></div>'+knobs(c,['Morph','Unison','Detune','Level'])+knobs(c,['Octave','Fine','Pan','Phase'])+'</div>'+
+  '<div class="card"><div class="row"><span class="lbl">MACROS</span><span class="sp"></span><span class="hint">named by the patch</span></div>'+knobs(c,['Bright','Move','Bite','Space'])+knobs(c,['Grit','Air','Drift','Depth'])+'</div>'}
+function head(a,b){return '<div class="row"><div class="btn sm" style="flex:1;justify-content:space-between">'+a+'<span style="color:var(--dim)">▾</span></div><div class="btn sm" style="flex:1;justify-content:space-between">'+b+'<span style="color:var(--dim)">▾</span></div></div>'}
+function mode(c,on){return segc(c,['GENERATE','ARRANGE','PLAY IN'],on||0)}
+function playKeys(c,why){return fold('keys','PLAY IT','<div class="hint" style="text-align:right;margin-bottom:4px">'+why+'</div><div class="keys" style="height:110px">'+['B♭','C','D♭','E♭','F','G','A♭','B♭'].map(function(n,i){return '<div class="key'+(i%7===0?' root':'')+'" style="border-top-color:var('+c+')">'+n+'</div>'}).join('')+'</div>')}
+function noKeys(){return '<p class="hint" style="padding:2px 8px">The roll has notes, so the play keys are hidden. Clear it, or choose Play in, to play on keys.</p>'}
+/* The rule for every synth part's page: what you play or edit first, then the sound underneath. */
+function roll(c,a,b,n,filled,extra){return head(a,b)+mode(c)+
+  fold('roll','PIANO ROLL','<div class="hint" style="text-align:right;margin-bottom:4px">'+(filled?'rotate the phone for long patterns':'empty: play it in, or Generate')+'</div>'+grid(8,16,c,['B♭','A♭','G','F','E♭','D♭','C','B♭'],!filled))+
+  '<div class="row"><div class="btn sm" style="flex:1">Steps 16</div><div class="btn sm" style="flex:1">Rate 1/16</div><div class="btn sm" style="flex:1">Oct −</div><div class="btn sm" style="flex:1">Oct +</div></div>'+
+  '<div class="row"><div class="btn sm on" style="--c:var('+c+');flex:1">Follow</div><div class="btn sm" style="flex:1">Place</div><div class="btn sm" style="flex:1">Zoom</div><div class="btn sm" style="flex:1">Clear</div></div>'+
+  (filled?noKeys():playKeys(c,'the roll is empty'))+synthCard(c,n)+(extra||'')}
 var PAGE={
  Drums:function(c){return head('Groove: 4/4 Funk','Kit: Analog 1')+
-   '<div class="card"><div class="row" style="margin-bottom:6px"><span class="lbl">PATTERN</span><span class="sp"></span><span class="hint">16 steps · swing 54%</span></div>'+grid(7,16,c,['Kick','Snare','Hat','Open','Clap','Tom','Aux'])+'</div>'+
-   '<div class="row"><div class="btn sm" style="flex:1">Steps 16</div><div class="btn sm" style="flex:1">Swing</div><div class="btn sm" style="flex:1">Fill</div><div class="btn sm" style="flex:1">Clear</div></div>'+
-   '<div class="card"><span class="lbl">PLAY IT</span><div class="pads" style="grid-template-columns:repeat(4,1fr);grid-auto-rows:64px;margin-top:6px">'+['Kick','Snare','Hat','Open','Clap','Tom','Rim','Aux'].map(function(n){return '<div class="spad" style="justify-content:center;align-items:center">'+n+'</div>'}).join('')+'</div></div>'},
- Chords:function(c){return head('Rhythm: Every beat','Voice: mõdSynth')+synthCard(c,'Chords')+
+   '<div class="seg"><button class="on" style="--c:var(--drums)">KIT</button><button style="--c:var(--aux)">AUX</button></div>'+
+   '<div class="card"><div class="row" style="margin-bottom:6px"><span class="lbl">PATTERN</span><span class="sp"></span><span class="hint">16 steps · swing 54%</span></div>'+grid(6,16,c,['Kick','Snare','Hat','Open','Clap','Tom'])+'</div>'+
+   '<div class="row"><div class="btn sm" style="flex:1">Steps 16</div><div class="btn sm" style="flex:1">Rate 1×</div><div class="btn sm" style="flex:1">Swing</div><div class="btn sm" style="flex:1">Fill…</div></div>'+
+   '<div class="row"><div class="btn sm" style="flex:1">Duplicate</div><div class="btn sm" style="flex:1">Tuplets</div><div class="btn sm" style="flex:1">Audition</div><div class="btn sm" style="flex:1">Clear</div></div>'+
+   '<div class="card"><div class="row" style="margin-bottom:6px"><span class="lbl">PATTERNS</span><span class="sp"></span><span class="hint">hold to clear</span></div><div class="row">'+[1,2,3,4,5,6,7,8].map(function(n){return '<div class="btn sm'+(n===1?' on':'')+'" style="--c:var(--drums);flex:1;padding:0">'+n+'</div>'}).join('')+'</div></div>'+
+   '<div class="row"><div class="btn sm" style="flex:1">Save…</div><div class="btn sm" style="flex:1">Open</div><div class="btn sm" style="flex:1">mõdFX mix</div></div>'},
+ Chords:function(c){return head('Rhythm: Every beat','Voice: mõdSynth')+
    '<div class="row"><span class="dot"></span><div class="btn sm">Keep</div><div class="btn sm">Variants</div><span class="sp"></span><div class="btn sm">Sub</div><div class="btn sm">+Modal</div></div>'+
-   '<div class="card"><div class="row" style="margin-bottom:6px"><span class="lbl">CHORD RHYTHM</span><span class="sp"></span><span class="hint">drawn on the page, not in a sheet</span></div>'+grid(3,16,c,['Hit','Tie','Vel'])+'</div>'+
-   '<div class="card"><span class="lbl">IN KEY</span><div class="pads" style="grid-template-columns:repeat(4,1fr);grid-auto-rows:62px;margin-top:6px">'+CH.slice(0,7).map(chordPad).join('')+'</div></div>'+
-   '<div class="card"><span class="lbl">BORROWED AND MODAL</span><div class="pads" style="grid-template-columns:repeat(4,1fr);grid-auto-rows:62px;margin-top:6px">'+[['iii','Dm','MIN'],['vii°','A°','DIM'],['♭VI','G♭','MAJ']].map(chordPad).join('')+'</div></div>'+
-   '<div class="card"><span class="lbl">SECONDARY DOMINANTS</span><div class="pads" style="grid-template-columns:repeat(4,1fr);grid-auto-rows:62px;margin-top:6px">'+[['V/ii','G','MAJ'],['V/♭III','A♭','MAJ'],['V/IV','B♭','MAJ'],['V/v','C','MAJ']].map(chordPad).join('')+'</div></div>'},
- Sampler:function(c){return '<div class="row"><div class="btn sm on" style="--c:var(--smp)">Preset</div><div class="btn sm">User</div><span class="sp"></span><div class="btn sm on" style="--c:var(--smp)">A</div><div class="btn sm">B</div><div class="btn sm">C</div><div class="btn sm">D</div></div>'+
+   fold('pads','CHORDS · IN KEY',padGrid(CH))+
+   fold('bor','BORROWED AND MODAL',padGrid(BORROWED))+
+   fold('dom','SECONDARY DOMINANTS',padGrid(DOMS))+
+   fold('rhy','CHORD RHYTHM','<div class="hint" style="text-align:right;margin-bottom:4px">drawn on the page, up to 64 steps</div>'+grid(3,16,c,['Hit','Tie','Vel']))+
+   synthCard(c,'Chords')+lnk('Voice tone, shared with Melody and Arp')},
+ Melody:function(c){return head('Voice: mõdSynth','Notes: In key')+
+   '<div class="row"><div class="seg" style="flex:2"><button class="on" style="--c:var('+c+')">KEYS</button><button style="--c:var('+c+')">STRIP</button></div><div class="btn sm" style="flex:1">Oct −</div><div class="btn sm" style="flex:1">Oct +</div></div>'+
+   '<div class="row"><div class="btn sm" style="flex:1">Hold</div><div class="btn sm" style="flex:1">Glide</div><div class="btn sm" style="flex:1">Mode: Auto</div><div class="btn sm" style="flex:1">Roll sound</div></div>'+
+   fold('keys','KEYS','<div class="hint" style="text-align:right;margin-bottom:4px">Auto key width · Do Re Mi off</div><div class="keys" style="height:220px">'+['B♭4','C5','D♭5','E♭5','F5','G5','A♭5','B♭5'].map(function(n,i){return '<div class="key'+(i%7===0?' root':'')+'" style="border-top-color:var('+c+')">'+n+'</div>'}).join('')+'</div>')+
+   fold('touch','TOUCH MOD',segc(c,['BRIGHT','WAH','VIBRATO','TREMOLO'],0,'sm')+knobsC(c,['Depth','Speed','Axis'],3),{right:'<div class="btn sm on" style="--c:var('+c+')">On</div>'})+
+   synthCard(c,'Melody')+
+   fold('filter','FILTER',segc(c,['OFF','LADDER','SCREAMER'],1,'sm')+knobsC(c,['Cutoff','Reso','Attack','Release'],4))+
+   lnk('Voice tone, shared with Chords and Arp')+
+   '<div class="row"><div class="btn sm" style="flex:1">mõdFX on Melody</div><div class="btn sm" style="flex:1">mix 40</div></div>'},
+ Arp:function(c){return head('Shape: Up-down','Voice: mõdSynth')+
+   '<div class="row"><div class="btn sm on" style="--c:var('+c+');flex:1">Arp on</div>'+segc(c,['1 OCT','2','3'],1).replace('class="seg "','class="seg" style="flex:2"')+'</div>'+
+   fold('rate','RATE',segc(c,['SYNC','FREE'],0)+knobsC(c,['Rate'],1)+'<span class="lbl" style="display:block;margin:8px 0 4px">RATE MOTION</span>'+segc(c,['OFF','ACCEL','DECEL','SWELL'],0,'sm'))+
+   fold('shape','LOUDNESS AND RHYTHM',segc(c,['FLAT','CRESC.','DECRESC.','HILL','VALLEY'],3,'sm')+'<span class="lbl" style="display:block;margin:8px 0 4px">RHYTHM</span>'+segc(c,['EVEN','SWING','SKIP','ACCENT'],0,'sm'))+
+   synthCard(c,'Arp')+
+   fold('filter','FILTER',segc(c,['OFF','LADDER','SCREAMER'],0,'sm')+knobsC(c,['Cutoff','Reso'],2))+
+   lnk('Voice tone, shared with Chords and Melody')+
+   '<div class="row"><div class="btn sm" style="flex:1">mõdFX on Arp</div><div class="btn sm" style="flex:1">mix 40</div></div>'+
+   '<p class="hint">The Arp page is settings only. It has no roll and no keys.</p>'},
+ Sampler:function(c){return '<div class="row"><div class="btn sm on" style="--c:var(--smp)">Preset</div><div class="btn sm">User</div><span class="sp"></span><div class="btn sm on" style="--c:var(--smp);width:44px;padding:0">A</div><div class="btn sm" style="width:44px;padding:0">B</div><div class="btn sm" style="width:44px;padding:0">C</div><div class="btn sm" style="width:44px;padding:0">D</div></div>'+
    '<div class="spads" style="height:250px;flex:none">'+['Kick','Snare','Hat','Clap','Vox 1','Vox 2','Stab','Riser','Loop A','Loop B','Bell','Sub'].map(function(n,i){return '<div class="spad"'+(i===4?' style="border-color:var(--smp)"':'')+'><b>'+(i+1)+'</b>'+n+'</div>'}).join('')+'</div>'+
-   '<div class="card"><div class="row"><span class="lbl">PAD 5 · VOX 1</span><span class="sp"></span><div class="btn sm fill" style="--c:var(--smp)">Trim and slice</div></div>'+
+   '<div class="row"><div class="btn sm" style="flex:1">Hold</div><div class="btn sm" style="flex:1">Roll</div><div class="btn sm" style="flex:1">Stop</div><div class="btn sm" style="flex:1">Load</div><div class="btn sm" style="flex:1">Reset</div></div>'+
+   '<div class="card"><div class="row"><span class="lbl">PAD 5 · VOX 1</span><span class="sp"></span><div class="btn sm fill" style="--c:var(--smp)">Trim…</div></div>'+
    '<div class="row" style="margin-top:6px"><div class="btn sm" style="flex:1">One-shot</div><div class="btn sm" style="flex:1">Reverse</div><div class="btn sm" style="flex:1">Sync</div><div class="btn sm" style="flex:1">Key</div></div>'+
-   '<div class="row" style="margin-top:6px"><div class="btn sm" style="flex:1">Warp</div><div class="btn sm" style="flex:1">Mute grp</div><div class="btn sm" style="flex:2">mõdFX sends</div></div></div>'+
-   '<div class="card"><div class="row" style="margin-bottom:6px"><span class="lbl">PATTERNS</span><span class="sp"></span><span class="hint">quantize 1/16</span></div><div class="row">'+[1,2,3,4,5,6,7,8].map(function(n){return '<div class="btn sm'+(n===1?' on':'')+'" style="--c:var(--smp);flex:1;padding:0">'+n+'</div>'}).join('')+'</div>'+
-   '<div class="row" style="margin-top:6px"><div class="btn sm" style="flex:1">Rec</div><div class="btn sm" style="flex:1">Play</div><div class="btn sm" style="flex:1">Clear</div><div class="btn sm" style="flex:1">Undo</div></div></div>'+
+   '<div class="row" style="margin-top:6px"><div class="btn sm" style="flex:1">Warp</div><div class="btn sm" style="flex:1">Pitch 0 st</div><div class="btn sm" style="flex:1">Mute grp</div><div class="btn sm" style="flex:1">Sends</div></div></div>'+
+   '<div class="card"><div class="row" style="margin-bottom:6px"><span class="lbl">PATTERNS</span><span class="sp"></span><span class="hint">quantize 1/16 · 2 bars</span></div><div class="row">'+[1,2,3,4,5,6,7,8].map(function(n){return '<div class="btn sm'+(n===1?' on':'')+'" style="--c:var(--smp);flex:1;padding:0">'+n+'</div>'}).join('')+'</div>'+
+   '<div class="row" style="margin-top:6px"><div class="btn sm" style="flex:1">Rec</div><div class="btn sm" style="flex:1">Cap</div><div class="btn sm" style="flex:1">Play</div><div class="btn sm" style="flex:1">Clear</div><div class="btn sm" style="flex:1">Undo</div></div></div>'+
    '<div class="row"><div class="btn sm" style="flex:1">Record</div><div class="btn sm" style="flex:1">Resample</div><div class="btn sm" style="flex:1">Library</div></div>'},
- FX:function(c){return head('Patch: Filter Sweep','Target: Master')+
+ 'mõdFX':function(c){return head('Patch: Filter Sweep','Pad filter: Clean')+
    '<div class="row"><div class="btn sm" style="flex:1">X: cutoff</div><div class="btn sm" style="flex:1">Y: resonance</div><div class="btn sm">Save</div></div>'+
-   '<div class="xy" style="height:300px;flex:none"></div>'+
-   '<div class="card"><span class="lbl">CHAIN</span><div class="row" style="margin-top:6px">'+['Filter','Drive','Delay','Reverb'].map(function(n,i){return '<div class="btn sm'+(i<3?' on':'')+'" style="--c:var(--fx);flex:1">'+n+'</div>'}).join('')+'</div></div>'}
+   '<div class="xy" style="height:260px;flex:none"></div>'+
+   '<div class="row"><div class="btn sm" style="flex:1">Hold</div><div class="btn sm" style="flex:1">Release</div><div class="btn sm" style="flex:1">Sample</div><div class="btn sm" style="flex:1">Clear</div></div>'+
+   '<div class="card"><div class="row"><span class="lbl">MOTION</span><span class="sp"></span><div class="btn sm"><span class="dot"></span>Arm</div><div class="btn sm">Loop</div><div class="btn sm">Clear</div></div>'+knobsC(c,['Knob A','Knob B'],2)+'</div>'+
+   '<div class="card"><span class="lbl">SEND EACH PART THROUGH THE PAD</span><div class="chips">'+['Drums','Aux','Bass','Mel Seq','Arp','Sampler','Melody','Chords'].map(function(n,i){return '<div class="btn sm'+(i%3===0?' on':'')+'" style="--c:var(--fx);flex:1 1 22%">'+n+'</div>'}).join('')+'</div></div>'}
 };
-function roll(c,a,b,n){return head(a,b)+synthCard(c,n)+mode(c)+
-  '<div class="card"><div class="row" style="margin-bottom:6px"><span class="lbl">ROLL</span><span class="sp"></span><span class="hint">rotate the phone for long patterns</span></div>'+grid(8,16,c,['B♭','A♭','G','F','E♭','D♭','C','B♭'])+'</div>'+
-  '<div class="row"><div class="btn sm" style="flex:1">Steps 16</div><div class="btn sm" style="flex:1">Rate 1/16</div><div class="btn sm" style="flex:1">Clear</div></div>'+
-  '<div class="card"><span class="lbl">PLAY IT</span><div class="keys" style="height:110px;margin-top:6px">'+['B♭','C','D♭','E♭','F','G','A♭','B♭'].map(function(n,i){return '<div class="key'+(i%7===0?' root':'')+'" style="border-top-color:var('+c+')">'+n+'</div>'}).join('')+'</div></div>'}
-PAGE.Bass=function(c){return roll(c,'Style: Funk','Voice: mõdSynth','Bass')};
-PAGE.Melody=function(c){return roll(c,'Style: Hook','Voice: mõdSynth','Melody')};
-PAGE.Arp=function(c){return roll(c,'Shape: Up-down','Voice: mõdSynth','Arp')};
+PAGE.Bass=function(c){return roll(c,'Style: Funk','Voice: mõdSynth','Bass',true,fold('filter','FILTER',knobsC(c,['Cutoff','Reso'],2)))};
+PAGE['Mel Seq']=function(c){return roll(c,'Style: Hook','Voice: mõdSynth','Mel Seq',false,fold('filter','FILTER · GLIDE',segc(c,['OFF','LADDER','SCREAMER'],1,'sm')+knobsC(c,['Cutoff','Reso','Glide time'],3)))};
 
-function setPart(name){
-  $('#strip').innerHTML=PARTS.map(function(p){return '<div class="chip'+(p[0]===name?' on':'')+'" data-p="'+p[0]+'" style="--c:var('+p[1]+')">'+p[0]+'</div>'}).join('');
+var narrow=false;
+function retrigger(sel){var e=$(sel);e.classList.remove('swap');void e.offsetWidth;e.classList.add('swap')}
+function setPart(name,anim){
+  $('#strip').className='strip'+(narrow?' two':'');
+  $('#strip').innerHTML=PARTS.map(function(p){return '<div class="chip'+(p[0]===name?' on':'')+(ON[p[0]]?'':' off')+'" data-p="'+p[0]+'" style="--c:var('+p[1]+')"><u></u>'+p[0]+'</div>'}).join('');
   var c=PARTS.filter(function(p){return p[0]===name})[0][1];
   if(name!==curPart)synthEdit=false;curPart=name;
   $('#studioPage').innerHTML=(synthEdit&&SYN[name])?synthEditor(c,name):PAGE[name](c);
   $('#studioPage').scrollTop=0;
+  if(anim!==false)retrigger('#studioPage');
   if(still)drawWT(1.3);
-    measure();
+  measure();
 }
 $('#strip').addEventListener('click',function(e){var c=e.target.closest('.chip');if(c)setPart(c.dataset.p)});
+$('#studioPage').addEventListener('click',function(e){
+  var cb=e.target.closest('[data-caret]');
+  if(cb){var k=cb.dataset.caret,card=cb.closest('.foldc');FOLD[k]=!(FOLD[k]===true);card.classList.toggle('shut',FOLD[k]===true);setTimeout(measure,260);return}
+  var b=e.target.closest('[data-edit]');if(b){synthEdit=b.dataset.edit==='1';setPart(curPart)}});
+document.querySelectorAll('.tog [data-w]').forEach(function(b){b.addEventListener('click',function(){
+  document.querySelectorAll('.tog [data-w]').forEach(function(x){x.classList.toggle('on',x===b)});
+  var w=+b.dataset.w;narrow=w<390;$('#studio').style.width=w+'px';setPart(curPart,false);setTimeout(measure,300)})});
 
 function measure(){
   var lp=$('#livePage'),sp=$('#studioPage');
   if(!lp.firstChild||!sp.firstChild)return;
-  var k=$('#lkeys'),below=lp.clientHeight-(k.offsetTop-lp.offsetTop+k.offsetHeight);
-  $('#liveNote').innerHTML='<b>Measured:</b> chord pads 66 pt in two rows, melody keys '+k.offsetHeight+' pt tall. Chords and the whole keyboard are on the first screen with '+below+' pt of the next widget showing below. The full stack is '+lp.scrollHeight+' pt. Each widget has one ··· button for its controls and nothing else.';
-  $('#studioNote').innerHTML='<b>Measured:</b> page area '+sp.clientHeight+' pt, this part\'s page '+sp.scrollHeight+' pt. The strip on top is the only way to choose a page and lists all seven parts. The row at the bottom only switches parts on and off, exactly as it does on Live.';
+  var k=$('#lkeys'),p1=lp.querySelector('.cp'),below=lp.clientHeight-(k.offsetTop-lp.offsetTop+k.offsetHeight),pr=p1.getBoundingClientRect(),h7=p1.querySelector('.h7').getBoundingClientRect(),h3=p1.querySelector('.h3').getBoundingClientRect();
+  $('#liveNote').innerHTML='<b>Measured:</b> '+Math.round(pr.width)+' x '+Math.round(pr.height)+' pt split pads, two rows; the 7th half '+Math.round(h7.height)+' pt and the triad half '+Math.round(h3.height)+' pt. Melody keys '+k.offsetHeight+' pt. '+(below>=0?'Chords and the whole keyboard fit the first screen with '+below+' pt to spare.':'Chords and the keyboard run '+(-below)+' pt past the first screen.')+' The full stack is '+lp.scrollHeight+' pt (the first mock\'s three-button Styles and Endings are now the app\'s real rows and five endings).';
+  var ch=$('#strip').getBoundingClientRect(),w=parseInt($('#studio').style.width)||430,cs=[].slice.call($('#strip').children),minw=Math.round(Math.min.apply(null,cs.map(function(c){return c.getBoundingClientRect().width})));
+  $('#wnote').textContent=w+' pt: '+(narrow?'two rows of four':'one row')+', narrowest button '+minw+' pt';
+  $('#studioNote').innerHTML='<b>Measured:</b> strip '+Math.round(ch.height)+' pt tall, '+(narrow?'two rows (eight 44 pt buttons do not fit one row below 390 pt)':'one row')+'. Page area '+sp.clientHeight+' pt, this part\'s page '+sp.scrollHeight+' pt. The dot on a chip says the part is switched on; the bottom row only switches parts on and off, as on Live. The wavetable is a stand-in; in the app it draws the engine\'s frames and morph.';
 }
-$('#studioPage').addEventListener('click',function(e){var b=e.target.closest('[data-edit]');if(b){synthEdit=b.dataset.edit==='1';setPart(curPart)}});
-/* Wavetable view: the frames of one wave set stacked back to front, the playing
-   frame bright, the morph position drifting as an LFO would move it. In the app
-   this would draw the engine's real frames and morph value, not these stand-ins. */
+
+/* Wavetable view: stand-in frames; the app draws the engine's real ones. No shadow blur (costly on a phone). */
 function frameY(f,x,t){var saw=2*(x%1)-1,sq=(x%1)<.5+.2*Math.sin(t*.7)?1:-1,sn=Math.sin(x*6.283),fm=Math.sin(x*6.283+2.2*Math.sin(x*12.566+t));
   var a=[sn,fm,saw,sq],i=Math.min(2,Math.floor(f*3)),k=f*3-i;return a[i]*(1-k)+a[i+1]*k}
 function drawWT(t){
   document.querySelectorAll('canvas.wt').forEach(function(cv){
     var w=cv.clientWidth,h=cv.clientHeight,d=window.devicePixelRatio||1;
+    if(!w)return;
     if(cv.width!==Math.round(w*d)){cv.width=Math.round(w*d);cv.height=Math.round(h*d)}
     var g=cv.getContext('2d');g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,w,h);
     var col=getComputedStyle(document.documentElement).getPropertyValue(cv.dataset.c).trim(),N=cv.dataset.big?16:9;
     var pos=.5+.45*Math.sin(t*.6),amp=h*(cv.dataset.big?.2:.24);
     for(var n=N-1;n>=0;n--){var f=n/(N-1),z=1-f,ox=z*w*.16,y0=h*.3+f*h*.5,sc=.7+.3*f,near=Math.abs(f-pos)<.5/(N-1);
-      g.beginPath();for(var i=0;i<=120;i++){var x=i/120,y=y0-frameY(f,x*2,t)*amp*sc;g[i?'lineTo':'moveTo'](ox+x*(w-w*.16)*sc+ (1-sc)*w*.1,y)}
-      g.strokeStyle=col;g.globalAlpha=near?1:.14+.3*f;g.lineWidth=near?2.2:1;g.shadowColor=col;g.shadowBlur=near?10:0;g.stroke()}
-    g.globalAlpha=1;g.shadowBlur=0;
+      g.beginPath();for(var i=0;i<=120;i++){var x=i/120,y=y0-frameY(f,x*2,t)*amp*sc;g[i?'lineTo':'moveTo'](ox+x*(w-w*.16)*sc+(1-sc)*w*.1,y)}
+      g.strokeStyle=col;g.globalAlpha=near?1:.14+.3*f;g.lineWidth=near?2.2:1;g.stroke()}
+    g.globalAlpha=1;
   });
 }
 var still=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 (function loop(ms){drawWT(still?1.3:ms/1000);if(!still)requestAnimationFrame(loop)})(0);
-/* Mixer: one row per channel; the switch on top decides what the faders control.
-   Tapping a channel's name opens its full strip (every knob and the EQ). */
-var CHS=[['DRUMS','--drums'],['AUX','--smp'],['BASS','--bass'],['CHORDS','--chords'],['MELODY','--mel'],['MEL SQ','--mel'],['ARP','--arp'],['SMPL','--fx'],['MASTER','--ink']];
-var MODES=['Level','Pan','Rev','Dly','Drv','Mix'],mxMode='Level',mxPage='mixer',mxOpen=-1;
+
+/* ── Mix ── */
+var CHS=[['DRUMS','--drums'],['AUX','--aux'],['BASS','--bass'],['CHORDS','--chords'],['MELODY','--mel'],['MEL SQ','--melq'],['ARP','--arp'],['SMPL','--smp'],['MASTER','--ink']];
+var MODES=['Level','Pan','Rev','Dly','Drv','Mix'],mxMode='Level',mxPage='mixer',mxOpen=-1,PACK=false,eqFlat=false,lastKey='';
 var MV={Level:[.78,.78,.84,.8,.86,.86,.84,.78,.9],Pan:[.5,.62,.5,.4,.58,.5,.7,.3,.5],Rev:[.08,.2,0,.35,.42,.3,.25,.15,0],Dly:[0,.1,0,.12,.3,.22,.4,0,0],Drv:[.2,0,.3,0,.1,0,0,.15,0],Mix:[1,1,1,1,1,1,1,1,1]};
 function mxVal(m,v){if(m==='Level')return (v<=0?'−∞':(v>=.9?'0.0':'−'+((.9-v)*42).toFixed(1)))+' dB';if(m==='Pan')return Math.abs(v-.5)<.02?'C':(v<.5?'L':'R')+Math.round(Math.abs(v-.5)*200);return Math.round(v*100)}
 function mxRow(ch,i){var v=MV[mxMode][i],fill=mxMode==='Pan'?'<div class="ffill pan" style="left:'+(Math.min(v,.5)*100)+'%;width:'+(Math.abs(v-.5)*100)+'%"></div>':'<div class="ffill" style="left:0;width:'+(v*100)+'%"></div>';
   return '<div class="frow" style="--c:var('+ch[1]+')"><div class="ftrack" data-i="'+i+'">'+fill+'<span class="fname" data-open="'+i+'">'+ch[0]+'</span><span class="fval">'+mxVal(mxMode,v)+'</span><div class="fmeter" style="width:'+(i===1||i===5?0:30+((i*37)%50))+'%"></div></div><div class="ms'+(i===6?' on':'')+'">M</div><div class="ms">S</div></div>'}
-/* Channel EQ, five bands: HPF, Lo shelf, Mid peak (movable), Hi shelf, LPF. The two
-   filters have a 12 / 24 dB-per-octave slope, a frequency and a resonance. The curve is an
-   approximation for the picture, not the engine's response. */
+/* Channel EQ, five bands: HPF, Lo shelf, Mid peak, Hi shelf, LPF; the master adds a second mid. The shelves have corner frequencies.
+   The curve is an approximation for the picture, not the engine's response. */
 var EQ={sel:'hpf',hpf:{on:true,slope:24,f:80,q:.35},lo:{g:2.5,f:120},mid:{g:-3,f:900,q:.5},hi:{g:3,f:8000},lpf:{on:true,slope:12,f:14000,q:.2},mid2:{g:2,f:3200,q:.45}};
 var EQN={hpf:'HPF',lo:'LO',mid:'MID',mid2:'MID 2',hi:'HI',lpf:'LPF'};
 function eqMaster(){return mxOpen===CHS.length-1}
-/* The master has a sixth band: a second movable mid. */
 function eqKeys(){return eqMaster()?['hpf','lo','mid','mid2','hi','lpf']:['hpf','lo','mid','hi','lpf']}
 function eqDb(f){var d=0,o,L=Math.log2;
-  o=EQ.hpf;if(o.on){var x=L(f/o.f);d+=x<0?o.slope*x:0;d+=o.q*14*Math.exp(-x*x*9)-(x<0?0:0)}
+  o=EQ.hpf;if(o.on){var x=L(f/o.f);d+=x<0?o.slope*x:0;d+=o.q*14*Math.exp(-x*x*9)}
   o=EQ.lpf;if(o.on){var y=L(f/o.f);d+=y>0?-o.slope*y:0;d+=o.q*14*Math.exp(-y*y*9)}
   d+=EQ.lo.g*(1-Math.tanh(L(f/EQ.lo.f)*1.3))/2;
   d+=EQ.hi.g*(1+Math.tanh(L(f/EQ.hi.f)*1.3))/2;
   var m=L(f/EQ.mid.f);d+=EQ.mid.g*Math.exp(-m*m/(2*EQ.mid.q*EQ.mid.q+.05));
   if(eqMaster()){var m2=L(f/EQ.mid2.f);d+=EQ.mid2.g*Math.exp(-m2*m2/(2*EQ.mid2.q*EQ.mid2.q+.05))}
-  return d}
+  return eqFlat?0:d}
 function eqX(f){return Math.log(f/20)/Math.log(1000)*380}
 function eqHz(f){return f>=1000?(f/1000).toFixed(f>=10000?0:1)+' kHz':Math.round(f)+' Hz'}
+var LOCK='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 function eqCard(c){
   if(eqKeys().indexOf(EQ.sel)<0)EQ.sel='mid';
   var pts='',i,f,y;for(i=0;i<=95;i++){f=20*Math.pow(1000,i/95);y=Math.max(4,Math.min(126,65-eqDb(f)*3.2));pts+=(i?'L':'M')+(i*4).toFixed(0)+' '+y.toFixed(1)}
@@ -303,31 +441,48 @@ function eqCard(c){
   if(filt)ctl='<div class="row" style="margin-top:8px"><div class="btn sm'+(o.on?' on':'')+'" data-eqon="1" style="--c:var('+c+');flex:1">'+(o.on?'On':'Off')+'</div><div class="seg" style="flex:2"><button data-slope="12"'+(o.slope===12?' class="on"':'')+' style="--c:var('+c+')">−12 dB</button><button data-slope="24"'+(o.slope===24?' class="on"':'')+' style="--c:var('+c+')">−24 dB</button></div></div>'+
     '<div class="knobs" style="--c:var('+c+');grid-template-columns:repeat(2,1fr)">'+kn('Frequency',eqHz(o.f),eqX(o.f)/380*240-120)+kn('Resonance',Math.round(o.q*100)+'%',o.q*240-120)+'</div>';
   else if(EQ.sel==='mid'||EQ.sel==='mid2')ctl='<div class="knobs" style="--c:var('+c+');grid-template-columns:repeat(3,1fr)">'+kn('Gain',(o.g>0?'+':'')+o.g.toFixed(1)+' dB',o.g*8)+kn('Frequency',eqHz(o.f),eqX(o.f)/380*240-120)+kn('Width',Math.round(o.q*100)+'%',o.q*240-120)+'</div>';
-  else ctl='<div class="knobs" style="--c:var('+c+');grid-template-columns:repeat(1,1fr)">'+kn('Gain',(o.g>0?'+':'')+o.g.toFixed(1)+' dB',o.g*8)+'</div>';
-  return '<div class="card"><div class="row"><span class="lbl">EQ</span><span class="sp"></span><span class="hint">tap the graph to move the selected band</span></div>'+
+  else ctl='<div class="knobs" style="--c:var('+c+');grid-template-columns:repeat(2,1fr)">'+kn('Gain',(o.g>0?'+':'')+o.g.toFixed(1)+' dB',o.g*8)+kn('Corner',eqHz(o.f),eqX(o.f)/380*240-120)+'</div>';
+  var card='<div class="card"><div class="row"><span class="lbl">EQ</span><span class="sp"></span><span class="hint">tap the graph to move the selected band</span></div>'+
     '<svg data-eq="1" viewBox="0 0 380 130" style="display:block;width:100%;margin-top:6px;cursor:pointer"><path d="M0 65H380" stroke="#ffffff18"/>'+[100,1000,10000].map(function(h){return '<path d="M'+eqX(h).toFixed(0)+' 0V130" stroke="#ffffff10"/>'}).join('')+'<path d="'+pts+'" fill="none" stroke="var('+c+')" stroke-width="2.5"/>'+dots+'</svg>'+
     '<div class="seg" style="margin-top:6px">'+eqKeys().map(function(k){return '<button data-eqb="'+k+'"'+(k===EQ.sel?' class="on"':'')+' style="--c:var('+c+')">'+(k==='mid'&&eqMaster()?'MID 1':EQN[k])+'</button>'}).join('')+'</div>'+ctl+'</div>';
+  if(PACK)return card;
+  return '<div class="eqbox"><div class="eqin">'+card+'</div><div class="eqlock">'+LOCK+'<b>EQ is part of the Studio Pack</b>'+
+    (eqFlat?'<small>This channel\'s EQ is flat.</small>':'<small>Your saved EQ keeps playing on this build.</small>')+
+    '<div class="row"><div class="btn sm fill" data-pack="1" style="--c:var(--chords)">See the Studio Pack</div>'+(eqFlat?'':'<div class="btn sm" data-cleareq="1">Set EQ back to flat</div>')+'</div></div></div>';
 }
+function packSheet(){return '<div class="row"><h3 style="flex:1">STUDIO PACK</h3><div class="btn sm" data-close="1">Not now</div></div><p style="margin:10px 0 8px;color:var(--dim)">EQ, sound shaping, Play in, Arrange, stems</p>'+
+  '<ul style="padding-left:18px;line-height:1.7"><li>EQ on every part and the master: five bands, filters with 12 or 24 dB slopes</li><li>Sound shaping: filter, attack, release, reverb and voice tone</li><li>Play in, Arrange, stems, full MIDI export</li><li>Full Live mode: rearrange your layout</li></ul>'+
+  '<div class="row" style="margin-top:12px"><div class="btn sm fill" style="--c:var(--chords);flex:1" data-unlock="1">Unlock (this is a demo)</div></div>'}
+function setPack(v){PACK=v;$('#packoff').classList.toggle('on',!v);$('#packon').classList.toggle('on',v);buildMix()}
 function buildMix(){
   var top='<div class="seg"><button data-pg="mixer"'+(mxPage==='mixer'?' class="on"':'')+' style="--c:var(--chords)">MIXER</button><button data-pg="voices"'+(mxPage==='voices'?' class="on"':'')+' style="--c:var(--chords)">VOICES</button></div>',h;
   if(mxPage==='voices'){
-    h=top+[['Chords','Piano','--chords'],['Melody','mõdSynth · Glass Lead','--mel'],['Bass','Electric','--bass'],['Melody Seq','Sine','--mel'],['Arp','mõdSynth · Pluck Stack','--arp'],['Drums','Analog 1','--drums']].map(function(r){return '<div class="row"><span class="lbl" style="width:86px;color:var('+r[2]+')">'+r[0].toUpperCase()+'</span><div class="btn sm">‹</div><div class="btn sm" style="flex:1;justify-content:space-between">'+r[1]+'<span style="color:var(--dim)">▾</span></div><div class="btn sm">›</div></div>'}).join('');
+    var VR=[['Drums kit','Analog 1','--drums'],['Aux kit','Digital 1','--aux'],['Chords','Piano','--chords',1],['Melody','mõdSynth · Glass Lead','--mel',1],['Bass','Electric','--bass',1],['Melody Seq','Sine','--melq',1],['Arp','mõdSynth · Pluck Stack','--arp',1]];
+    h=top+VR.map(function(r){return '<div class="row"><span class="lbl" style="width:78px;color:var('+r[2]+')">'+r[0].toUpperCase()+'</span><div class="btn sm" style="width:44px;padding:0">‹</div><div class="btn sm" style="flex:1;justify-content:space-between;min-width:0">'+r[1]+'<span style="color:var(--dim)">▾</span></div><div class="btn sm" style="width:44px;padding:0">›</div>'+(r[3]?'<div class="btn sm" style="width:44px;padding:0">◈</div>':'')+'</div>'}).join('')+
+      '<div class="card"><div class="row"><span class="lbl">VOICE TONE</span><span class="sp"></span><span class="hint">shared by Chords, Melody and Arp</span></div>'+knobsC('--chords',['Tone','Reso','Sweep','Width','Drift'],5).replace('class="knobs"','class="knobs kn5"')+'</div>';
   }else if(mxOpen>=0){
-    var ch=CHS[mxOpen],c=ch[1];
+    var ch=CHS[mxOpen],c=ch[1],mst=mxOpen===CHS.length-1;
     h=top+'<div class="row"><div class="btn sm" data-open="-1">‹ All channels</div><span class="sp"></span><span class="lbl" style="color:var('+c+')">'+ch[0]+'</span></div>'+
       '<div class="frow" style="--c:var('+c+')"><div class="ftrack"><div class="ffill" style="left:0;width:'+(MV.Level[mxOpen]*100)+'%"></div><span class="fname">LEVEL</span><span class="fval">'+mxVal('Level',MV.Level[mxOpen])+'</span></div><div class="ms">M</div><div class="ms">S</div></div>'+
-      '<div class="card"><span class="lbl">SENDS AND TONE</span><div class="knobs kn5" style="--c:var('+c+')">'+['Pan','Rev','Dly','Drv','Mix'].map(function(n,i){return '<div class="kn"><i style="--r:'+(MV[n][mxOpen]*200-90)+'deg"></i>'+n+'</div>'}).join('')+'</div></div>'+
+      (mst?'<div class="card"><span class="lbl">MASTER BUS</span>'+knobsC(c,['Comp','Rev','Drive'],3)+'<div class="row" style="margin-top:8px"><div class="btn sm on" style="--c:var(--ink);flex:1">Master Bus on</div></div></div>'
+          :'<div class="card"><span class="lbl">SENDS AND TONE</span><div class="knobs kn5" style="--c:var('+c+')">'+['Pan','Rev','Dly','Drv','Mix'].map(function(n){return '<div class="kn"><i style="--r:'+(MV[n][mxOpen]*200-90)+'deg"></i>'+n+'</div>'}).join('')+'</div></div>')+
       eqCard(c);
   }else{
-    h=top+'<div class="seg">'+MODES.map(function(m){return '<button data-m="'+m+'"'+(m===mxMode?' class="on"':'')+' style="--c:var(--ink)">'+m.toUpperCase()+'</button>'}).join('')+'</div>'+CHS.map(mxRow).join('');
+    h=top+'<div class="seg">'+MODES.map(function(m){return '<button data-m="'+m+'"'+(m===mxMode?' class="on"':'')+' style="--c:var(--ink)">'+m.toUpperCase()+'</button>'}).join('')+'</div>'+CHS.map(mxRow).join('')+
+      '<div class="row"><div class="btn sm fill" style="--c:var(--rec);flex:2"><span class="dot" style="border-color:#fff"></span>Bounce audio + MIDI</div><div class="btn sm" style="flex:1">Stems</div></div>';
   }
   $('#mixPage').innerHTML=h;
+  var key=mxPage+'|'+mxOpen;if(key!==lastKey){lastKey=key;retrigger('#mixPage')}
   var pg=$('#mixPage'),tr=pg.querySelector('.frow .ftrack');
-  $('#mixNote').innerHTML=mxPage==='mixer'&&mxOpen<0?'<b>Measured:</b> '+CHS.length+' channels in '+(pg.lastElementChild.offsetTop+pg.lastElementChild.offsetHeight-pg.offsetTop)+' pt of a '+pg.clientHeight+' pt page, so nothing scrolls. Fader travel '+tr.clientWidth+' pt (114 pt today). Tap the switch to change what the faders control; tap a channel name for its full strip.':'<b>Still here:</b> every control from today\'s strip, at 44 pt, for one channel at a time.';
+  $('#mixNote').innerHTML=mxPage==='mixer'&&mxOpen<0?'<b>Measured:</b> '+CHS.length+' channels and the Export row in '+(pg.lastElementChild.offsetTop+pg.lastElementChild.offsetHeight-pg.offsetTop)+' pt of a '+pg.clientHeight+' pt page, so nothing scrolls. Fader travel '+tr.clientWidth+' pt (114 pt today). The value now sits on a dark end cap, clear of the bright edge. Tap the switch to change what the faders control; tap a channel name for its full strip.':'<b>Still here:</b> every control from today\'s strips and the Voices page, at 44 pt. The EQ is shown locked in a free build; the saved EQ keeps playing and can be set back to flat. Try Preview as Studio Pack above.';
 }
+$('#packoff').addEventListener('click',function(){setPack(false)});
+$('#packon').addEventListener('click',function(){setPack(true)});
 $('#mixPage').addEventListener('click',function(e){
   var t=e.target,b;
-  if(b=t.closest('[data-eqb]')){EQ.sel=b.dataset.eqb}
+  if(b=t.closest('[data-pack]')){sheet('#mix',packSheet());return}
+  if(b=t.closest('[data-cleareq]')){eqFlat=true}
+  else if(b=t.closest('[data-eqb]')){EQ.sel=b.dataset.eqb}
   else if(b=t.closest('[data-slope]')){EQ[EQ.sel].slope=+b.dataset.slope}
   else if(b=t.closest('[data-eqon]')){EQ[EQ.sel].on=!EQ[EQ.sel].on}
   else if(b=t.closest('svg[data-eq]')){var q=b.getBoundingClientRect(),fx=(e.clientX-q.left)/q.width,o2=EQ[EQ.sel];o2.f=20*Math.pow(1000,Math.max(.02,Math.min(.98,fx)));if('g' in o2)o2.g=Math.max(-12,Math.min(12,(.5-(e.clientY-q.top)/q.height)*30));else o2.q=Math.max(0,Math.min(1,1-(e.clientY-q.top)/q.height))}
@@ -339,8 +494,8 @@ $('#mixPage').addEventListener('click',function(e){
   else return;
   buildMix();
 });
-buildLive();setPart('Melody');buildMix();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(buildMix);
-if(document.fonts&&document.fonts.ready)document.fonts.ready.then(measure);
+buildLive();setPart('Chords',false);buildMix();
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){buildMix();measure()});
 </script>
 </body>
 </html>
