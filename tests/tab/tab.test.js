@@ -58,7 +58,7 @@ const T_BASIC = [
 
 (async () => {
   const srv = await serve();
-  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium', args: ['--autoplay-policy=no-user-gesture-required', '--no-sandbox'] });
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, channel: process.env.CHROMIUM ? undefined : 'chrome', args: ['--autoplay-policy=no-user-gesture-required', '--no-sandbox'] });
   const ctx = await browser.newContext({ viewport: { width: 430, height: 900 }, acceptDownloads: true });
   const page = await ctx.newPage();
   const errs = []; page.on('pageerror', e => errs.push(String(e)));

@@ -4070,7 +4070,8 @@ body.mode-basic .part-dice:not(.lv-adv .part-dice) { display:none !important; }
 .ci-headbtns .ci-caret svg { transition:transform .12s; }
 .chart-inspector.ci-shut .ci-caret svg { transform:rotate(-90deg); }
 .chart-inspector.ci-shut .ci-body { display:none; }
-.ci-fold-lbl { position:relative; cursor:pointer; touch-action:manipulation; padding:10px 0; margin:-10px 0; -webkit-tap-highlight-color:transparent; }
+/* These labels toggle whole rows; padding alone left the short labels only 34 pt high. */
+.ci-fold-lbl { position:relative; cursor:pointer; touch-action:manipulation; min-height:44px; box-sizing:border-box; display:flex; align-items:center; padding:10px 0; margin:-10px 0; -webkit-tap-highlight-color:transparent; }
 .ci-fold-lbl::before { content:'\203A'; position:absolute; left:-10px; top:50%; transform:translateY(-50%) rotate(90deg); color:var(--muted); font-size:.8rem; transition:transform .12s; }
 .ci-rshut .ci-fold-lbl::before { transform:translateY(-50%) rotate(0deg); }
 .ci-row .ci-sum { display:none; flex:1 1 0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--accent); font-size:.6rem; }
@@ -5538,7 +5539,7 @@ body.light-mode #_toast {
 #_toast[style*="opacity: 0"] { transform:translate(-50%,-34px) scale(.92); }
 #_toast > span { min-width:0; flex:1 1 auto; overflow-wrap:break-word; }
 #_toast ._toast-btn {
- flex:none; cursor:pointer; touch-action:manipulation; min-height:32px;
+ flex:none; cursor:pointer; touch-action:manipulation; min-height:44px; min-width:44px;
  font-family:inherit; font-size:15px; font-weight:600; letter-spacing:-.012em;
  color:var(--tg-tint); padding:5px 14px; border-radius:999px; border:0;
  background:var(--tg-btn); -webkit-tap-highlight-color:transparent;
@@ -5576,7 +5577,8 @@ body.tour-open #_toast { bottom:auto !important; top:calc(12px + env(safe-area-i
 .ft-rec-ring { flex:none; position:relative; width:36px; height:36px; box-sizing:border-box; padding:0; border-radius:50%;
  display:grid; place-items:center; border:2px solid #e5384f; background:transparent; cursor:pointer; touch-action:manipulation;
  -webkit-tap-highlight-color:transparent; }
-.ft-rec-ring::before { content:''; position:absolute; inset:-4px; border-radius:50%; }
+/* The visible ring shrinks to 30 pt on small phones; keep its actual hit area at least 44 pt in every layout. */
+.ft-rec-ring::before { content:''; position:absolute; left:50%; top:50%; width:max(44px, 100%); height:max(44px, 100%); transform:translate(-50%,-50%); border-radius:50%; }
 .ft-rec-ring .rec-ring-dot { width:12px; height:12px; border-radius:50%; background:#e5384f; transition:border-radius .12s, background .12s; }
 .ft-rec-ring:active { transform:scale(.93); }
 .ft-rec-ring.on { background:#e5384f; box-shadow:0 0 10px rgba(229,56,79,.65); animation:recRing 1.1s ease-in-out infinite; }
@@ -9781,7 +9783,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.5</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.5a</span></div>
  </div>
 </div>
 
@@ -11260,7 +11262,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.5</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.5a</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12482,7 +12484,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.5';
+const MODRIFF_VERSION = '1.5a';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -53489,6 +53491,20 @@ function syncTabRoving(){
   b.tabIndex = on ? 0 : -1;
  });
 }
+// Claim navigation while a tab has focus before the musical arrow shortcuts can transpose the key.
+// Keep focus on the selected tab so the next arrow continues through the same bar.
+document.addEventListener('keydown', function tabBarKey(e){
+ if(e.altKey || e.ctrlKey || e.metaKey || _kbAnyModalOpen()) return;
+ var tab = e.target.closest && e.target.closest('#tab-bar .tab-btn');
+ if(!tab || !['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+ var btns = _tabBtns(), i = btns.indexOf(tab), j;
+ if(e.key==='Home') j=0;
+ else if(e.key==='End') j=btns.length-1;
+ else j=(i+(e.key==='ArrowRight'?1:-1)+btns.length)%btns.length;
+ e.preventDefault(); e.stopImmediatePropagation();
+ _tabGo(TAB_ORDER[j]); btns[j].focus();
+}, true);
+
 document.addEventListener('keydown', e => {
  if(e.key!=='Tab' || e.ctrlKey || e.metaKey || e.altKey || _kbAnyModalOpen()) return;
  const ae=document.activeElement;
