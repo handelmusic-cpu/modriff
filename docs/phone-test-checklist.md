@@ -144,3 +144,4 @@ Since 6.2:
 - [ ] v7.2: switch Bass, Mel or Drums on over nothing: a starter line is written and the band starts at once; Studio > Chords reads pads, colour key, Chord voice (Sub switch with its ?, strum, glide), then the Rhythm builder; Studio > Drums has Kit | Aux above the grid.
 - [ ] v7.3: delete and reinstall (no packs): the chords play on Piano, with no lock on Piano in the voice lists; Electric Piano, Organ, Pad and Vibes still preview twice and then open the Sounds Pack sheet.
 - [ ] v7.3: without the Studio Pack, bounce a take over a minute long: the .wav in Files > mõdRïff > Bounces is the whole take with no fade at the end, the toast names only the 4-bar MIDI limit, and the Stems switch still opens the Studio Pack sheet.
+- [ ] v7.3: Settings > About > Packs > Store with Full Studio owned reads "Every pack listed is unlocked, and every update to them."; the Full Studio sheet lists "All seven packs, and every update to them".
