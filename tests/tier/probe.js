@@ -50,7 +50,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     unnamed: [...document.querySelectorAll('.tier-locked:not([data-mod])')].map(e => e.id || e.className.slice(0, 30)).slice(0, 6).join(' | '),
   }));
   check(free.held === 0 && free.bodyLocks === 7, 'free holds no module and every module class is on the body', JSON.stringify([free.held, free.bodyLocks]));
-  check(free.chords === 'sawtooth', 'the chord voice is the free stand-in (Saw), not the Sounds Pack piano', free.chords);
+  check(free.chords === 'piano', 'the chord voice is the synth Piano, free since 7.3', free.chords);
   check(free.bass === 'upright' && free.kit === 'LIN' && free.mode === 'major' && free.voicing === 'close', 'bass, kit, scale and voicing are free ones', JSON.stringify(free));
   check(free.aux === false, 'the Aux channel is off', String(free.aux));
   check(free.stepsOk, 'the pattern length is one free allows', String(free.stepsOk));
@@ -65,7 +65,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
       theory:  [L('#bm-dorian'), L('#bm-hijaz'), L('[data-voicing="drop2"]')],
       sampler: [L('[data-wave="marimba"]'), L('[data-wave="pianoreal2"]')],
       synth:   [L('[data-wave="modsynth"]')],
-      sounds:  [L('[data-wave="organ"]'), L('[data-wave="piano"]'), L('[data-wave="vibes"]')],
+      sounds:  [L('[data-wave="organ"]'), L('[data-wave="rhodes"]'), L('[data-wave="vibes"]')],
       studio:  [L('[data-stemtoggle]')],
     };
   });
@@ -108,7 +108,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(took.mode === 'hijaz' && took.voicing === 'drop2' && took.kit === '909' && took.wave === 'organ', 'owning Theory, Groove and Sounds: all four setters take it', JSON.stringify(took));
   await own([]);
   const back = await page.evaluate(() => ({ mode, voicing, kit: window._sqDrumKit(), wave }));
-  check(back.mode === 'major' && back.voicing === 'close' && back.kit === 'LIN' && back.wave === 'sawtooth', 'dropping them all puts the free stand-ins back', JSON.stringify(back));
+  check(back.mode === 'major' && back.voicing === 'close' && back.kit === 'LIN' && back.wave === 'piano', 'dropping them all puts the free stand-ins back', JSON.stringify(back));
 
   // ── 5. A tap on a lock opens the sheet, named, with the module, its price and the bundle
   const PRICES = { sampler: 5.99, synth: 4.99, groove: 3.99, theory: 3.99, practice: 3.99, studio: 4.99, sounds: 1.99, fullstudio: 12.99, from1: 10.99, from2: 6.99, from3plus: 3.99 };
@@ -128,7 +128,9 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await page.evaluate(() => document.querySelector('#sq-machineRow [data-mach="909"]').click()); await page.waitForTimeout(250);
   const a = await sheet();
   check(a && a.hd === 'Groove Pack' && /is part of the Groove Pack\.$/.test(a.what), 'tapping a locked kit opens the Groove Pack sheet, named', a && a.hd + ' / ' + a.what);
-  check(a && a.buttons[0] === 'Unlock Groove Pack — $3.99', 'the primary button is the module at the store’s price', a && a.buttons[0]);
+  // 'Hear it' (7.2, the pack's demo) may come first; the purchase is the first Unlock.
+  const prim = s => s && s.buttons.find(b => /^Unlock /.test(b));
+  check(prim(a) === 'Unlock Groove Pack — $3.99', 'the primary button is the module at the store’s price', a && a.buttons.join(' | '));
   check(a && a.buttons.some(b => b === 'Full Studio — $12.99') && /Unlock everything for \$12\.99\./.test(a.text), 'a new buyer is offered Full Studio at the full price', a && a.buttons.join(' | '));
   check(a && a.buttons.indexOf('Restore Purchases') > 0, 'Restore Purchases is on the sheet', a && a.buttons.join(' | '));
   await page.evaluate(() => document.querySelector('#sq-machineRow [data-mach="MOD"]').click()); await page.waitForTimeout(150);
@@ -142,8 +144,11 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     const out = {};
     for (const w of ['organ', 'marimba', 'modsynth']) {
       document.getElementById('_pro-sheet') && document.getElementById('_pro-sheet').remove();
-      document.querySelector('[data-wave="' + w + '"]').click(); await new Promise(x => setTimeout(x, 150));
-      out[w] = document.querySelector('#_pro-sheet .pro-hd').textContent;
+      // A locked voice's tap previews it first (tests/tier/voicepreview.test.js drives that), so the
+      // sheet is opened the way the lock opens it: with the module the button carries.
+      const el = document.querySelector('[data-wave="' + w + '"]');
+      proSheet(w, el && el.dataset.mod); await new Promise(x => setTimeout(x, 150));
+      const hd = document.querySelector('#_pro-sheet .pro-hd'); out[w] = hd ? hd.textContent : null;
     }
     document.getElementById('_pro-sheet') && document.getElementById('_pro-sheet').remove();
     return out;
@@ -167,7 +172,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   o = await offerFor(['sounds', 'studio', 'groove']);
   check(o.buttons.includes('Complete Your Studio — $3.99') && /You’ll get: [^.]+\./.test(o.text) && !/future/i.test(o.text), '3 owned: $3.99, and it lists what you get, with no promise about future packs', o.text.slice(0, 160));
   o = await offerFor(['sounds', 'studio', 'groove', 'theory', 'practice', 'synth']);
-  check(o.buttons.includes('Complete Your Studio — $3.99') && o.buttons[0] === 'Unlock Sampler Engine — $5.99', '6 owned, only the $5.99 Sampler left: the $3.99 upgrade is cheaper, so it IS offered', o.buttons.join(' | '));
+  check(o.buttons.includes('Complete Your Studio — $3.99') && prim(o) === 'Unlock Sampler Engine — $5.99', '6 owned, only the $5.99 Sampler left: the $3.99 upgrade is cheaper, so it IS offered', o.buttons.join(' | '));
   o = await offerFor(['sampler', 'studio', 'groove', 'theory', 'practice', 'synth']);
   check(!o.buttons.some(b => /Complete Your Studio/.test(b)), 'owning all but Sounds ($1.99): the upgrade ($3.99) would cost more, so none is offered', o.buttons.join(' | '));
   o = await offerFor(['fullstudio']);
@@ -175,7 +180,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
   // ── 8. A purchase unlocks without a reload, closes the sheet, and says so
   await page.evaluate(() => { window.__bought.length = 0; modBillingChanged(); }); await page.waitForTimeout(250);
-  await page.evaluate(() => document.querySelector('[data-wave="organ"]').click()); await page.waitForTimeout(150);
+  await page.evaluate(() => proSheet('Organ', document.querySelector('[data-wave="organ"]').dataset.mod)); await page.waitForTimeout(150);
   await page.evaluate(() => [...document.querySelectorAll('#_pro-sheet button')].find(b => /^Unlock Sounds Pack/.test(b.textContent)).click());
   await page.waitForTimeout(500);
   const bought = await page.evaluate(() => ({ sheet: !!document.getElementById('_pro-sheet'), owned: modBilling.owned(), organ: freeAllowsVoice('organ'),
@@ -211,7 +216,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     const banner = (document.getElementById('_toast') || {}).textContent || '';
     return { live, kept: { chords: again.wave, arp: again.arpWave, mode: again.mode, kit: again.sqMach, voicing: again.voicing }, banner };
   }, made);
-  check(kept.live.chords === 'sawtooth' && kept.live.arp === 'sine' && kept.live.mode === 'major' && kept.live.voicing === 'close' && kept.live.kit === 'LIN',
+  check(kept.live.chords === 'piano' && kept.live.arp === 'sine' && kept.live.mode === 'major' && kept.live.voicing === 'close' && kept.live.kit === 'LIN',
         'free: the stand-ins play', JSON.stringify(kept.live));
   check(kept.kept.chords === 'organ' && kept.kept.arp === 'flute' && kept.kept.mode === 'hijaz' && kept.kept.kit === '909' && kept.kept.voicing === 'drop2',
         're-saving there writes the originals back', JSON.stringify(kept.kept));
