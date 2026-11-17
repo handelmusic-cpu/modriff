@@ -69,7 +69,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
              sheetView: !!document.querySelector('#ft-more-menu #vmt-basic, #ft-more-menu #vmt-adv'),
              padTop: parseFloat(getComputedStyle(document.getElementById('perf-bar')).paddingTop), perfH: Math.round(document.getElementById('perf-bar').getBoundingClientRect().height) };
   });
-  check(bar.tabs.map(t => t.t).join() === 'Live,Studio,Song,Sound', 'four tabs: Live, Studio, Song, Sound', bar.tabs.map(t => t.t).join());
+  check(bar.tabs.map(t => t.t).join() === 'Live,Studio,Song,Mix', 'four tabs: Live, Studio, Song, Mix', bar.tabs.map(t => t.t).join());
   check(bar.tabs.every(t => t.h >= 50 && t.ico), 'each is 50 pt or more (as the mock has them) and has an icon', JSON.stringify(bar.tabs.map(t => [t.h, t.ico])));
   check(bar.more[0] >= 50 && bar.more[1] >= 50, 'the caret is a 58 x 50 target', bar.more.join('x'));
   check(bar.oldTabs.length === 0, 'no Settings, Accomp or Play tab', bar.oldTabs.join());

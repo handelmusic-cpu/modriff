@@ -71,8 +71,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const studio = await page.evaluate(() => { const h = document.querySelector('#bm-bass-panel .pr-host'); return { has: !!h, shown: !!h && h.getClientRects().length > 0, locked: !!(h && h.closest('.tier-locked')) }; });
   check(studio.has && studio.shown && !studio.locked, "free: the Bass roll on Studio's Bass page is there and not locked", JSON.stringify(studio));
   await page.evaluate(() => { switchTab('mix'); setMixMode('mixer'); }); await page.waitForTimeout(500);
-  const mixTab = await page.evaluate(() => document.querySelectorAll('#mix-tab-channels .mix-strip').length);
-  check(mixTab >= 8, "free: the Sound tab's mixer is untouched", mixTab + ' strips');
+  const mixTab = await page.evaluate(() => document.querySelectorAll('#mix-tab-channels .mixrow').length);
+  check(mixTab >= 8, "free: the Mix tab's mixer is untouched (a row for every channel, since 1.4)", mixTab + ' rows');
 
   // ── Owner
   await boot('pro');

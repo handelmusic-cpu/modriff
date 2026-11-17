@@ -3,7 +3,9 @@
    tests/layout/controls.json is a snapshot of the visible interactive controls of each Studio page at 430 x 932 in the build
    before the overhaul (a control is its id, or "tag.class|label" when it has none; only keys that were the same on two fresh
    boots are kept, so a label that changes with state, like a step count, never makes the test flaky).
-   tests/layout/homes.json is the ledger: when a slice moves a control, it adds  "old key": "new key"  (the new key is looked for
+   tests/layout/homes.json is the ledger. "patterns": a regular expression over old keys of one section whose controls are reachable by
+   a different route that a named probe asserts control by control (the rows of Mix > Mixer: a send is a fader in the channel's strip
+   now, not a knob under the level). Otherwise: when a slice moves a control, it adds  "old key": "new key"  (the new key is looked for
    on the page named in "page", default the same page). A control that is deliberately gone needs "gone": "reason the owner
    agreed", never a silent deletion.
 
@@ -49,6 +51,8 @@ async function sweep(h) {
   Object.keys(snap).forEach(name => snap[name].forEach(k => {
     total++;
     if (now[name].includes(k)) return;
+    const pat = (homes.patterns || []).filter(x => (!x.section || x.section === name) && new RegExp(x.re).test(k))[0];
+    if (pat) return;                                                      // reachable by a different route, asserted by pat.probe
     const mv = homes[name + '::' + k] || homes[k];
     if (mv && mv.gone) return;                                           // agreed removal, with a reason
     if (mv && mv.to) { const pg = mv.page || name; if (now[pg] && now[pg].includes(mv.to)) return; }
