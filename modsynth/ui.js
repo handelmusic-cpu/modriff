@@ -456,8 +456,11 @@
 
     /* ── Pages ────────────────────────────────────────────────────────────── */
 
-    buildSynthPage(host) {
+    /* `groups` (the front panel inside mõdRïff, 1.6) is {key: container}: each panel goes to the container of its group, and the
+       caller owns the layout and the tabs. Without it the page is one rack with a jump bar, as the standalone synth draws it. */
+    buildSynthPage(host, groups) {
       const rack = el('div', 'rack');
+      const put = (g, p) => (groups && groups[g] ? groups[g] : rack).appendChild(p);
 
       [1, 2].forEach(n => {
         const g = 'osc' + n;
@@ -473,7 +476,7 @@
         p.appendChild(this.knobs(g + '.uni', g + '.detune', g + '.width', g + '.blend'));
         p.appendChild(this.sub('Phase'));
         p.appendChild(this.row(this.knob(g + '.phase'), this.knob(g + '.fb'), this.toggle(g + '.free', 'Free Phase')));
-        rack.appendChild(p);
+        put('osc', p);
       });
 
       // Osc 3 (Batch 3): a full third oscillator, and an FM operator — its
@@ -490,12 +493,18 @@
         p.appendChild(this.knobs(g + '.uni', g + '.detune', g + '.width', g + '.blend'));
         p.appendChild(this.row(this.knob(g + '.phase'), this.toggle(g + '.free', 'Free Phase')));
         p.appendChild(el('div', 'hint', 'Off, it can still be an FM operator: turn up FM 3→2 or FM 3→1 under Mix & Sources and you hear only what it does to the others.'));
-        rack.appendChild(p);
+        put('osc', p);
       }
 
       const mix = this.panel('Mix & Sources', 'osc', { width: 280 });
-      mix.appendChild(this.sub('FM'));
-      mix.appendChild(this.knobs('mix.fm', 'mix.fm3b', 'mix.fm3a'));
+      if (groups) {
+        const fm = this.panel('FM', 'osc', { width: 280 });
+        fm.appendChild(this.knobs('mix.fm', 'mix.fm3b', 'mix.fm3a'));
+        put('fm', fm);
+      } else {
+        mix.appendChild(this.sub('FM'));
+        mix.appendChild(this.knobs('mix.fm', 'mix.fm3b', 'mix.fm3a'));
+      }
       mix.appendChild(this.sub('Sources'));
       mix.appendChild(this.knobs('mix.ring', 'mix.sub', 'mix.noise'));
       mix.appendChild(this.row('Sub', this.select('mix.subWave'), this.knob('mix.subOct')));
@@ -509,7 +518,7 @@
         mix.appendChild(this.knobs('mix.mosc', 'mosc.harmonics', 'mosc.timbre'));
         mix.appendChild(this.knobs('mosc.morph', 'mosc.env', 'mosc.oct'));
       }
-      rack.appendChild(mix);
+      put('osc', mix);
 
       [1, 2].forEach(n => {
         const g = 'flt' + n;
@@ -520,7 +529,7 @@
         p.appendChild(this.knobs(g + '.cutoff', g + '.res', g + '.drive', g + '.env'));
         p.appendChild(this.knobs(g + '.keytrack', g + '.vel', n === 1 ? 'flt.spread' : null));
         if (n === 2) p.appendChild(this.row('Route', this.select('flt.route'), this.knob('flt.blend')));
-        rack.appendChild(p);
+        put('filter', p);
       });
 
       [['env1', 'Env 1 · Amp'], ['env2', 'Env 2 · Filter'], ['env3', 'Env 3 · Mod']].forEach(([g, title]) => {
@@ -531,7 +540,7 @@
         p.appendChild(this.envDisplay(g));
         p.appendChild(this.knobs(g + '.a', g + '.h', g + '.d', g + '.s', g + '.r'));
         p.appendChild(this.knobs(5, g + '.curve', g + '.vel'));
-        rack.appendChild(p);
+        put('env', p);
       });
 
       const voice = this.panel('Voice', 'perf', { width: 300 });
@@ -539,10 +548,9 @@
       voice.appendChild(this.row(this.toggle('voice.glideAuto', 'Glide on legato only')));
       voice.appendChild(this.knobs('voice.bendUp', 'voice.bendDown', 'voice.transpose', 'voice.tune'));
       voice.appendChild(this.knobs('voice.drift', 'voice.velAmt', 'voice.velCurve', 'voice.spread'));
-      rack.appendChild(voice);
+      put('osc', voice);
 
-      host.appendChild(rack);
-      this.jumpBar(host, rack);
+      if (!groups) { host.appendChild(rack); this.jumpBar(host, rack); }
     }
 
     /** A live ADSR curve, drawn from the same numbers the DSP uses. */
@@ -752,8 +760,9 @@
       return this.plot([g + '.shape', g + '.pw', g + '.depth', g + '.phase', g + '.smooth'], '--mu-acc2', '#ffb347', draw);
     }
 
-    buildModPage(host) {
+    buildModPage(host, groups) {
       const rack = el('div', 'rack');
+      const put = (g, p) => (groups && groups[g] ? groups[g] : rack).appendChild(p);
 
       [1, 2, 3].forEach(n => {
         const g = 'lfo' + n;
@@ -765,7 +774,7 @@
         p.appendChild(this.lfoDisplay(n));
         p.appendChild(this.row(this.knob(g + '.rate'), this.select(g + '.div'), this.knob(g + '.depth')));
         p.appendChild(this.knobs(g + '.phase', g + '.pw', g + '.smooth', g + '.delay', g + '.fade'));
-        rack.appendChild(p);
+        put('lfo', p);
       });
 
       [1, 2].forEach(n => {
@@ -791,7 +800,7 @@
           tools.appendChild(b);
         });
         p.appendChild(tools);
-        rack.appendChild(p);
+        put('lfo', p);
       });
 
       // The matrix as cards, not a table. A phone-width table of sixteen
@@ -804,7 +813,7 @@
       const ch = this.panel('Chaos', 'mod', { width: 300 });
       ch.appendChild(this.knobs('chaos.rate'));
       ch.appendChild(el('div', 'hint', 'A slow random wander for each note — never repeats, never jumps. Route Chaos in the matrix to pitch, cutoff or pan for drift that sounds played rather than programmed.'));
-      rack.appendChild(ch);
+      put('lfo', ch);
 
       const mx = this.panel('Modulation Matrix', 'mod');
       mx.style.flexBasis = '100%';
@@ -882,9 +891,8 @@
         'Each route wires one source to one destination. Macros appear as sources m1–m8 — ' +
         'point several routes at the same macro and one knob moves the whole sound. ' +
         'Via scales a route by a second source: LFO → Cutoff via Mod Wheel is a wobble you fade in by hand.'));
-      rack.appendChild(mx);
-      host.appendChild(rack);
-      this.jumpBar(host, rack);
+      put('matrix', mx);
+      if (!groups) { host.appendChild(rack); this.jumpBar(host, rack); }
       this.refreshMatrix();
     }
 
