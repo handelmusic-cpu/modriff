@@ -3799,7 +3799,7 @@ body.light-mode .sb-secdel { background:rgba(0,0,0,.07); color:#d62828; }
 .msx-pc { border:1px solid color-mix(in srgb, var(--pc, var(--accent)) 55%, var(--border2)); border-radius:var(--r-md); background:var(--surf); padding:8px 10px; }
 .msx-pc-head { display:flex; align-items:center; gap:6px; min-height:44px; }
 .msx-pc-head .lbl { font-size:.58rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-weight:700; margin-right:auto; }
-.msx-pc-head .msx-pc-name { flex:0 1 auto; min-width:0; max-width:46%; min-height:44px; padding:0 10px; border-radius:var(--r-sm); border:1px solid var(--pc, var(--accent)); background:color-mix(in srgb, var(--pc, var(--accent)) 16%, var(--surf2));
+.msx-pc-head .msx-pc-name { flex:1 1 0; min-width:0; min-height:44px; padding:0 10px; border-radius:var(--r-sm); border:1px solid var(--pc, var(--accent)); background:color-mix(in srgb, var(--pc, var(--accent)) 16%, var(--surf2));
  color:var(--text); font-family:'Outfit',sans-serif; font-size:.66rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
 .msx-pc-btn { flex:none; min-width:44px; min-height:44px; padding:0 12px; border-radius:var(--r-sm); border:1px solid var(--border2); background:var(--surf2); color:var(--text);
  font-family:'Outfit',sans-serif; font-size:.62rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
@@ -3811,6 +3811,9 @@ body.light-mode .sb-secdel { background:rgba(0,0,0,.07); color:#d62828; }
 .msx-pc-body .msx-pc-edit { flex:1.4 1 0; border-color:var(--pc, var(--accent)); background:color-mix(in srgb, var(--pc, var(--accent)) 22%, var(--surf2)); }
 .msx-pc-note { flex:1 1 100%; font-size:.56rem; color:var(--muted); line-height:1.5; }
 .msx-pc-note b { color:var(--text); }
+/* The wavetable view: the oscillator's frames stacked, the one it is set to in front (1.7). */
+.msx-wt { display:block; width:100%; height:80px; border-radius:var(--r-sm); background:var(--bg); margin:0 0 6px; }
+.msx-wt.big { height:170px; margin:0 0 10px; }
 /* The editor: one layer over the Studio page, back button on top (the page below keeps its place). */
 #synth-ed { position:fixed; inset:0; z-index:700; display:none; flex-direction:column; background:var(--bg); padding-top:env(safe-area-inset-top); }
 #synth-ed.open { display:flex; animation:synthEdIn .2s ease; }
@@ -9789,7 +9792,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.6</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.7</span></div>
  </div>
 </div>
 
@@ -11268,7 +11271,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.6</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.7</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12490,7 +12493,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.6';
+const MODRIFF_VERSION = '1.7';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -27319,6 +27322,7 @@ function msxSetParam(part, id, v, noSync){
  // flushes when it is done, so the engine rebuilds the matrix once.
  if(!noSync) modParamsFlush();
  var ed=document.getElementById('msx-edited'); if(ed) ed.style.display='';
+ if(id.slice(0,3)==='osc') msxWtDraw();
 }
 function msxPickPatch(part, name){
  MSX.state[part]={ patch:name };
@@ -27693,6 +27697,7 @@ function msxUiRender(part){
  // Built once and pointed at whichever part is chosen, so switching parts
  // does not rebuild a few hundred knobs or leak their document listeners.
  msxRackMount(host, part);
+ msxWtDraw();
 }
 // The panel's view of one part. It is what the knobs read and write: values
 // come from msxValuesFor (defaults, patch, your edits), and every write goes
@@ -27875,6 +27880,7 @@ function msxRackPage(){
   }
   R.ui.refreshAll();
  }
+ msxWtDraw();
 }
 // Osc, its two siblings, the other sources and the voice settings are five panels that are each a screen: one at a time, chosen by a chip.
 function msxOscChips(rack){
@@ -27883,13 +27889,16 @@ function msxOscChips(rack){
   MSX_UI.osc=title; msxUiSave();
   [].slice.call(bar.children).forEach(function(b){ b.classList.toggle('on', b.dataset.title===title); });
   [].slice.call(rack.children).forEach(function(p){ p.style.display = (p.dataset.title===title) ? '' : 'none'; });
+  msxWtDraw();
  }
  MSX_OSC_CHIPS.forEach(function(c){
   var b=document.createElement('button'); b.type='button'; b.className='mu-subtab'; b.dataset.title=c[0]; b.textContent=c[1];
   b.addEventListener('click', function(){ show(c[0]); });
   bar.appendChild(b);
  });
- rack.parentNode.insertBefore(bar, rack);
+ // The wavetable of whichever oscillator the chip says, above the chips.
+ var wt=document.createElement('canvas'); wt.className='msx-wt big'; wt.dataset.big='1'; wt.setAttribute('role','img');
+ rack.parentNode.insertBefore(wt, rack); rack.parentNode.insertBefore(bar, rack);
  show(MSX_OSC_CHIPS.some(function(c){ return c[0]===MSX_UI.osc; }) ? MSX_UI.osc : 'Oscillator 1');
 }
 function msxRackPart(part){
@@ -27936,7 +27945,8 @@ function msxCardsRender(){
   var wrap=document.createElement('div'); wrap.className='msx-pc'+(_msxCardFolded(part)?' shut':'');
   if(col) wrap.style.setProperty('--pc', col);
   var head=document.createElement('div'); head.className='msx-pc-head';
-  head.innerHTML='<span class="lbl">mõdSynth</span>';
+  // On mõdSynth the patch name takes the whole row (the part's colour and the Edit synth button say what the card is); otherwise a label.
+  if(!(on && !locked)) head.innerHTML='<span class="lbl">mõdSynth</span>';
   if(on && !locked){
    var pv=document.createElement('button'); pv.type='button'; pv.className='msx-pc-btn msx-pc-prev'; pv.textContent='‹'; pv.setAttribute('aria-label','Previous patch');
    var nm=document.createElement('button'); nm.type='button'; nm.className='msx-pc-name'; nm.textContent=_msxCardName(part); nm.setAttribute('aria-label','Patch '+_msxCardName(part)+', open the patch list');
@@ -27963,6 +27973,7 @@ function msxCardsRender(){
    go.addEventListener('click', function(){ msxPlayOn(part); });
    body.appendChild(go);
   } else {
+   var wt=document.createElement('canvas'); wt.className='msx-wt'; wt.dataset.part=part; wt.setAttribute('role','img'); body.appendChild(wt);
    var rn=document.createElement('button'); rn.type='button'; rn.className='msx-pc-btn'; rn.textContent='Random'; rn.addEventListener('click', function(){ msxRoll(part); });
    var pl=document.createElement('button'); pl.type='button'; pl.className='msx-pc-btn'; pl.textContent='Patches'; pl.addEventListener('click', function(){ msxOpenEditor(part, true); });
    var ed=document.createElement('button'); ed.type='button'; ed.className='msx-pc-btn msx-pc-edit'; ed.textContent='Edit synth'; ed.addEventListener('click', function(){ msxOpenEditor(part); });
@@ -27971,8 +27982,67 @@ function msxCardsRender(){
   wrap.appendChild(body);
   host.innerHTML=''; host.appendChild(wrap);
  });
+ msxWtDraw();
 }
 window.msxCardsRender = msxCardsRender;
+
+// ── The wavetable view (1.7) ────────────────────────────────────────────
+// The frames come from modsynth/wt-frames.json (made from the engine's own tables by build/wt-frames.mjs; the bank itself takes
+// seconds to build and the native engine cannot hand it over). What is drawn is the base setting: the oscillator's wave and its
+// Shape knob, as saved. It does not move with an LFO or the matrix, because neither engine reports the live morph back.
+// No shadow blur, no animation loop: it is drawn when something it shows changes.
+var MSX_WT=null, _msxWtLoading=false, _msxWtRaf=0;
+function msxWtOscFor(vals, wantN){
+ if(wantN) return wantN;
+ for(var n=1;n<=3;n++){ var on=vals['osc'+n+'.on']; if(on===true || on===1 || on==='1' || on==='on') return n; }
+ return 1;
+}
+function msxWtDraw(){
+ if(_msxWtRaf) return;
+ _msxWtRaf=requestAnimationFrame(function(){ _msxWtRaf=0; msxWtPaint(); });
+}
+function msxWtPaint(){
+ var cvs=document.querySelectorAll('canvas.msx-wt'); if(!cvs.length) return;
+ if(!(window.MS && MS.paramDefaults && MS.FACTORY_PATCHES)){ msxLoadLib().then(msxWtDraw, function(){}); return; }
+ if(!MSX_WT){
+  if(!_msxWtLoading){ _msxWtLoading=true; fetch('modsynth/wt-frames.json').then(function(r){ return r.json(); }).then(function(j){ MSX_WT=j; msxWtDraw(); }, function(){ _msxWtLoading=false; }); }
+  return;
+ }
+ var cs=getComputedStyle(document.documentElement);
+ cvs.forEach(function(cv){
+  var w=cv.clientWidth, h=cv.clientHeight; if(!w || !h) return;
+  var part=cv.dataset.part || MSX_UI.part, vals;
+  try{ vals=msxValuesFor(part).values; }catch(e){ return; }
+  var m=/^Oscillator (\d)$/.exec(cv.dataset.big ? (MSX_UI.osc||'') : ''), n=msxWtOscFor(vals, m ? +m[1] : 0);
+  var wave=vals['osc'+n+'.wave'], shape=Math.max(0, Math.min(1, +vals['osc'+n+'.shape']||0)), pw=Math.max(.02, Math.min(.98, +vals['osc'+n+'.pw']||.5));
+  var idx=MSX_WT.order.indexOf(wave), fr=MSX_WT.frames[idx<0 ? 0 : idx], pulse=(wave==='pulse');
+  var d=window.devicePixelRatio||1;
+  if(cv.width!==Math.round(w*d) || cv.height!==Math.round(h*d)){ cv.width=Math.round(w*d); cv.height=Math.round(h*d); }
+  var g=cv.getContext('2d'); g.setTransform(d,0,0,d,0,0); g.clearRect(0,0,w,h);
+  var col=(getComputedStyle(cv).getPropertyValue('--pc')||'').trim() || cs.getPropertyValue('--accent').trim() || '#ffb457';
+  var P=fr[0].length, big=!!cv.dataset.big, N=big ? 14 : 8, amp=h*(big ? .2 : .22), span=w*.84;
+  // The value of the morph at position f (0..1) at point i: the Pulse set is a square whose width is the Shape knob's neighbour, PW.
+  function val(f, i){
+   if(pulse){ var duty=.05+.9*f; return ((i/P)%1)<duty ? 1 : -1; }
+   var p=f*(fr.length-1), a=Math.min(fr.length-2, Math.floor(p)), k=p-a;
+   return (fr[a][i%P]*(1-k) + fr[a+1][i%P]*k)/100;
+  }
+  function line(f, alpha, width){
+   var z=1-f, ox=z*w*.14, y0=h*.3+f*h*.5, sc=.7+.3*f;
+   g.beginPath();
+   for(var j=0;j<=P*2;j++){
+    var x=j/(P*2), y=y0-val(f, j/2|0)*amp*sc;
+    var px=ox+x*span*sc+(1-sc)*w*.1; if(j) g.lineTo(px,y); else g.moveTo(px,y);
+   }
+   g.globalAlpha=alpha; g.lineWidth=width; g.strokeStyle=col; g.stroke();
+  }
+  for(var i=N-1;i>=0;i--){ var f=i/(N-1); line(f, .14+.3*f, 1); }
+  line(pulse ? (pw-.05)/.9 : shape, 1, 2.2);
+  g.globalAlpha=1;
+  cv.setAttribute('aria-label','Wavetable of oscillator '+n+', '+((MS.WAVES.find(function(x){ return x[0]===wave; })||[0,wave])[1])+', '+(pulse ? 'pulse width ' : 'morph ')+Math.round((pulse ? pw : shape)*100)+' percent');
+ });
+}
+window.msxWtDraw = msxWtDraw;
 // ‹ and › stay inside the bank the current patch came from (as the Mix pane's do).
 function msxStepPatch(part, dir){
  msxLoadLib().then(function(){
