@@ -33,7 +33,9 @@ const root = path.resolve(__dirname, web ? '../../dist-web/play' : '../../dist')
   assert(m.lanes.every(l=>l.bottom <= m.transport.y+1));
   assert(m.pads.every(h=>h===104)); assert(!m.pageOverflow);
   const before=m.styles;
-  await page.locator('.lv-more[data-mod="chords"]').click();
+  await page.locator('.lv-slot[data-mod="chords"] .lv-cb').click();      // the widget's sheet (1.9; it was "All chords controls")
+  assert(await page.locator('.lv-slot.lv-sheet').count()===1);
+  await page.locator('.lv-sh-done').click();
   m=await measure(); assert.deepEqual(m.styles,before);
   assert.equal(await page.locator('#chords-main').evaluate(e=>getComputedStyle(e).display),'block');
   const scrolling=await page.evaluate(()=>{
@@ -46,7 +48,6 @@ const root = path.resolve(__dirname, web ? '../../dist-web/play' : '../../dist')
   await page.evaluate(()=>setViewMode('basic'));
   assert.equal(await page.locator('#lv-slots .lv-slot').count(),7);
   assert.equal(await page.locator('#pf-chords-panel').count(),1);
-  await page.locator('.lv-more[data-mod="chords"]').click();
   await page.evaluate(()=>document.querySelector('.mac-live-lane').scrollTop=0);
   await page.locator('#chords-diatonic .btn-tri').first().click();
   console.log('ok desktop: 2 lanes; band stays put with chord editor open; independent scroll; 7 widgets survive Studio round trip; chord click');
