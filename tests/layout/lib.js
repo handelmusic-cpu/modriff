@@ -90,7 +90,9 @@ const SCAN = () => {
     const r = e.getBoundingClientRect();
     const label = (e.getAttribute('aria-label') || e.getAttribute('title') || e.textContent || e.value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
     const cls = (typeof e.className === 'string' ? e.className.trim().split(/\s+/)[0] : '') || '';
-    out.push({ key: e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + cls + '|' + label, id: e.id || '', label,
+    // A sampler pad's label carries the sample's name, which arrives when the kit has loaded: its key is the pad's number only.
+    const kl = cls === 'ps-pad' ? label.split(' — ')[0] : label;
+    out.push({ key: e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + cls + '|' + kl, id: e.id || '', label,
       w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10, top: Math.round(r.top + scrollY), tag: e.tagName.toLowerCase() });
   });
   return out;
