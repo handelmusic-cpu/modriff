@@ -480,12 +480,13 @@ at 120 Hz, a peak (Q 0.9) that moves from 200 Hz to 5 kHz, a high shelf at 8 kHz
 plus or minus 12 dB. It sits between the glue compressor and the limiter, so a
 boost cannot get past the limiter, and the Master Bus switch leaves it in (the
 switch bypasses the glue, room and limiter; the EQ is the user's tone, like the
-volume). Opened from **EQ** on the master strip in the mixer. Free: the doc's
-tier table has no row for it, so it is not locked; one entry in `FREE_LIMITS`
-would. (The packs brief lists a 3-band EQ *with a low cut* under the Studio Pack, "when
-built". This one has no low cut and stays free; the low-cut version is what moves.) Saved as a device preference (`modo-mastereq`) and in a project file.
+volume). Saved as a device preference (`modo-mastereq`) and in a project file.
+**Studio Pack (1.8).** The whole EQ, every strip's and the master's, is the Studio Pack's: one row, `eq`, in `FREE_LIMITS` and
+`FEATURE_MODULE`. Only the controls are gated. On a free build the EQ card is drawn, dimmed, with "EQ is part of the Studio Pack"; a tap opens the pack sheet
+(the app's `.tier-locked` convention), a saved EQ (or an old song's) keeps sounding because nothing on the audio path asks, and
+"Set EQ back to flat" is never locked, so nobody is stuck with a curve they cannot change.
 **Grown to six bands (slice 6 of the layout overhaul; DSP only, the panel is still the
-four sliders).** High-pass and low-pass (each on/off, corner, resonance as a linear Q,
+four sliders; 1.8 gave it the card below).** High-pass and low-pass (each on/off, corner, resonance as a linear Q,
 12 or 24 dB per octave = one or two biquads), the two shelves with movable corners
 (`loHz`, `hiHz`; 120 Hz and 8 kHz), the peak with a width (`midQ`, default exactly 0.9)
 and a second peak (`mid2`, `mid2Hz`, `mid2Q`). A part's strip gets the same minus the

@@ -98,19 +98,17 @@ const L = require('./lib.js');
     await page.click('[data-mixopen=chord]'); await page.waitForTimeout(200);
     const d = await page.evaluate(() => {
       const rows = [].slice.call(document.querySelectorAll('#mix-tab-channels .mixrow'));
-      return { rows: rows.length, kinds: [].slice.call(document.querySelectorAll('#mix-tab-channels .mixrow .mix-fader')).map(f => f.dataset.fxsend || (f.getAttribute('aria-label') || '').replace(/^Chords /, '')), ms: document.querySelectorAll('#mix-tab-channels [data-mixmute]').length, eq: !!document.querySelector('#mix-tab-channels [data-mixeq=chord]'), back: !!document.querySelector('[data-mixback]'),
+      return { rows: rows.length, kinds: [].slice.call(document.querySelectorAll('#mix-tab-channels .mixrow .mix-fader')).map(f => f.dataset.fxsend || (f.getAttribute('aria-label') || '').replace(/^Chords /, '')), ms: document.querySelectorAll('#mix-tab-channels [data-mixmute]').length, eq: document.querySelectorAll('#mix-tab-channels .mix-eqcard .eqp-band').length === 5, back: !!document.querySelector('[data-mixback]'),
         small: [].slice.call(document.querySelectorAll('#mix-tab-channels button, #mix-tab-channels .mix-fader')).filter(e => { const r = e.getBoundingClientRect(); return r.height > 0 && (r.height < 43.5 || r.width < 43.5); }).length };
     });
     R.check(d.rows === 6 && d.kinds.length === 6 && d.ms === 1 && d.eq && d.back && d.small === 0, 'a name opens the channel\'s strip: level with M and S, pan, four sends, EQ and a way back, nothing under 44 pt', JSON.stringify(d));
-    await page.click('#mix-tab-channels [data-mixeq=chord]'); await page.waitForTimeout(300);
-    const eqo = await page.evaluate(() => ({ open: !!document.querySelector('.eq-overlay'), title: (document.getElementById('eq-title') || {}).textContent }));
-    R.check(eqo.open && /Chords/.test(eqo.title), 'the EQ button opens that part\'s EQ', JSON.stringify(eqo));
-    await page.evaluate(() => { const b = document.querySelector('.eq-overlay .eq-done'); if (b) b.click(); }); await page.waitForTimeout(150);
+    const eqo = await page.evaluate(() => ({ title: (document.querySelector('#mix-tab-channels .mix-eqcard .eqp-title') || {}).textContent, canvas: !!document.querySelector('#mix-tab-channels .mix-eqcard canvas') }));
+    R.check(/Chords EQ/.test(eqo.title) && eqo.canvas, 'the strip carries that part\'s EQ card (graph and five bands), not a button', JSON.stringify(eqo));
     await page.click('[data-mixback]'); await page.waitForTimeout(150);
     R.check(await page.evaluate(() => document.querySelectorAll('#mix-tab-channels .mixrow').length) === 9, 'back returns to the nine rows');
     // The master's strip.
     await page.evaluate(() => { MIXUI.open = '__master'; buildMixChannelsInto(document.getElementById('mix-tab-channels')); });
-    const md = await page.evaluate(() => ({ rows: document.querySelectorAll('#mix-tab-channels .mixrow').length, bus: !!document.querySelector('#mix-tab-channels [data-masterbus]'), clip: !!document.querySelector('#mix-tab-channels [data-mixclip]'), eq: !!document.querySelector('#mix-tab-channels [data-eqmaster]') }));
+    const md = await page.evaluate(() => ({ rows: document.querySelectorAll('#mix-tab-channels .mixrow').length, bus: !!document.querySelector('#mix-tab-channels [data-masterbus]'), clip: !!document.querySelector('#mix-tab-channels [data-mixclip]'), eq: document.querySelectorAll('#mix-tab-channels .mix-eqcard .eqp-band').length === 6 }));
     R.check(md.rows === 3 && md.bus && md.clip && md.eq, 'the master\'s strip: volume with BUS and CLIP, glue, room, EQ', JSON.stringify(md));
     await page.evaluate(() => { MIXUI.open = ''; buildMixChannelsInto(document.getElementById('mix-tab-channels')); });
 
@@ -122,7 +120,7 @@ const L = require('./lib.js');
       const k = await page.evaluate(i => ({
         faders: [].slice.call(document.querySelectorAll('#mix-tab-channels .mix-fader')).map(f => f.getAttribute('aria-label')),
         mute: !!document.querySelector('#mix-tab-channels [data-mixmute="' + i + '"]'), solo: !!document.querySelector('#mix-tab-channels [data-mixsolo="' + i + '"]'),
-        eq: !!document.querySelector('#mix-tab-channels [data-mixeq="' + i + '"]') }), id);
+        eq: document.querySelectorAll('#mix-tab-channels .mix-eqcard .eqp-band').length === 5 }), id);
       const ok = k.faders.length === 6 && /level$/.test(k.faders[0]) && /pan$/.test(k.faders[1]) && /reverb send$/.test(k.faders[2]) && /delay send$/.test(k.faders[3]) && /drive send$/.test(k.faders[4]) && /mõdFX mix$/.test(k.faders[5]) && k.mute && k.solo && k.eq;
       if (!ok) bad.push(id + ' ' + JSON.stringify(k));
     }
