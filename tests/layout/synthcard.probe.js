@@ -52,9 +52,23 @@ const PARTS = [['Chords', 'chord'], ['Melody', 'mel'], ['Bass', 'bass'], ['Mel S
       const pre = await page.evaluate(() => scrollY);
       await page.click(sel + '.msx-pc-edit'); await page.waitForTimeout(1200);
       const ed = await page.evaluate(() => { const o = document.getElementById('synth-ed'); return { open: o.classList.contains('open'), macros: o.querySelectorAll('.mu-macro-slot').length, shown: [].slice.call(o.querySelectorAll('.mu-macro-slot')).filter(e => e.getBoundingClientRect().height > 0).length, tabs: o.querySelectorAll('.mu-tab').length, patch: !!o.querySelector('.msx-patch'), chips: o.querySelectorAll('.msx-part').length, title: document.getElementById('synth-ed-title').textContent }; });
-      R.check(ed.open && ed.patch && ed.tabs === 3 && ed.chips === 0 && ed.macros === 8 && ed.shown === 8, 'Edit synth opens the editor layer (patch card, all eight macros shown, Synth/Mod/FX, no part chips)', JSON.stringify(ed));
+      R.check(ed.open && ed.patch && ed.tabs === 7 && ed.chips === 0 && ed.macros === 8 && ed.shown === 8, 'Edit synth opens the editor layer (patch card, all eight macros shown, Osc/FM/Filter/Env/LFO/Matrix/FX, no part chips)', JSON.stringify(ed));
       const small = await page.evaluate(() => [].slice.call(document.querySelectorAll('#synth-ed .se-back')).map(b => Math.round(b.getBoundingClientRect().height)));
       R.check(small.every(x => x >= 44), 'Back is at least 44 pt', small.join());
+      // The seven pages: each shows panels, nothing overflows, every tab and chip is at least 44 pt, and together they build every control once.
+      for (const tab of ['osc', 'fm', 'filter', 'env', 'lfo', 'matrix', 'fx']) {
+        await page.evaluate(k => document.querySelector('#synth-ed .mu-tab[data-page="' + k + '"]').click(), tab); await page.waitForTimeout(500);
+        const pg = await page.evaluate(k => { const p = MSX.rack.pages[k].page, vis = [].slice.call(p.querySelectorAll('.mu-panel')).filter(e => e.getBoundingClientRect().height > 0);
+          const small = [].slice.call(document.querySelectorAll('#synth-ed .mu-tab, #synth-ed .mu-subtab')).filter(b => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height < 43.5).length;
+          return { on: p.classList.contains('on'), panels: vis.map(e => e.dataset.title), small, over: document.getElementById('synth-ed-body').scrollWidth - document.getElementById('synth-ed-body').clientWidth }; }, tab);
+        R.check(pg.on && pg.panels.length > 0 && pg.small === 0 && pg.over <= 1, 'editor page ' + tab + ': drawn, tabs and chips at least 44 pt, no sideways overflow', JSON.stringify(pg));
+        if (tab === 'osc') R.check(pg.panels.length === 1 && pg.panels[0] === 'Oscillator 1', 'Osc shows one panel at a time (Oscillator 1 first)', pg.panels.join());
+      }
+      await page.evaluate(() => document.querySelector('#synth-ed .mu-tab[data-page="osc"]').click());
+      await page.evaluate(() => [].slice.call(document.querySelectorAll('#synth-ed .mu-subtab')).filter(b => b.dataset.title === 'Voice')[0].click()); await page.waitForTimeout(300);
+      R.check(await page.evaluate(() => [].slice.call(document.querySelectorAll('#synth-ed .mu-page.on .mu-rack > .mu-panel')).filter(e => e.getBoundingClientRect().height > 0).map(e => e.dataset.title).join() === 'Voice'), 'the Voice chip shows the Voice panel');
+      const nIds = await page.evaluate(() => MSX.rack.ui.controls.size);
+      R.check(nIds === 237, 'the seven pages build the same 237 controls the three did', String(nIds));
       await page.click('#synth-ed .se-back'); await page.waitForTimeout(400);
       const back = await page.evaluate(() => ({ open: document.getElementById('synth-ed').classList.contains('open'), y: scrollY }));
       R.check(!back.open && back.y === pre, 'Back closes the editor and the page has not moved', JSON.stringify(back) + ' was ' + pre);
