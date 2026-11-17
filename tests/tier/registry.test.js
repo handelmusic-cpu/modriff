@@ -87,8 +87,8 @@ eq(['rhodes','organ','pad','vibes','bass_motown','bass_hofner'].map(T.freeAllows
    Array(6).fill(false), "the Sounds Pack's voices are locked");
 eq(['pianoreal2','upright_real','upright2','bass_picked','marimba','xylo','kalimba','jazzgtr','nylongtr','tenorsax','mutetpt','violin','clarinet','flute','modsynth'].map(T.freeAllowsVoice),
    Array(15).fill(false), "the recorded voices and mõdSynth are locked");
-eq(['stemExport','fullMidiExport','sampler','modsynth','chordExtensions','keyColours','liveLayout','liveRolls','liveMixer','liveSynth','arrange','stepsUnlinked','auxLayer','iRealBatch','samples'].map(f => T.modAllows(f)),
-   Array(15).fill(false), 'module-only features are off with nothing owned');
+eq(['stemExport','fullMidiExport','sampler','modsynth','chordExtensions','keyColours','liveLayout','liveRolls','liveMixer','liveSynth','arrange','playIn','soundShaping','stepsUnlinked','auxLayer','iRealBatch','samples'].map(f => T.modAllows(f)),
+   Array(17).fill(false), 'module-only features are off with nothing owned');
 ok(T.modAllows('modfx') === true, 'the mõdFX pad itself is free (three patches of it)');
 ok(T.modAllows('somethingNoTableNames') === true, 'a feature no table names is free');
 
@@ -97,7 +97,7 @@ const songs50 = songs(50);
 const probes = {
   groove: [() => T.freeAllowsKit('909'), () => T.freeAllowsKit('606'), () => T.freeAllowsGroove('Trap'), () => T.freeAllowsMeter(7, 8),
            () => T.freeAllowsSteps(48), () => T.freeAllowsStyle('motown'), () => T.freeAllowsStyle('hook', 'ml') && T.freeAllowsStyle('arpeggio', 'ml'),
-           () => T.freeAllowsArpRate('1/32'), () => T.modAllows('arrange'), () => T.modAllows('auxLayer'), () => T.modAllows('stepsUnlinked'), () => T.modAllows('liveRolls')],
+           () => T.freeAllowsArpRate('1/32'), () => T.modAllows('auxLayer'), () => T.modAllows('stepsUnlinked'), () => T.modAllows('liveRolls')],
   theory: [() => T.freeAllowsMode('hijaz'), () => T.freeAllowsMode('dorian'), () => T.freeAllowsVoicing('drop2'),
            () => T.modAllows('chordExtensions'), () => T.modAllows('keyColours')],
   sampler: [() => T.freeAllowsVoice('pianoreal2'), () => T.freeAllowsVoice('upright_real'), () => T.freeAllowsPad('PC', 0),
@@ -105,7 +105,8 @@ const probes = {
   synth: [() => T.freeAllowsVoice('modsynth'), () => T.freeAllowsFxPatch('Lo-Fi'), () => T.freeAllowsFxPatch('Riser'), () => T.modAllows('modsynth'), () => T.modAllows('liveSynth')],
   sounds: ['rhodes','organ','pad','vibes','bass_motown','bass_hofner'].map(v => () => T.freeAllowsVoice(v)),
   studio: [() => T.modAllows('stemExport'), () => T.modAllows('fullMidiExport'),
-           () => T.modAllows('liveLayout'), () => T.modAllows('liveMixer'), () => T.slCanAdd(songs50)],
+           () => T.modAllows('liveLayout'), () => T.modAllows('liveMixer'), () => T.slCanAdd(songs50),
+           () => T.modAllows('arrange'), () => T.modAllows('playIn'), () => T.modAllows('soundShaping')],
   practice: [() => T.modAllows('iRealBatch')]
 };
 MODS.forEach(owner => {
@@ -249,7 +250,7 @@ eq(['Custom samples','Stems','Key colours','More than 5 saved songs','Time signa
 eq(['Arrange','That sound','This drum kit','Moving or swapping Live widgets','Choosing your own axes','The Aux channel','Bossa Nova groove','Stem export'].map(T._modPlural),
    [false,false,false,false,false,false,false,false], 'singular phrases, gerunds and a trailing noun');
 eq(T.modPartOf('Custom samples', 'sampler'), 'Custom samples are part of the Sampler Engine', 'the brief’s own example');
-eq(T.modPartOf('Arrange', 'groove'), 'Arrange is part of the Groove Pack', 'singular');
+eq(T.modPartOf('Arrange', 'studio'), 'Arrange is part of the Studio Pack', 'singular');
 eq(T.modPartOf('That', null), 'That is part of a paid pack', 'no module named: generic wording');
 
 // ── 12b. the StoreKit test file says what the page says: the same eleven products, the same names, the same words
