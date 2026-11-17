@@ -34,6 +34,12 @@ const PARTS = [['Chords', 'chord'], ['Melody', 'mel'], ['Bass', 'bass'], ['Mel S
       const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       R.check(over <= 1, vp + ' ' + name + ': no sideways overflow', over + ' pt');
     }
+    // A part switched to mõdSynth while its page is hidden still draws the wavetable once the page is shown.
+    await page.evaluate(() => { setModTier('pro'); }); await L.goStudio(page, 'Drums');
+    await page.evaluate(() => msxPlayOn('arp')); await page.waitForTimeout(700);
+    await L.goStudio(page, 'Arp'); await page.waitForTimeout(700);
+    const hid = await page.evaluate(() => { const c = document.querySelector('.msx-pcard[data-msxpart="arp"] canvas.msx-wt'); if (!c || !c.width) return -1; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 20) n++; return n; });
+    R.check(hid > 300, vp + ': a card first shown after its part was switched elsewhere draws the wavetable', hid + ' px');
     if (vp === 'p430') {
       await L.goStudio(page, 'Bass');
       const sel = '.msx-pcard[data-msxpart="bass"] ';

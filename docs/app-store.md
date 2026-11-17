@@ -234,22 +234,16 @@ Contact: support@modriff.com
 
 ## Screenshots
 
-The upload set is `docs/app-store/screenshots/v6.9.9.9.9.9.9.9a/` (taken from build 6.9.9.9.9.9.9.9a in the iOS
-Simulator; the version shows on the splash shot). Tabs are Live, Studio, Song, Sound (the layout overhaul, 1.2 to 1.9.2, renamed Sound to Mix and changed Live, Studio, Mix and the editor: these shots predate it, so retake the set from a 1.9.2 or later build before it is uploaded; the Studio Pack promo image, `promo/Handel.modRiff.studio.png`, was remade for 1.8 and shows the EQ). No pack is locked in them and
-no other company's product name is visible. Everything older (`6.9in-` and `13in-` in this folder, `v6.9.2/`) shows
-retired tab names or the old kit names and is history only: do not upload it. `v6.9.6/` is the Duo layout reference.
-
-| set | device | size | files |
-|---|---|---|---|
-| iPhone 6.9" | iPhone 18 Pro Max | 1320 x 2868 | `iphone-6.9in-01-splash` to `05-sound` |
-| iPad 13" | iPad Pro 13-inch (M5) | 2064 x 2752 | `ipad-13in-01-splash` to `05-sound` |
-
-**Next set (in progress).** The first shot of the new set is the app playing with a caption, not the splash.
-Another session is producing a captioned set; it will report the folder name, and this section and the table are
-replaced then. Until it lands, upload nothing from the table below as the first shot.
-
-Order in both: splash, Live, Studio, Song, Sound. Each has a song loaded (Random), the transport playing and a chord
-lit. Sizes checked with `sips`. The iPad splash also shows RESUME because the shots came from one session.
+The upload set is `docs/app-store/screenshots/v7.1-captioned/` (the `iphone-6.9in-` and `ipad-13in-` files: 1320 x 2868 and
+2064 x 2752, opaque; five shots each, in this order: Live, Studio, Mix, Song, Stage, each with a caption over a framed screenshot).
+It was retaken for the layout overhaul from build 1.9.2 in the iOS Simulator (iPhone 18 Pro Max, iPad Pro 13-inch (M5)), status bar
+9:41, every pack open, the app playing a random song. The tabs read Live, Studio, Song, Mix, and the shots show what the overhaul
+made: Live's two rows of four split pads and tall keys, Studio's strip and pick row with a drum groove, the mõdSynth editor with the
+wavetable view, the Song builder and the chord chart. `raw/` holds the plain captures; `build.sh` regenerates the captioned files
+from them (it needs Chrome and `sips`). Everything under `v6.9.9.9.9.9.9.9a/`, `6.9in-`, `13in-`, `v6.9.2/` shows retired tab names
+or older layouts and is history only: do not upload it. `v6.9.6/` is the Duo layout reference. One caption, "A real synth and
+sampler inside", sits over the mõdSynth editor, which does not show the sampler; change the caption in `build.sh` or the shot.
+The app previews were not retaken.
 
 How to redo them: build the Simulator app with the optimiser on and the debug switch kept (a plain Debug build runs
 the C++ engine at -O0 and stalls the page; a Release build has no `__modDebug`, so no unlock switch):
