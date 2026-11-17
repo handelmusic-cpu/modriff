@@ -752,9 +752,7 @@ body.light-mode .snd-pick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18); 
  font-family:'Outfit',sans-serif; font-size:.6rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; }
 .lv-lock-p { font-size:.52rem; letter-spacing:.04em; text-transform:none; font-weight:400; opacity:.85; }
 /* The Mixer widget: the Mix tab's strips with what Live has no room for taken away. */
-.lv-mixer .mix-fxline, .lv-mixer .mix-master, .lv-mixer .mix-eqb { display:none; }
-.lv-mixer .mix-strip { grid-template-areas:'lbl fader val ms'; padding-bottom:6px; min-height:44px; }
-.lv-mixer .mix-msb { min-width:36px; min-height:36px; }
+/* The Live Mixer widget is the Mix tab's rows (1.9), level only: the old strip rules that hid pan, sends and EQ are gone with the strips. */
 /* The mõdSynth widget. */
 .lv-synth { display:flex; flex-direction:column; gap:8px; width:100%; padding:4px 0 8px; }
 .lv-syn-parts { display:flex; gap:5px; overflow-x:auto; scrollbar-width:none; }
@@ -1755,6 +1753,22 @@ body:not(.mode-basic) .mel-row2 > #touchmod-bar { flex:1 1 100%; }
  width:100%; max-width:700px; margin-bottom:4px;
 }
 
+/* Live's chord pads (1.9): two rows of four, 96 pt tall, so each half of a split pad is at least 44 pt; the eighth pad brings in the More row. */
+.live-more-pad { display:none; }
+#lv-slots .chords-grid { grid-template-columns:repeat(4, minmax(0,1fr)); grid-auto-rows:96px; gap:6px; }
+#lv-slots .chords-grid .chord-split { height:96px; min-height:0; }
+#lv-slots .chords-grid .chord-split .btn-sev, #lv-slots .chords-grid .chord-split .btn-tri { flex:1 1 0; min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding-top:2px; padding-bottom:2px; }
+#lv-slots .chords-grid .live-more-pad { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; height:96px; border-radius:var(--r-md);
+ border:1px dashed var(--border2); background:var(--surf2); color:var(--muted); font:700 .56rem 'Outfit',sans-serif; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; }
+#lv-slots .chords-grid .live-more-pad.active { color:var(--text); border-style:solid; border-color:hsl(280 70% 60%); }
+#lv-slots .chords-grid .lmp-plus { font-size:1.3rem; line-height:1; font-weight:600; }
+#lv-slots #pf-more-chip { display:none; }
+/* The More row is the same four across, 96 pt tall: eight pads in one 64 pt row left halves under 44 pt on a phone. */
+body.mode-basic #lv-slots :is(#chords-borrowed, #chords-secdom, #chords-user) { grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px; }
+body.mode-basic #lv-slots :is(#chords-borrowed, #chords-secdom, #chords-user) > * { height:96px; min-height:96px; }
+body.mode-basic #lv-slots :is(#chords-borrowed, #chords-secdom, #chords-user) :is(.btn-sev, .btn-tri) { flex:1 1 0; min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+/* The melody keys on Live are tall (1.9): the finger's height up the key is Touch Mod's travel. */
+body.mode-basic #lv-slots .mel-btn { height:380px; }
 /* Split button: 7th on top, triad on bottom */
 .chord-split {
  display:flex; flex-direction:column; border-radius:var(--r-md); overflow:hidden;
@@ -36210,6 +36224,22 @@ function chordMoreSet(v){
  try{ modStore.setItem('modo-live-more', _chordMore); }catch(e){}
  chordMoreApply();
 }
+// The pad itself: a plus and the name of what it brings in. Tapping it steps through the same four choices as the chip did.
+var CHORD_MORE_PAD = {off:'More', modal:'Borrowed', dom:'Dominants', mine:'Mine'};
+function liveMorePad(){
+ var b=document.createElement('button'); b.type='button'; b.className='live-more-pad'; b.id='live-more-pad';
+ b.innerHTML='<span class="lmp-plus" aria-hidden="true">+</span><span class="lmp-name"></span>';
+ b.addEventListener('click', function(){ cycleChordMore(); });
+ liveMorePadPaint(b);
+ return b;
+}
+function liveMorePadPaint(b){
+ b=b||document.getElementById('live-more-pad'); if(!b) return;
+ var m=chordMoreGet();
+ b.querySelector('.lmp-name').textContent=CHORD_MORE_PAD[m];
+ b.classList.toggle('active', m!=='off'); b.setAttribute('aria-pressed', m!=='off' ? 'true' : 'false');
+ b.setAttribute('aria-label', 'More chords: '+CHORD_MORE_PAD[m]+'. Tap for the next row');
+}
 function cycleChordMore(){
  var m=chordMoreGet();
  chordMoreSet(CHORD_MORE_ORDER[(CHORD_MORE_ORDER.indexOf(m)+1) % CHORD_MORE_ORDER.length]);
@@ -36218,6 +36248,7 @@ function cycleChordMore(){
 function chordMoreApply(){
  var m=chordMoreGet(), b=document.body;
  CHORD_MORE_ORDER.forEach(function(x){ b.classList.toggle('more-'+x, x===m); });
+ liveMorePadPaint();
  var chip=document.getElementById('pf-more-chip');
  if(chip){
   chip.innerHTML = '<span class="mc-plus">+ </span>' + CHORD_MORE_NAME[m];
@@ -36241,7 +36272,7 @@ function chordMoreFit(){
 // size rather than stretching five buttons across the whole width.
 function chordGridFit(){
  const dia=document.getElementById('chords-diatonic'); if(!dia) return;
- const n=dia.children.length, cols=Math.max(7, Math.min(10, n));
+ const n=dia.querySelectorAll(':scope > :not(.live-more-pad)').length, cols=Math.max(7, Math.min(10, n));
  dia.style.setProperty('--chord-cols', String(cols));
  dia.classList.toggle('dense', cols > 7);
 }
@@ -36427,6 +36458,8 @@ function renderChords(){
  steps.forEach((s,i)=>{
  dEl.appendChild(makeSplitBtn(nums[i],nn((root+s)%12),triadQs[i],types7[i],rm+s,funcs[i],i));
  });
+ // Live's eighth pad (1.9): the More row (borrowed, dominants, mine) as a pad in the grid. Hidden on Studio, which shows the rows themselves.
+ dEl.appendChild(liveMorePad());
 
  // Borrowed
  const bEl=document.getElementById('chords-borrowed'); if(!bEl) return; bEl.innerHTML='';
@@ -69274,7 +69307,7 @@ function _mixMk(tag, cls, txt){ var e=document.createElement(tag); if(cls) e.cla
 var MIX_MASTER = { id:'__master', label:'Master', short:'MASTER', get color(){ return 'var(--muted)'; } };
 // One row: [ track with the fader, the name over it, the value over it, the meter under it ] [M] [S]. `kind` is what the fader
 // controls. The name opens the channel's strip (`detail` rows have a plain label instead).
-function _mixRow(ch, kind, detail){
+function _mixRow(ch, kind, detail, live){
  var master = ch.id==='__master';
  var row=_mixMk('div','mixrow'+(detail?' mixrow-d':'')); row.dataset.mixrow=ch.id; row.style.setProperty('--c', ch.color);
  var track=_mixMk('div','mixrow-track');
@@ -69323,6 +69356,9 @@ function _mixRow(ch, kind, detail){
  if(detail || master){
   track.appendChild(_mixMk('span','mixrow-name', (detail && kind!=='level') ? label : (ch.short||ch.label)));
   if(detail && kind==='level') track.lastChild.textContent='LEVEL';
+ } else if(live){
+  // The Live widget: a level, mute and solo per part, no strip to open (the Mix tab has the strips).
+  var ln=_mixMk('span','mixrow-name', ch.short||ch.label); ln.style.color=tcol; track.appendChild(ln);
  } else {
   var nb=_mixMk('button','mixrow-name', ch.short||ch.label); nb.type='button'; nb.dataset.mixopen=ch.id;
   nb.setAttribute('aria-label', ch.label+': open its strip'); nb.style.color=tcol; track.appendChild(nb);
@@ -69376,6 +69412,11 @@ function _mixDetail(host, ch){
 }
 function _mixRowsBuild(container){
  container.innerHTML='';
+ if(container.id==='lv-mixer-host'){
+  window.MIX_CHANNELS.forEach(function(ch){ container.appendChild(_mixRow(ch, 'level', false, true)); });
+  container.appendChild(_mixRow(MIX_MASTER, 'level', false, true));
+  return;
+ }
  if(MIXUI.open && !(window.MIX_CHANNELS||[]).some(function(c){ return c.id===MIXUI.open; }) && MIXUI.open!=='__master') MIXUI.open='';
  if(MIXUI.open){
   _mixDetail(container, MIXUI.open==='__master' ? MIX_MASTER : window.MIX_CHANNELS.filter(function(c){ return c.id===MIXUI.open; })[0]);
@@ -69405,7 +69446,7 @@ function _mixRowsBuild(container){
 }
 window.buildMixChannelsInto = function(container){
  if(!container) return;
- if(container.id==='mix-tab-channels'){
+ if(container.id==='mix-tab-channels' || container.id==='lv-mixer-host'){
   _mixRowsBuild(container);
   sqSyncMixIndicators();
   if(typeof syncMasterUI==='function') syncMasterUI();
