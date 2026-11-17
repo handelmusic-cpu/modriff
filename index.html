@@ -5675,7 +5675,38 @@ body.light-mode .ft-rec-ring.on { background:#c81e3a; }
 .midi-cc-x:hover { color:var(--dom); }
 .midi-cc-empty { font-size:max(.44rem,10.5px); color:var(--muted); line-height:1.6; }
 .midi-cc-row { flex-wrap:wrap; }
-.eq-box { width:min(420px, calc(100vw - 32px)); }
+.eq-box { width:min(420px, calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow-y:auto; }
+/* The EQ editor (1.8): the same component in the mixer's strip and in the dialog. */
+.eqp { position:relative; margin:10px 0; }
+.eqp-head { display:flex; align-items:baseline; gap:8px; margin-bottom:4px; }
+.eqp-title { font:700 .62rem 'Outfit',sans-serif; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
+.eqp-hint { margin-left:auto; font-size:max(.46rem,10.5px); color:var(--muted); }
+.eqp-cv { display:block; width:100%; height:150px; border-radius:8px; background:var(--surf2); touch-action:none; cursor:crosshair; }
+.eqp-bands { display:flex; gap:5px; margin:8px 0; }
+.eqp-band { flex:1 1 0; min-width:0; min-height:44px; border-radius:var(--r-sm); border:1px solid var(--border2); background:var(--surf2); color:var(--muted); font:600 .6rem 'Outfit',sans-serif; cursor:pointer; position:relative; }
+.eqp-band.live::after { content:''; position:absolute; top:5px; right:5px; width:6px; height:6px; border-radius:50%; background:var(--pc, var(--accent)); }
+.eqp-band.on { color:var(--text); border-color:var(--pc, var(--accent)); background:color-mix(in srgb, var(--pc, var(--accent)) 18%, var(--surf2)); }
+.eqp-row { display:grid; grid-template-columns:84px 1fr 72px; align-items:center; gap:10px; min-height:44px; }
+.eqp-row label { font:600 .62rem 'Outfit',sans-serif; color:var(--text); }
+.eqp-row input[type=range] { width:100%; height:44px; background:transparent; margin:0; }
+.eqp-row input[type=range]::-webkit-slider-runnable-track { height:3px; border-radius:2px; background:var(--border2); }
+.eqp-row input[type=range]::-webkit-slider-thumb { width:22px; height:22px; margin-top:-9.5px; background:var(--pc, var(--accent)); }
+.eqp-val { font:600 .6rem 'Outfit',sans-serif; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; }
+.eqp-passrow { grid-template-columns:96px 1fr; }
+.eqp-seg { display:flex; gap:5px; }
+.eqp-seg .tb { flex:1; min-height:44px; }
+.eqp .tb.eqp-on { min-height:44px; }
+.eqp-foot { margin-top:6px; }
+.eqp-foot .tb { width:100%; min-height:44px; }
+/* Locked: the editor stays on show, dimmed, and says why. The tap goes through to the pack sheet (.tier-locked). */
+.eqp-lock { position:absolute; left:0; right:0; top:24px; height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; text-align:center; padding:12px; pointer-events:none; }
+.eqp-lock[hidden] { display:none; }
+.eqp-lock { background:color-mix(in srgb, var(--bg) 55%, transparent); border-radius:8px; }
+.eqp-lock b { font:700 .7rem 'Outfit',sans-serif; color:var(--text); }
+.eqp-lock-note { font-size:max(.5rem,11px); color:var(--muted); }
+.eqp-lock-btns { pointer-events:auto; }
+.eqp-lock-btns .tb { min-height:44px; padding:0 16px; }
+.eqp.mix-eqcard { margin:12px 0 6px; padding:10px; border:1px solid var(--border2); border-radius:var(--r-md); background:var(--surf); }
 .eq-curve { display:block; width:100%; height:120px; margin:8px 0 4px; border-radius:8px; background:var(--surf2); touch-action:none; cursor:crosshair; }
 .eq-row { display:grid; grid-template-columns:96px 1fr 70px; align-items:center; gap:10px; margin:12px 0; }
 .eq-row label { display:flex; flex-direction:column; font:600 .62rem 'Outfit',sans-serif; color:var(--text); }
@@ -25889,91 +25920,164 @@ function _eqRackApply(r, e, t){
 // The curve at the top of the panel, drawn from the same numbers the sliders hold.
 // 20 Hz to 20 kHz across, plus and minus the range up and down; the three dots are
 // the bands, and can be dragged (up and down for a shelf, both ways for the peak).
-var EQ_CV = {W:0, H:0, drag:null};
-function eqDrawCurve(){
- const cv=document.getElementById('eq-curve'); if(!cv) return;
- const cur=(_eqCtx || _eqMasterCtx()).get();
- const r=cv.getBoundingClientRect(); if(r.width<10) return;
- const dpr=Math.min(3, window.devicePixelRatio||1), W=Math.round(r.width), H=Math.round(r.height);
- if(cv.width!==Math.round(W*dpr) || cv.height!==Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); }
- EQ_CV.W=W; EQ_CV.H=H;
- const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
- const cs=getComputedStyle(document.documentElement);
- const hue=(cs.getPropertyValue('--kh')||'200').trim(), ink=(c,a)=>(typeof uiInk==='function')?uiInk(a):'rgba(255,255,255,'+a+')';
- const col='hsl('+hue+',80%,62%)', colFill='hsla('+hue+',80%,62%,.22)';
- const L0=Math.log(20), L1=Math.log(20000), pad=10, mid=H/2, span=mid-pad;
- const X=f=>Math.round((Math.log(f)-L0)/(L1-L0)*W*2)/2;
- const Y=db=>mid-Math.max(-EQ_RANGE*1.3,Math.min(EQ_RANGE*1.3,db))/EQ_RANGE*span;
- // grid: the 0 dB line a little stronger, 6 dB steps, a mark each decade and octave-ish
- g.lineWidth=1; g.font='500 9px Outfit, system-ui, sans-serif'; g.textBaseline='top';
- [-12,-6,0,6,12].forEach(function(db){
-  g.strokeStyle=ink(0, db===0?0.30:0.10); g.beginPath(); g.moveTo(0,Y(db)+.5); g.lineTo(W,Y(db)+.5); g.stroke();
+var EQ_PANELS = [];
+var EQ_BAND_NAME = {hpf:'HPF', lo:'LO', mid:'MID', mid2:'MID 2', hi:'HI', lpf:'LPF'};
+// Which fields of an EQ each band owns: its gain, its frequency, its width or resonance, and for a filter its switch and slope.
+var EQ_BAND = {
+ hpf:{f:'hpfHz', q:'hpfQ', on:'hpfOn', slope:'hpfSlope', pass:true},
+ lo:{g:'lo', f:'loHz'},
+ mid:{g:'mid', f:'midHz', q:'midQ'},
+ mid2:{g:'mid2', f:'mid2Hz', q:'mid2Q'},
+ hi:{g:'hi', f:'hiHz'},
+ lpf:{f:'lpfHz', q:'lpfQ', on:'lpfOn', slope:'lpfSlope', pass:true}
+};
+function eqBandKeys(master){ return master ? ['hpf','lo','mid','mid2','hi','lpf'] : ['hpf','lo','mid','hi','lpf']; }
+// The whole EQ is the Studio Pack's (1.8). Only the controls are gated; what is saved keeps sounding on a free build and
+// can always be put back to flat (the Flat button is never locked), and the audio path asks nothing.
+function eqLocked(){ return typeof modAllows==='function' && !modAllows('eq'); }
+function _eqFmtHz(f){ return f>=1000 ? (f/1000).toFixed(f>=10000 ? 1 : 2)+' kHz' : Math.round(f)+' Hz'; }
+function _eqLogPos(v, lim){ return Math.log(v/lim[0])/Math.log(lim[1]/lim[0]); }
+function _eqLogVal(p, lim){ return lim[0]*Math.pow(lim[1]/lim[0], Math.max(0, Math.min(1, p))); }
+// One EQ editor: a graph with a dot per band, the bands as buttons, and the selected band's controls. The mixer's strip and the
+// master show it in place; the older strips (the Live mixer) open it in a dialog. ctx: {title, sub, master, color, get(), set(o)}.
+function eqPanel(ctx){
+ var el=document.createElement('div'); el.className='eqp';
+ if(ctx.color) el.style.setProperty('--pc', ctx.color);
+ var P={el:el, ctx:ctx, sel:'mid', dots:[], W:0, H:0, drag:null};
+ var keys=eqBandKeys(!!ctx.master);
+ el.innerHTML='<div class="eqp-main"><div class="eqp-head"><span class="eqp-title"></span><span class="eqp-hint">drag a dot, or pick a band</span></div>'
+  +'<canvas class="eqp-cv" role="img" aria-label="The EQ curve"></canvas><div class="eqp-bands" role="group" aria-label="EQ bands"></div><div class="eqp-ctl"></div></div>'
+  +'<div class="eqp-lock" hidden><b>EQ is part of the Studio Pack</b><span class="eqp-lock-note"></span><div class="eqp-lock-btns"></div></div>'
+  +'<div class="eqp-foot"><button type="button" class="tb eqp-flat">Set EQ back to flat</button></div>';
+ var cv=el.querySelector('.eqp-cv'), bandsEl=el.querySelector('.eqp-bands'), ctl=el.querySelector('.eqp-ctl'), main=el.querySelector('.eqp-main');
+ el.querySelector('.eqp-title').textContent=ctx.title||'EQ';
+ var flat=el.querySelector('.eqp-flat');
+ flat.addEventListener('click', function(){ ctx.set(EQ_DEF); });
+ keys.forEach(function(k){
+  var b=document.createElement('button'); b.type='button'; b.className='eqp-band'; b.dataset.band=k; b.textContent=(k==='mid' && ctx.master) ? 'MID 1' : EQ_BAND_NAME[k];
+  b.addEventListener('click', function(){ P.sel=k; build(); P.sync(); });
+  bandsEl.appendChild(b);
  });
- [[50,'50'],[100,'100'],[200,''],[500,'500'],[1000,'1k'],[2000,''],[5000,'5k'],[10000,'10k']].forEach(function(t){
-  g.strokeStyle=ink(0,0.07); g.beginPath(); g.moveTo(X(t[0])+.5,0); g.lineTo(X(t[0])+.5,H); g.stroke();
-  if(t[1]){ g.fillStyle=ink(0,0.42); g.fillText(t[1], X(t[0])+3, H-12); }
- });
- g.fillStyle=ink(0,0.42); g.textBaseline='top'; g.fillText('+'+EQ_RANGE, 3, Y(EQ_RANGE)-2); g.fillText('-'+EQ_RANGE, 3, Y(-EQ_RANGE)-9);
- // the curve, filled to the 0 dB line
- const pts=[]; for(let x=0;x<=W;x+=2){ const f=Math.exp(L0+(x/W)*(L1-L0)); pts.push([x, Y(eqResponseDb(cur,f))]); }
- g.beginPath(); g.moveTo(0,mid); pts.forEach(function(p){ g.lineTo(p[0],p[1]); }); g.lineTo(W,mid); g.closePath();
- g.fillStyle=colFill; g.fill();
- g.beginPath(); pts.forEach(function(p,i){ if(i) g.lineTo(p[0],p[1]); else g.moveTo(p[0],p[1]); });
- g.strokeStyle=col; g.lineWidth=2; g.lineJoin='round'; g.stroke();
- // the three bands' handles, where each one sits on its own curve
- EQ_CV.dots=[['lo',120,cur.lo],['mid',cur.midHz,cur.mid],['hi',8000,cur.hi]].map(function(d){
-  const x=X(d[1]), y=Y(d[2]);
-  g.beginPath(); g.arc(x,y,5,0,Math.PI*2); g.fillStyle=d[2]?col:'rgba(0,0,0,.4)'; g.fill();
-  g.lineWidth=1.5; g.strokeStyle=ink(0,0.85); g.stroke();
-  return {k:d[0], x:x, y:y};
- });
-}
-function _eqWireCurve(cv){
- const pos=e=>{ const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
- const set=o=>{ (_eqCtx||_eqMasterCtx()).set(o); };
- const fromX=x=>{ const L0=Math.log(20), L1=Math.log(20000); return Math.exp(L0+Math.max(0,Math.min(1,x/EQ_CV.W))*(L1-L0)); };
- const fromY=y=>{ const pad=10, mid=EQ_CV.H/2; return Math.round(((mid-y)/(mid-pad))*EQ_RANGE*2)/2; };   // half-dB steps
+ function cur(){ return ctx.get(); }
+ // ── the controls of the selected band
+ function slider(label, min, max, step, read, write, fmt, resetTo){
+  var row=document.createElement('div'); row.className='eqp-row';
+  var lb=document.createElement('label'); lb.textContent=label;
+  var inp=document.createElement('input'); inp.type='range'; inp.min=min; inp.max=max; inp.step=step; inp.setAttribute('aria-label', label);
+  var out=document.createElement('span'); out.className='eqp-val';
+  inp.addEventListener('input', function(){ ctx.set(write(parseFloat(inp.value))); });
+  inp.addEventListener('dblclick', function(){ ctx.set(resetTo()); });
+  row.appendChild(lb); row.appendChild(inp); row.appendChild(out);
+  ctl.appendChild(row);
+  return function(c){ var v=read(c); if(document.activeElement!==inp && +inp.value!==v) inp.value=v; out.textContent=fmt(c); inp.setAttribute('aria-valuetext', out.textContent); };
+ }
+ var upd=[];
+ function build(){
+  ctl.innerHTML=''; upd=[];
+  var B=EQ_BAND[P.sel], d=EQ_DEF;
+  if(B.pass){
+   var row=document.createElement('div'); row.className='eqp-row eqp-passrow';
+   var on=document.createElement('button'); on.type='button'; on.className='tb eqp-on'; on.addEventListener('click', function(){ var o={}; o[B.on]=cur()[B.on]?0:1; ctx.set(o); });
+   var seg=document.createElement('div'); seg.className='eqp-seg'; seg.setAttribute('role','group'); seg.setAttribute('aria-label','Slope');
+   [12,24].forEach(function(s){ var b=document.createElement('button'); b.type='button'; b.className='tb'; b.dataset.slope=s; b.textContent='−'+s+' dB';
+    b.addEventListener('click', function(){ var o={}; o[B.slope]=s; ctx.set(o); }); seg.appendChild(b); });
+   row.appendChild(on); row.appendChild(seg); ctl.appendChild(row);
+   upd.push(function(c){ on.textContent=c[B.on]?'On':'Off'; on.classList.toggle('active', !!c[B.on]); on.setAttribute('aria-pressed', String(!!c[B.on]));
+    [].forEach.call(seg.children, function(b){ b.classList.toggle('active', +b.dataset.slope===c[B.slope]); }); });
+  }
+  if(B.g) upd.push(slider('Gain', -EQ_RANGE, EQ_RANGE, 0.5, function(c){ return c[B.g]; }, function(v){ var o={}; o[B.g]=v; return o; },
+   function(c){ return (c[B.g]>0?'+':'')+c[B.g].toFixed(1)+' dB'; }, function(){ var o={}; o[B.g]=0; return o; }));
+  upd.push(slider(P.sel==='lo'||P.sel==='hi' ? 'Corner' : 'Frequency', 0, 1, 0.001, function(c){ return _eqLogPos(c[B.f], EQ_LIM[B.f]); },
+   function(v){ var o={}; o[B.f]=_eqLogVal(v, EQ_LIM[B.f]); return o; }, function(c){ return _eqFmtHz(c[B.f]); }, function(){ var o={}; o[B.f]=d[B.f]; return o; }));
+  if(B.q) upd.push(slider(B.pass ? 'Resonance' : 'Width', 0, 1, 0.001, function(c){ return _eqLogPos(c[B.q], EQ_LIM[B.q]); },
+   function(v){ var o={}; o[B.q]=_eqLogVal(v, EQ_LIM[B.q]); return o; }, function(c){ return 'Q '+c[B.q].toFixed(2); }, function(){ var o={}; o[B.q]=d[B.q]; return o; }));
+ }
+ // ── the graph
+ var L0=Math.log(20), L1=Math.log(20000);
+ function draw(){
+  var c=cur(), r=cv.getBoundingClientRect(); if(r.width<10) return;
+  var dpr=Math.min(3, window.devicePixelRatio||1), W=Math.round(r.width), H=Math.round(r.height);
+  if(cv.width!==Math.round(W*dpr) || cv.height!==Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); }
+  P.W=W; P.H=H;
+  var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  var cs=getComputedStyle(el), hue=(getComputedStyle(document.documentElement).getPropertyValue('--kh')||'200').trim();
+  var col=(cs.getPropertyValue('--pc')||'').trim() || 'hsl('+hue+',80%,62%)', ink=function(a){ return (typeof uiInk==='function') ? uiInk(a) : 'rgba(255,255,255,'+a+')'; };
+  var pad=10, mid=H/2, span=mid-pad;
+  var X=function(f){ return Math.round((Math.log(f)-L0)/(L1-L0)*W*2)/2; };
+  var Y=function(db){ return mid-Math.max(-EQ_RANGE*1.3, Math.min(EQ_RANGE*1.3, db))/EQ_RANGE*span; };
+  g.lineWidth=1; g.font='500 9px Outfit, system-ui, sans-serif'; g.textBaseline='top';
+  [-12,-6,0,6,12].forEach(function(db){ g.strokeStyle=ink(db===0?0.30:0.10); g.beginPath(); g.moveTo(0,Y(db)+.5); g.lineTo(W,Y(db)+.5); g.stroke(); });
+  [[50,'50'],[100,'100'],[200,''],[500,'500'],[1000,'1k'],[2000,''],[5000,'5k'],[10000,'10k']].forEach(function(t){
+   g.strokeStyle=ink(0.07); g.beginPath(); g.moveTo(X(t[0])+.5,0); g.lineTo(X(t[0])+.5,H); g.stroke();
+   if(t[1]){ g.fillStyle=ink(0.42); g.fillText(t[1], X(t[0])+3, H-12); }
+  });
+  g.fillStyle=ink(0.42); g.fillText('+'+EQ_RANGE, 3, Y(EQ_RANGE)-2); g.fillText('-'+EQ_RANGE, 3, Y(-EQ_RANGE)-9);
+  var pts=[]; for(var x=0;x<=W;x+=2){ pts.push([x, Y(eqResponseDb(c, Math.exp(L0+(x/W)*(L1-L0))))]); }
+  g.beginPath(); g.moveTo(0,mid); pts.forEach(function(p){ g.lineTo(p[0],p[1]); }); g.lineTo(W,mid); g.closePath();
+  g.globalAlpha=.2; g.fillStyle=col; g.fill(); g.globalAlpha=1;
+  g.beginPath(); pts.forEach(function(p,i){ if(i) g.lineTo(p[0],p[1]); else g.moveTo(p[0],p[1]); });
+  g.strokeStyle=col; g.lineWidth=2; g.lineJoin='round'; g.stroke();
+  P.dots=keys.map(function(k){
+   var B=EQ_BAND[k], x=X(c[B.f]), y=Y(B.g ? c[B.g] : 0), off=B.pass && !c[B.on], s=(k===P.sel);
+   g.globalAlpha=off ? .4 : 1;
+   g.beginPath(); g.arc(x,y,s?9:6,0,Math.PI*2); g.fillStyle=s ? col : ((B.g ? c[B.g] : (B.pass && c[B.on])) ? col : 'rgba(0,0,0,.45)'); g.fill();
+   g.lineWidth=1.5; g.strokeStyle=ink(0.85); g.stroke(); g.globalAlpha=1;
+   return {k:k, x:x, y:y};
+  });
+ }
+ function pos(e){ var r=cv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+ var fromX=function(x){ return Math.exp(L0+Math.max(0,Math.min(1,x/P.W))*(L1-L0)); };
+ var fromY=function(y){ var pad=10, mid=P.H/2; return Math.round(((mid-y)/(mid-pad))*EQ_RANGE*2)/2; };   // half-dB steps
+ cv.style.touchAction='none';
+ if(window.ResizeObserver) new ResizeObserver(function(){ draw(); }).observe(cv);
  cv.addEventListener('pointerdown', function(e){
-  const p=pos(e); let best=null, bd=1e9;
-  (EQ_CV.dots||[]).forEach(function(d){ const dd=Math.hypot(d.x-p.x, d.y-p.y); if(dd<bd){ bd=dd; best=d; } });
-  if(!best || bd>28) return;                      // a thumb is wider than a dot
-  EQ_CV.drag=best.k; try{ cv.setPointerCapture(e.pointerId); }catch(err){} e.preventDefault();
+  var p=pos(e), best=null, bd=1e9;
+  P.dots.forEach(function(d){ var dd=Math.hypot(d.x-p.x, d.y-p.y); if(dd<bd){ bd=dd; best=d; } });
+  if(!best || bd>30) return;                      // a thumb is wider than a dot
+  if(P.sel!==best.k){ P.sel=best.k; build(); }
+  P.drag=best.k; try{ cv.setPointerCapture(e.pointerId); }catch(err){} e.preventDefault(); P.sync();
  });
  cv.addEventListener('pointermove', function(e){
-  if(!EQ_CV.drag) return;
-  const p=pos(e), db=Math.max(-EQ_RANGE, Math.min(EQ_RANGE, fromY(p.y))), o={};
-  if(EQ_CV.drag==='mid'){ o.mid=db; o.midHz=Math.max(EQ_MID_MIN, Math.min(EQ_MID_MAX, fromX(p.x))); }
-  else o[EQ_CV.drag]=db;
-  set(o);
+  if(!P.drag) return;
+  var B=EQ_BAND[P.drag], p=pos(e), o={}, lim=EQ_LIM[B.f];
+  o[B.f]=Math.max(lim[0], Math.min(lim[1], fromX(p.x)));
+  if(B.g) o[B.g]=Math.max(-EQ_RANGE, Math.min(EQ_RANGE, fromY(p.y)));
+  ctx.set(o);
  });
- ['pointerup','pointercancel'].forEach(function(t){ cv.addEventListener(t, function(e){ EQ_CV.drag=null; try{ cv.releasePointerCapture(e.pointerId); }catch(err){} }); });
+ ['pointerup','pointercancel'].forEach(function(t){ cv.addEventListener(t, function(e){ P.drag=null; try{ cv.releasePointerCapture(e.pointerId); }catch(err){} }); });
+ // ── lock
+ var lockEl=el.querySelector('.eqp-lock');
+ P.sync=function(){
+  var c=cur(), locked=eqLocked(), isFlat=eqFlat(eqNorm(c, !!ctx.master));
+  [].forEach.call(bandsEl.children, function(b){ b.classList.toggle('on', b.dataset.band===P.sel); b.setAttribute('aria-pressed', String(b.dataset.band===P.sel));
+   var B=EQ_BAND[b.dataset.band]; b.classList.toggle('live', B.g ? !!c[B.g] : !!c[B.on]); });
+  upd.forEach(function(u){ u(c); });
+  // Locked: the editor is shown, dimmed, and a tap on it opens the pack sheet (the app's own .tier-locked convention).
+  modLockEl(main, locked, 'studio'); if(locked) main.setAttribute('data-lock-name','EQ'); else main.removeAttribute('data-lock-name');
+  lockEl.hidden=!locked; el.classList.toggle('eqp-is-locked', locked);
+  if(locked){
+   lockEl.querySelector('.eqp-lock-note').textContent=isFlat ? 'This EQ is flat.' : 'Your saved EQ keeps playing on this build.';
+   var bt=lockEl.querySelector('.eqp-lock-btns');
+   if(!bt.firstChild){ var more=document.createElement('button'); more.type='button'; more.className='tb active eqp-see'; more.textContent='See the Studio Pack'; more.addEventListener('click', function(){ proSheet('EQ','studio'); }); bt.appendChild(more); }
+  }
+  flat.style.display=isFlat ? 'none' : '';
+  draw();
+ };
+ build(); EQ_PANELS.push(P);
+ return P;
 }
-
-// The panel is one dialog for the master and for every part: `_eqCtx` is whichever
-// is open ({title, sub, get(), set(o)}), and the sliders read and write through it.
-var _eqCtx = null;
+function eqPanelsSync(){ EQ_PANELS=EQ_PANELS.filter(function(p){ return p.el.isConnected; }); EQ_PANELS.forEach(function(p){ p.sync(); }); }
+window.eqPanelsSync = eqPanelsSync;
 function _eqMasterCtx(){
- return {title:'Master EQ', sub:'Three bands on the whole mix, after the glue compressor and before the limiter.',
+ return {title:'Master EQ', sub:'Six bands on the whole mix, after the glue compressor and before the limiter.', master:true,
          get:function(){ return masterEq; }, set:function(o){ eqSet(o); }};
 }
 function eqSyncUI(){
- const cur=(_eqCtx || _eqMasterCtx()).get();
- const fmt=v=>(v>0?'+':'')+v.toFixed(1)+' dB';
- [['lo','mb-eq-lo'],['mid','mb-eq-mid'],['hi','mb-eq-hi']].forEach(function(k){
-  const e=document.getElementById(k[1]); if(e && +e.value!==cur[k[0]]) e.value=cur[k[0]];
-  const v=document.getElementById(k[1]+'-v'); if(v) v.textContent=fmt(cur[k[0]]);
- });
- const f=document.getElementById('mb-eq-hz');
- if(f){
-  const pos=Math.log(cur.midHz/EQ_MID_MIN)/Math.log(EQ_MID_MAX/EQ_MID_MIN);
-  if(Math.abs(+f.value-pos)>0.002) f.value=pos;
-  const v=document.getElementById('mb-eq-hz-v');
-  if(v) v.textContent=cur.midHz>=1000 ? (cur.midHz/1000).toFixed(2)+' kHz' : Math.round(cur.midHz)+' Hz';
- }
+ eqPanelsSync();
  document.querySelectorAll('[data-eqmaster]').forEach(function(b){ b.classList.toggle('on', !eqIsFlat()); });
  mixEqSyncButtons();
- try{ eqDrawCurve(); }catch(e){}
 }
+
 // A part's EQ, written the way the pan is: a number in the mixer's state, flushed.
 window.mixEqSet = function(id, o){
  var cur=eqNorm(window.sqMixEq && window.sqMixEq[id]);
@@ -25995,48 +26099,26 @@ function mixEqSyncButtons(){
  });
 }
 function openPartEq(id, label){
- openEqPanel({title:label+' EQ', sub:'Three bands on this part only: after its mõdFX, before its pan.',
+ openEqPanel({title:label+' EQ', sub:'Five bands on this part only: after its mõdFX, before its pan.', color:(window.MIX_CHANNELS||[]).filter(function(c){ return c.id===id; }).map(function(c){ return c.color; })[0],
               get:function(){ return window.mixEqGet(id); }, set:function(o){ window.mixEqSet(id, o); }});
 }
 function openMasterEq(){ openEqPanel(_eqMasterCtx()); }
 function openEqPanel(ctx){
  if(document.querySelector('.eq-overlay')) return;
- _eqCtx=ctx;
  const ov=document.createElement('div');
  ov.className='csi-overlay eq-overlay';
- const row=(id,label,min,max,step,hint)=>'<div class="eq-row"><label for="'+id+'">'+label+'<small>'+hint+'</small></label>'
-  +'<input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'"><span class="eq-val" id="'+id+'-v"></span></div>';
  ov.innerHTML='<div class="dur-picker-box eq-box" role="dialog" aria-modal="true" aria-labelledby="eq-title">'
-  +'<div class="dur-picker-title" id="eq-title"></div>'
-  +'<div class="dur-picker-sub" id="eq-sub"></div>'
-  +'<canvas class="eq-curve" id="eq-curve" aria-label="The EQ curve" role="img"></canvas>'
-  // High at the top, low at the bottom, the way a spectrum reads.
-  +row('mb-eq-hi','High','-'+EQ_RANGE,EQ_RANGE,0.5,'shelf at 8 kHz')
-  +row('mb-eq-mid','Mid','-'+EQ_RANGE,EQ_RANGE,0.5,'peak')
-  +row('mb-eq-hz','Mid at','0','1',0.001,'200 Hz to 5 kHz')
-  +row('mb-eq-lo','Low','-'+EQ_RANGE,EQ_RANGE,0.5,'shelf at 120 Hz')
-  +'<div class="csi-row csi-actions"><button type="button" class="tb eq-reset">Flat</button>'
-  +'<button type="button" class="tb active eq-done">Done</button></div></div>';
+  +'<div class="dur-picker-title" id="eq-title"></div><div class="dur-picker-sub" id="eq-sub"></div><div class="eq-host"></div>'
+  +'<div class="csi-row csi-actions"><button type="button" class="tb active eq-done">Done</button></div></div>';
  document.body.appendChild(ov);
  ov.querySelector('#eq-title').textContent=ctx.title; ov.querySelector('#eq-sub').textContent=ctx.sub;
- _eqWireCurve(ov.querySelector('#eq-curve'));
- const close=()=>{ ov.remove(); _eqCtx=null; document.removeEventListener('keydown', onKey, true); };
+ const P=eqPanel(ctx); P.el.querySelector('.eqp-head').style.display='none';
+ ov.querySelector('.eq-host').appendChild(P.el); P.sync();
+ const close=()=>{ ov.remove(); document.removeEventListener('keydown', onKey, true); };
  const onKey=e=>{ if(e.key==='Escape'){ e.stopPropagation(); close(); } };
  document.addEventListener('keydown', onKey, true);
  ov.addEventListener('click', e=>{ if(e.target===ov) close(); });
  ov.querySelector('.eq-done').addEventListener('click', close);
- ov.querySelector('.eq-reset').addEventListener('click', ()=>ctx.set(EQ_DEF));
- [['lo','mb-eq-lo'],['mid','mb-eq-mid'],['hi','mb-eq-hi']].forEach(function(k){
-  document.getElementById(k[1]).addEventListener('input', e=>{ const o={}; o[k[0]]=parseFloat(e.target.value); ctx.set(o); });
- });
- document.getElementById('mb-eq-hz').addEventListener('input', e=>{
-  ctx.set({midHz: EQ_MID_MIN*Math.pow(EQ_MID_MAX/EQ_MID_MIN, parseFloat(e.target.value))});
- });
- // Double-tap a slider to bring that band back to flat.
- ov.querySelectorAll('input[type=range]').forEach(function(r){
-  r.addEventListener('dblclick', ()=>{ if(r.id==='mb-eq-hz') ctx.set({midHz:1000}); else { const o={}; o[({'mb-eq-lo':'lo','mb-eq-mid':'mid','mb-eq-hi':'hi'})[r.id]]=0; ctx.set(o); } });
- });
- eqSyncUI();
 }
 function onMasterInput(){
  const g=id=>{ const e=document.getElementById(id); return e?parseFloat(e.value):null; };
@@ -40682,7 +40764,8 @@ var TUT_LIST = [
   {t:'Mixer', x:'A fader, mute and solo for every part.', el:'#page-mix .mix-strip', go:function(){ _tutTab('mix'); if(typeof setMixMode==='function') setMixMode('mixer'); }},
   {t:'Sends', x:'REV, DLY and DRV under each fader feed the effects.', el:'#page-mix .mix-strip .mix-faderrow'},
   {t:'Pan', x:'Left or right for each part. Drag the knob; double-tap centres it.', el:'#page-mix .mix-strip .mix-pan'},
-  {t:'EQ', x:'Three bands per part: low shelf, a peak you can move, high shelf. The master has its own.', el:'#page-mix .mix-strip .mix-eqb'}
+  {t:'EQ', x:'Tap a channel name, then drag a dot on its EQ: high-pass, low shelf, a peak, high shelf, low-pass. The master has six.', el:'#mix-tab-channels .mix-eqcard .eqp-cv', pro:true,
+   go:function(){ _tutTab('mix'); if(typeof setMixMode==='function') setMixMode('mixer'); try{ MIXUI.open='bass'; buildMixChannelsInto(document.getElementById('mix-tab-channels')); }catch(e){} }}
  ]},
  {id:'settings', name:'Settings', steps:[
   {t:'One list', x:'Playing, Gear and App, each row with what it is set to. Tap a row to open it.', el:'#set-find', go:function(){ _tutTab('build'); setSettingsPane('ui'); }},
@@ -69216,11 +69299,10 @@ function _mixDetail(host, ch){
   host.appendChild(_mixRow(ch,'pan',true));
   MIX_SENDS.forEach(function(sd){ if(!ch.fx) return; host.appendChild(_mixRow(ch, sd[0], true)); });
  }
- var eq=_mixMk('button','tb mixrow-eq','EQ — '+(master?'master':ch.label)); eq.type='button';
- if(master){ eq.dataset.eqmaster='1'; eq.onclick=function(){ openMasterEq(); }; eq.classList.toggle('on', !eqIsFlat()); }
- else { eq.dataset.mixeq=ch.id; eq.onclick=function(){ openPartEq(ch.id, ch.label); }; var _e0=window.sqMixEq && window.sqMixEq[ch.id]; eq.classList.toggle('on', !!_e0 && !eqFlat(eqNorm(_e0))); }
- eq.title=master ? 'Master EQ, ahead of the limiter.' : 'EQ for '+ch.label+', on this part only.';
- host.appendChild(eq);
+ // The EQ is a card in the strip: the graph, the bands, the selected band's controls (1.8; it was a button that opened a dialog).
+ var ectx=master ? _eqMasterCtx() : {title:ch.label+' EQ', color:ch.color, get:function(){ return window.mixEqGet(ch.id); }, set:function(o){ window.mixEqSet(ch.id, o); }};
+ ectx.title=(master?'Master':ch.label)+' EQ';
+ var ep=eqPanel(ectx); ep.el.classList.add('mix-eqcard'); host.appendChild(ep.el); ep.sync();
 }
 function _mixRowsBuild(container){
  container.innerHTML='';
@@ -75074,8 +75156,8 @@ const MODULE_COPY = {
  practice: { name:'Practice & Perform Pack', line:'Speed trainer, loop bars, Stage, timeline',
   bullets:['Chart import: a whole playlist at once','A practice library that doesn’t use your song slots','Speed trainer: the tempo steps up each chorus','Next key: the chart moves through all twelve keys','Loop bars: repeat the hard bars until they’re right',
            'Timeline: chords and words on the beats','Stage: the song full screen, big enough to read from a stand'] },
- studio:   { name:'Studio Pack', line:'Sound shaping, Play in, Arrange, stems, MIDI',
-  bullets:['Sound shaping: filter, attack, release, reverb and voice tone','Play in: write a part with your keys or a MIDI keyboard','Arrange: a different line for every chord',
+ studio:   { name:'Studio Pack', line:'EQ, sound shaping, Play in, Arrange, stems',
+  bullets:['EQ on every part and the master: five bands, filters at 12 or 24 dB','Sound shaping: filter, attack, release, reverb and voice tone','Play in: write a part with your keys or a MIDI keyboard','Arrange: a different line for every chord',
            'Capture and export stems','Full-length MIDI export','Unlimited saved songs','Full Live mode: more modules, rearrange your layout'] }
 };
 const BUNDLE_COPY = {
@@ -75124,6 +75206,7 @@ const FREE_LIMITS = {
   // octave and the mixer stay free; these are what shape the sound or write the part by hand.
   arrange:      false,   // Arrange: a line per chord (the write mode, and the lines kept against chords)
   playIn:       false,   // Play in: keys, MIDI or the home row written into a roll or the drum grid (noteInputArm)
+  eq: false,             // the EQ on every part and the master: five bands on a strip, six on the master, filters at 12 or 24 dB. The controls only; a saved EQ keeps sounding
   soundShaping: false,   // a part's Filter, Attack, Release, Reverb and the five voice-tone knobs (Tone, Reso, Sweep, Width, Drift)
   stepsUnlinked: false,  // a step length per generator instead of one for all
   auxLayer:     false,   // the Aux drum channel (the kit on it is a kit like any other)
@@ -75157,7 +75240,7 @@ const FEATURE_MODULE = {
   samples:'sampler', sampler:'sampler', padBanks:'sampler',
   stemExport:'studio', fullMidiExport:'studio', liveLayout:'studio', liveMixer:'studio',
   liveRolls:'groove', liveSynth:'synth',
-  arrange:'studio', playIn:'studio', soundShaping:'studio', stepsUnlinked:'groove', auxLayer:'groove', drumKits:'groove', drumGrooves:'groove',
+  arrange:'studio', playIn:'studio', soundShaping:'studio', eq:'studio', stepsUnlinked:'groove', auxLayer:'groove', drumKits:'groove', drumGrooves:'groove',
   bassStyles:'groove', melodyStyles:'groove', arpRates:'groove', meters:'groove',
   iRealBatch:'practice', practiceTrainer:'practice', timeline:'practice', stage:'practice'
 };
@@ -75531,6 +75614,7 @@ function _applyTier(){
   // was not.
   try{ if(typeof fxSyncUI==='function') fxSyncUI(); }catch(e){}
   try{ if(typeof msxCardsRender==='function') msxCardsRender(); }catch(e){}
+  try{ if(typeof eqPanelsSync==='function') eqPanelsSync(); }catch(e){}
   if(typeof freeApplyLimits==='function') freeApplyLimits();
   if(typeof proSyncRow==='function') proSyncRow();
   // The circle-of-fifths colouring is the Theory Pack's: free plays the
