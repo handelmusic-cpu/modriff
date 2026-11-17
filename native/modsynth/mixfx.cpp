@@ -2,6 +2,7 @@
 // the stages below are that graph's, in its order, fed its finished numbers.
 #include "mixfx.h"
 #include "dspkit.h"
+#include "eqpass.h"
 #include "modfxproc.h"
 
 #include <cmath>
@@ -86,7 +87,10 @@ struct MixFx::Impl {
   float x[2][CHUNK], clean[2][CHUNK], tmp[2][CHUNK];
   // The strip's EQ. State is per band and channel; the coefficients are redone
   // only when a gain or the peak's frequency moved.
-  BqC eqC[3]; BqS1 eqS[3][2]; double eqLast[4] = {1e9, 1e9, 1e9, 1e9};
+  // The two pass filters wrap the bands (high-pass first, low-pass last); each
+  // handles its own on/off, so an idle strip runs neither.
+  BqC eqC[3]; BqS1 eqS[3][2]; double eqLast[7] = {1e9, 1e9, 1e9, 1e9, 1e9, 1e9, 1e9};
+  PassFilter eqHp, eqLp;
   ModFxProc wk; float wkOut[2][128];
 
   explicit Impl(double sampleRate) : sr(sampleRate), fdn(sampleRate, FX_REV_SEC, FX_REV_SCALE), wk(sampleRate) {
@@ -95,11 +99,13 @@ struct MixFx::Impl {
       /*drv*/0, 0, 1, /*iso*/0, 1, 1, 1, 1, /*fmt*/0, 1, 700, 1800, /*gate*/1,
       /*trem*/1, 0, 4, /*pan*/0, /*ring*/18, 0, 1, /*dly*/0, 0.25, 0.35, /*rev*/0, /*dry*/1,
       /*worklet*/0, 0, 1, 0, 0, 0, 0.5, 0, 1, 0, 0,
-      /*gate pattern*/0, 0, 0.5, /*eq*/0, 0, 1000, 0 };
+      /*gate pattern*/0, 0, 0.5, /*eq*/0, 0, 1000, 0,
+      /*eq corners, width*/120, 0.9, 8000, /*hpf*/0, 80, EQP_Q2, 12, /*lpf*/0, 12000, EQP_Q2, 12 };
     for (int i = 0; i < MFX_COUNT; i++) { p[i] = def[i]; sm[i].init(sr, 0.02); sm[i].snap(def[i]); pv[i] = cv[i] = def[i]; }
     sm[MFX_ACTIVE].init(sr, 0.005); sm[MFX_MIX].init(sr, 0.015);
     dly[0].init((int)(sr * 4.0)); dly[1].init((int)(sr * 4.0));
     driveCurve(curve, 0);
+    eqHp.init(true, sr); eqLp.init(false, sr);
     isoC[0] = bqDesign(LP, ISO_LO_HZ, 0.7, sr, true);  isoC[1] = bqDesign(HP, ISO_LO_HZ, 0.7, sr, true);
     isoC[2] = bqDesign(LP, ISO_HI_HZ, 0.7, sr, true);  isoC[3] = bqDesign(HP, ISO_HI_HZ, 0.7, sr, true);
     lpC1 = lpC2 = bqDesign(LP, 18000, 0.7, sr, true);
@@ -115,6 +121,9 @@ struct MixFx::Impl {
       if (i != MFX_ACTIVE && i != MFX_MIX) sm[i].k = k;
       sm[i].t = p[i];
       pv[i] = sm[i].v;
+      // Settled: the step below would add exactly zero. Most of the 60 values are
+      // at rest most of the time, and the pow is the cost.
+      if (sm[i].v == sm[i].t) { cv[i] = sm[i].v; continue; }
       // CHUNK one-pole steps in one go.
       sm[i].v += (sm[i].t - sm[i].v) * (1.0 - std::pow(1.0 - sm[i].k, CHUNK));
       cv[i] = sm[i].v;
@@ -146,27 +155,33 @@ struct MixFx::Impl {
   }
 
   // The part's EQ, on the finished part (after the Mix, or the clean part when the
-  // chain is out). Bands at 0 dB are not run, and their state is cleared so they
-  // come back from silence.
+  // chain is out): high-pass, low shelf, peak, high shelf, low-pass. Anything at
+  // 0 dB (or a filter that is off) is not run, and its state is cleared so it
+  // comes back from silence.
   void eqStage(float* L, float* R, int n) {
     const double g[3] = {cv[MFX_EQ_LO], cv[MFX_EQ_MID], cv[MFX_EQ_HI]};
-    const double hz = cv[MFX_EQ_MID_HZ];
+    const double hz = cv[MFX_EQ_MID_HZ], loHz = cv[MFX_EQ_LO_HZ], hiHz = cv[MFX_EQ_HI_HZ], midQ = cv[MFX_EQ_MID_Q];
+    eqHp.process(L, R, n, p[MFX_EQ_HPF_ON] > 0.5, p[MFX_EQ_HPF_SLOPE], p[MFX_EQ_HPF_HZ], p[MFX_EQ_HPF_Q]);
     if (std::fabs(g[0]) < 0.005 && std::fabs(g[1]) < 0.005 && std::fabs(g[2]) < 0.005) {
       for (int b = 0; b < 3; b++) { eqS[b][0] = BqS1(); eqS[b][1] = BqS1(); }
-      eqLast[0] = eqLast[1] = eqLast[2] = eqLast[3] = 1e9;
-      return;
+      for (int j = 0; j < 7; j++) eqLast[j] = 1e9;
+    } else {
+      if (std::fabs(g[0] - eqLast[0]) > 1e-4 || std::fabs(g[1] - eqLast[1]) > 1e-4 ||
+          std::fabs(g[2] - eqLast[2]) > 1e-4 || std::fabs(hz - eqLast[3]) > 1e-3 ||
+          std::fabs(loHz - eqLast[4]) > 1e-3 || std::fabs(hiHz - eqLast[5]) > 1e-3 || std::fabs(midQ - eqLast[6]) > 1e-5) {
+        eqC[0] = eqDesign(EQ_LOW, loHz, g[0], 0, sr);
+        eqC[1] = eqDesign(EQ_PEAK, hz, g[1], midQ, sr);
+        eqC[2] = eqDesign(EQ_HIGH, hiHz, g[2], 0, sr);
+        eqLast[0] = g[0]; eqLast[1] = g[1]; eqLast[2] = g[2]; eqLast[3] = hz;
+        eqLast[4] = loHz; eqLast[5] = hiHz; eqLast[6] = midQ;
+      }
+      for (int b = 0; b < 3; b++) {
+        if (std::fabs(g[b]) < 0.005) { eqS[b][0] = BqS1(); eqS[b][1] = BqS1(); continue; }
+        for (int i = 0; i < n; i++) { L[i] = (float)bqRun1(eqC[b], eqS[b][0], L[i]); R[i] = (float)bqRun1(eqC[b], eqS[b][1], R[i]); }
+        eqFlush(eqS[b][0]); eqFlush(eqS[b][1]);
+      }
     }
-    if (std::fabs(g[0] - eqLast[0]) > 1e-4 || std::fabs(g[1] - eqLast[1]) > 1e-4 ||
-        std::fabs(g[2] - eqLast[2]) > 1e-4 || std::fabs(hz - eqLast[3]) > 1e-3) {
-      eqC[0] = eqDesign(EQ_LOW, 120.0, g[0], 0, sr);
-      eqC[1] = eqDesign(EQ_PEAK, hz, g[1], 0.9, sr);
-      eqC[2] = eqDesign(EQ_HIGH, 8000.0, g[2], 0, sr);
-      eqLast[0] = g[0]; eqLast[1] = g[1]; eqLast[2] = g[2]; eqLast[3] = hz;
-    }
-    for (int b = 0; b < 3; b++) {
-      if (std::fabs(g[b]) < 0.005) { eqS[b][0] = BqS1(); eqS[b][1] = BqS1(); continue; }
-      for (int i = 0; i < n; i++) { L[i] = (float)bqRun1(eqC[b], eqS[b][0], L[i]); R[i] = (float)bqRun1(eqC[b], eqS[b][1], R[i]); }
-    }
+    eqLp.process(L, R, n, p[MFX_EQ_LPF_ON] > 0.5, p[MFX_EQ_LPF_SLOPE], p[MFX_EQ_LPF_HZ], p[MFX_EQ_LPF_Q]);
   }
 
   // `src` is the chain's input (the part after the buffer effects); `L`/`R`

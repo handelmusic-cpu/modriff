@@ -484,8 +484,20 @@ volume). Opened from **EQ** on the master strip in the mixer. Free: the doc's
 tier table has no row for it, so it is not locked; one entry in `FREE_LIMITS`
 would. (The packs brief lists a 3-band EQ *with a low cut* under the Studio Pack, "when
 built". This one has no low cut and stays free; the low-cut version is what moves.) Saved as a device preference (`modo-mastereq`) and in a project file.
-Native: three parameters appended to the master message (`eqLo`, `eqMid`,
-`eqMidHz`, `eqHi`), a band is not run at all while it is at 0 dB, the gains are
+**Grown to six bands (slice 6 of the layout overhaul; DSP only, the panel is still the
+four sliders).** High-pass and low-pass (each on/off, corner, resonance as a linear Q,
+12 or 24 dB per octave = one or two biquads), the two shelves with movable corners
+(`loHz`, `hiHz`; 120 Hz and 8 kHz), the peak with a width (`midQ`, default exactly 0.9)
+and a second peak (`mid2`, `mid2Hz`, `mid2Q`). A part's strip gets the same minus the
+second peak. Every new field is optional in `modo-mastereq` and `sqMixEq[id]` and
+missing means default, so a saved EQ and an old song sound as they did, to the bit
+(`eqtest`'s golden hashes); the filters are off until switched on and count in "flat".
+Both engines take a filter on or off as a glide of its corner from or to the inert end
+(5 Hz, or just under Nyquist) and add or drop the stage only there (`eqpass.h`, `_eqRackApply`).
+`native/modsynth/eqtest.cpp` states the cost: all nine strips and the master at their
+worst are about 0.6% of one core on an M-series Mac.
+Native: parameters appended to the master message (`eqLo`, `eqMid`,
+`eqMidHz`, `eqHi`, then the new ones), a band is not run at all while it is at 0 dB, the gains are
 smoothed and the coefficients rebuilt once a block. `native/modsynth/eqtest.cpp`
 holds the coefficients to the browser's own `getFrequencyResponse` (within
 0.05 dB over five settings and ten frequencies) and the bus to what the filters

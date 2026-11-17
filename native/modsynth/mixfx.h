@@ -14,7 +14,7 @@
 //
 // The worklet effects in front of it all (stutter, reverse, warp, bit and rate
 // crush, grain, the ladder filter) are modfxproc.cpp, a port held bit for bit to
-// the page's worklet source. The strip's EQ (last four parameters) is after the whole
+// the page's worklet source. The strip's EQ (the last parameters) is after the whole
 // chain and the Mix, and runs whether or not the chain is in. The rhythmic gate's eight patterns are in the gate
 // stage (GATE_PATTERNS, held to index.html's by tests/modsynth/gatepat.test.js).
 // Not here yet: the sample-source axes. See docs/v5-architecture.md, step N4.
@@ -59,10 +59,19 @@ enum MixFxParam {
   // (No parameter names in these comments: the order test reads this enum.)
   MFX_GATE_PAT, MFX_GATE_PAT_AMT, MFX_GATE_PAT_HZ,
   // The part's own EQ, the mixer strip's: a low shelf at 120 Hz, a peak at the given
-  // frequency, a high shelf at 8 kHz, gains in dB. Always in circuit (it is the
+  // frequency, a high shelf at 8 kHz, gains in dB (corners and width moved by the
+  // parameters after these four). Always in circuit (it is the
   // strip's, not mõdFX's: the Mix and the chain's on/off do not touch it) and not
   // run at all while it is flat.
   MFX_EQ_LO, MFX_EQ_MID, MFX_EQ_MID_HZ, MFX_EQ_HI,
+  // The strip's EQ grown to five bands. The shelves' corner frequencies (120 Hz and
+  // 8 kHz until moved) and the peak's Q (0.9, its width), then a high-pass and a
+  // low-pass, each on/off, corner, Q (linear) and slope (12 or 24 dB per octave);
+  // eqpass.h. Both filters start off, and everything here at its default is the
+  // three-band EQ above, to the bit.
+  MFX_EQ_LO_HZ, MFX_EQ_MID_Q, MFX_EQ_HI_HZ,
+  MFX_EQ_HPF_ON, MFX_EQ_HPF_HZ, MFX_EQ_HPF_Q, MFX_EQ_HPF_SLOPE,
+  MFX_EQ_LPF_ON, MFX_EQ_LPF_HZ, MFX_EQ_LPF_Q, MFX_EQ_LPF_SLOPE,
   MFX_COUNT
 };
 
