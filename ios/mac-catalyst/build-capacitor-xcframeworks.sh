@@ -18,6 +18,7 @@ WORK="${TMPDIR:-/tmp}/modriff-capacitor-catalyst"
 
 VER="$(node -p "require('$CAP/package.json').version")"
 STAMP="$PKG/.built-for"
+[ ! -d "$PKG/.ios-archive-lock" ] || { echo "iOS archive in progress; wait before building Mac frameworks" >&2; exit 1; }
 
 # Apple rejects an upload whose Capacitor or Cordova framework has no signature
 # (ITMS-91065, "Missing signature"). The official xcframeworks are signed by their
@@ -45,19 +46,10 @@ fi
 
 rm -rf "$WORK"; mkdir -p "$WORK/official"
 
-# The official slices. Reuse what SwiftPM already downloaded for this version if
-# it is there; otherwise fetch the release zip, which is the same file SwiftPM
-# fetches for the pinned version in CapApp-SPM/Package.swift.
-for name in Capacitor Cordova; do
-  found="$(ls -d "$HOME"/Library/Developer/Xcode/DerivedData/*/SourcePackages/artifacts/capacitor-swift-pm/$name/$name.xcframework 2>/dev/null | head -1 || true)"
-  if [ -n "$found" ] && [ ! -d "$found/ios-arm64_x86_64-maccatalyst" ]; then
-    cp -R "$found" "$WORK/official/"
-  else
-    curl -fsSL -o "$WORK/$name.zip" \
-      "https://github.com/ionic-team/capacitor-swift-pm/releases/download/$VER/$name.xcframework.zip"
-    unzip -q "$WORK/$name.zip" -d "$WORK/official"
-  fi
-done
+# A DerivedData glob could pick another release with a valid signature. Fetch
+# exactly the pinned version used by the JS bridge and native sources.
+rmdir "$WORK/official"
+python3 "$ROOT/ios/sdk-signatures.py" prepare "$WORK/official"
 
 ruby "$HERE/gen-capacitor-project.rb" "$CAP" "$WORK/gen" >/dev/null
 xcodebuild -project "$WORK/gen/CapMac.xcodeproj" -scheme Capacitor -configuration Release \
