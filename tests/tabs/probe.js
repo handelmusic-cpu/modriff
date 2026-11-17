@@ -124,8 +124,14 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(s.page === 'page-build', 'Option+5 is Settings', s.page);
   await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); });
   await page.focus('#tab-live');
-  await page.keyboard.press('ArrowRight'); await page.waitForTimeout(250); s = await st();
-  check(s.lit === 'studio', 'arrow keys move along the tabs', JSON.stringify(s));
+  const rootBeforeArrows = await page.evaluate(() => root);
+  for (const [key, want] of [['ArrowRight', 'studio'], ['ArrowRight', 'songs'], ['End', 'mix'],
+    ['ArrowRight', 'live'], ['ArrowLeft', 'mix'], ['Home', 'live']]) {
+    await page.keyboard.press(key); await page.waitForTimeout(250); s = await st();
+    const focus = await page.evaluate(() => document.activeElement.id);
+    check(s.lit === want && focus === 'tab-' + want, key + ' selects and focuses ' + want, JSON.stringify([s.lit, focus]));
+  }
+  check(await page.evaluate(() => root) === rootBeforeArrows, 'tab arrows never transpose the musical key');
 
   // ── 8. Every width.
   for (const W of [360, 375, 390, 393, 402, 430, 440]) {
