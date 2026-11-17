@@ -55,8 +55,8 @@ const songs = n => Array.from({ length: n }, (_, i) => ({ id: i }));
 eq([4,5,6].map(n => T.slCanAdd(songs(n))), [true,false,false], 'a 5th song fits, a 6th does not');
 eq(T.slCanAdd(songs(5).concat([{ id: 'd', isDemo: true }])), false, 'the demo song is not one of the five');
 eq(T.slCanAdd(songs(4).concat([{ id: 'd', isDemo: true }])), true, 'demo plus four still has room');
-eq(T.FREE_NUMBERS.audioExportSeconds, 30, 'audio export seconds');
-eq(T.FREE_NUMBERS.audioExportFadeSeconds, 2, 'audio export fade seconds');
+ok(!('audioExportSeconds' in T.FREE_NUMBERS) && !('fullAudioExport' in T.FREE_LIMITS), 'the mixed-down audio is whole for free: no cap is named');
+ok(T.modAllows('fullAudioExport') === true, 'full-length audio is not a pack feature');
 eq(T.FREE_NUMBERS.midiExportBars, 4, 'MIDI export bars');
 eq(T.FREE_NUMBERS.padCount, 9, 'sampler pads');
 eq(T.EMBED_LIMITS, { sampleSeconds: 12, sampleBytes: 2 * 1024 * 1024, fileBytes: 15 * 1024 * 1024 }, 'embed caps');
@@ -87,8 +87,8 @@ eq(['rhodes','organ','pad','vibes','bass_motown','bass_hofner'].map(T.freeAllows
    Array(6).fill(false), "the Sounds Pack's voices are locked");
 eq(['pianoreal2','upright_real','upright2','bass_picked','marimba','xylo','kalimba','jazzgtr','nylongtr','tenorsax','mutetpt','violin','clarinet','flute','modsynth'].map(T.freeAllowsVoice),
    Array(15).fill(false), "the recorded voices and mõdSynth are locked");
-eq(['stemExport','fullAudioExport','fullMidiExport','sampler','modsynth','chordExtensions','keyColours','liveLayout','liveRolls','liveMixer','liveSynth','arrange','stepsUnlinked','auxLayer','iRealBatch','samples'].map(f => T.modAllows(f)),
-   Array(16).fill(false), 'module-only features are off with nothing owned');
+eq(['stemExport','fullMidiExport','sampler','modsynth','chordExtensions','keyColours','liveLayout','liveRolls','liveMixer','liveSynth','arrange','stepsUnlinked','auxLayer','iRealBatch','samples'].map(f => T.modAllows(f)),
+   Array(15).fill(false), 'module-only features are off with nothing owned');
 ok(T.modAllows('modfx') === true, 'the mõdFX pad itself is free (three patches of it)');
 ok(T.modAllows('somethingNoTableNames') === true, 'a feature no table names is free');
 
@@ -104,7 +104,7 @@ const probes = {
             () => T.freeAllowsPad('A', 0), () => T.freeAllowsPad('PA', 12), () => T.modAllows('sampler'), () => T.modAllows('samples')],
   synth: [() => T.freeAllowsVoice('modsynth'), () => T.freeAllowsFxPatch('Lo-Fi'), () => T.freeAllowsFxPatch('Riser'), () => T.modAllows('modsynth'), () => T.modAllows('liveSynth')],
   sounds: ['rhodes','organ','pad','vibes','bass_motown','bass_hofner'].map(v => () => T.freeAllowsVoice(v)),
-  studio: [() => T.modAllows('stemExport'), () => T.modAllows('fullAudioExport'), () => T.modAllows('fullMidiExport'),
+  studio: [() => T.modAllows('stemExport'), () => T.modAllows('fullMidiExport'),
            () => T.modAllows('liveLayout'), () => T.modAllows('liveMixer'), () => T.slCanAdd(songs50)],
   practice: [() => T.modAllows('iRealBatch')]
 };
