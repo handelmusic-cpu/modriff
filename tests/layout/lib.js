@@ -109,7 +109,8 @@ const SCAN = () => {
 /* The measure that answers "no control under 44 pt": a control is small if either side is under 44 (a hair of tolerance for
    rounding). The known exceptions are the steppers the app has always had; they are listed, not hidden. */
 const MIN = 43.5;
-const KNOWN_SMALL = [/^\.?st-v?step/, /^button\.st-v?step/];
+// The rhythm builder's steps (16 across a phone) are grid cells, like the drum grid's, not buttons to aim at one by one.
+const KNOWN_SMALL = [/^\.?st-v?step/, /^button\.st-v?step/, /^button\.crh-cell\|/];
 function isSmall(c) { return (c.w < MIN || c.h < MIN); }
 
 /* The height of the page that is showing: the bottom of its lowest visible child, in page points. */
