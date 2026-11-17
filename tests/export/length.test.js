@@ -1,21 +1,20 @@
-/* Free audio export (6.9.9.9.4): 30 s, the last 2 s faded out, on BOTH paths.
+/* Free audio export (7.3): the mixed-down .wav is the whole take, on BOTH paths, with
+   no fade. Until 7.3 free cut it at 30 s and faded the last 2 s; this checks that is gone.
 
-   web   the in-memory path (a browser): fullL.slice(0,cap) then _fadeOutTail.
-   sink  the app's streamed path: _finishSinkMix, then the host's pcmFade. The host is
-         stood in for by a small file store that does what ModEngine.swift's fileAppend,
-         wavFinish, pcmAdd and pcmFade do (same curve, same byte offsets). The Swift
-         itself is not run here: only the page's half, and the arithmetic it asks for.
+   web   the in-memory path (a browser): _floatsToWavBlob on the whole take.
+   sink  the app's streamed path: _finishSinkMix. The host is stood in for by a small
+         file store that does what ModEngine.swift's fileAppend, wavFinish and pcmAdd do.
+         Its pcmFade is kept and counted: the page must no longer call it.
 
-   Each is measured in the file that was delivered: length in frames (= 30 x sample
-   rate when cut), the peak of the last 50 ms (about 0) against the peak of the 50 ms
-   that ended 3 s before the end (not 0), and the last sample. A take under 30 s must
-   come out whole, with no fade: its last 50 ms is as loud as the 50 ms 3 s before.
-   The Studio Pack (modo-dev-tier=pro) must keep the whole take.
+   Each is measured in the file that was delivered: length in frames (more than 32 x
+   sample rate for a 34 s take), the peak of the last 50 ms against the peak of the 50 ms
+   that ended 3 s before the end (as loud: no fade). Free stems still open the Studio
+   Pack sheet. The Studio Pack (modo-dev-tier=pro) gets the same whole take.
 
-   Run (repo served, Chromium available; see CLAUDE.md):
+   Run (repo or dist/ served, Chromium available; see CLAUDE.md):
      python3 -m http.server 8777 --bind 127.0.0.1 &
-     node tests/export/fade.test.js            # all
-     node tests/export/fade.test.js web,sink   # some
+     node tests/export/length.test.js            # all
+     node tests/export/length.test.js web,sink   # some
    Env: URL, CHROMIUM, PLAYWRIGHT. The long takes run in real time (about 2 minutes). */
 'use strict';
 let chromium;
@@ -77,14 +76,8 @@ const installHost = () => {
       for (let i = 0; i + 1 < add.length && o.offset + i + 1 < f.length; i += 2)
         dv.setInt16(o.offset + i, Math.max(-32768, Math.min(32767, dv.getInt16(o.offset + i, true) + av.getInt16(i, true))), true);
     },
-    // What ModEngine.swift's pcmFade does: a raised cosine over `frames` frames from byte `offset`, 0 on the last.
-    pcmFade: async o => {
-      const f = fs[o.name], dv = new DataView(f.buffer), n = Math.min(o.frames, Math.floor((f.length - o.offset) / 4));
-      for (let i = 0; i < n; i++) {
-        const g = 0.5 * (1 + Math.cos(Math.PI * (i + 1) / o.frames));
-        for (let c = 0; c < 2; c++) { const p = o.offset + i * 4 + c * 2, v = dv.getInt16(p, true) * g; dv.setInt16(p, Math.sign(v) * Math.round(Math.abs(v)), true); }
-      }
-    },
+    // ModEngine.swift still has pcmFade; free used to call it. Counted, so a call is caught.
+    pcmFade: async () => { window.__fades = (window.__fades || 0) + 1; },
     shareFiles: async () => ({}), captureStart: async () => ({}), captureStop: async () => ({}), captureRead: async () => ({ streams: [] }),
   };
 };
@@ -113,24 +106,24 @@ async function take(page, seconds, sink) {
   for (const path of WHICH) {
     const sink = path === 'sink';
     console.log('\n== ' + path + ' path');
-    // Free, over the cap.
+    // Free, past the old 30 s line: the whole take, no fade.
     let page = await fresh(browser, 'free');
     let r = await take(page, 34, sink);
     let o = r.out; console.log(JSON.stringify(o));
     check(o && o.sink === sink, 'went down the ' + path + ' path');
-    check(o && o.frames === 30 * o.sr, 'free, 34 s take: file is 30 x sample rate frames', o && o.frames + ' vs ' + 30 * o.sr);
-    check(o && o.last50 < 0.005, 'the last 50 ms is about 0', o && o.last50.toFixed(5));
-    check(o && o.at3s > 0.1, '3 s before the end is not 0', o && o.at3s.toFixed(3));
-    check(o && o.lastSample === 0, 'the final sample is exactly 0', o && o.lastSample);
-    check(r.toasts.some(t => /first 30 seconds of audio/.test(t)), 'the toast says "the first 30 seconds of audio"', r.toasts.filter(t => /Free saves/.test(t)).join(' | '));
+    check(o && o.frames > 32 * o.sr, 'free, 34 s take: the whole take, not 30 s', o && (o.frames / o.sr).toFixed(2) + ' s');
+    check(o && o.last50 > 0.1 && Math.abs(o.last50 - o.at3s) < 0.05, 'free: no fade, the last 50 ms is as loud as 3 s before', o && o.last50.toFixed(3) + ' vs ' + o.at3s.toFixed(3));
+    check((await page.evaluate(() => window.__fades || 0)) === 0, 'free: the host is never asked to fade');
+    check(!r.toasts.some(t => /seconds of audio/.test(t)), 'no "seconds of audio" message', r.toasts.filter(t => /Free saves/.test(t)).join(' | '));
+    // Stems stay the Studio Pack's: the switch is locked and a tap opens its sheet.
+    const st = await page.evaluate(async () => {
+      const b = document.querySelector('[data-stemtoggle]'); if (!b) return { none: true };
+      const locked = b.classList.contains('tier-locked'); b.click(); await new Promise(x => setTimeout(x, 400));
+      const sh = document.getElementById('_pro-sheet');
+      return { locked, sheet: !!sh, text: sh ? sh.textContent.slice(0, 120) : '', stemsOn: !!exportStems };
+    });
+    check(!st.none && st.locked && st.sheet && /Studio Pack/.test(st.text) && !st.stemsOn, 'free: stems are locked and open the Studio Pack sheet', JSON.stringify(st));
     check(page.__errs.length === 0, 'no page errors', page.__errs.join(' | '));
-    await page.close();
-    // Free, under the cap: untouched.
-    page = await fresh(browser, 'free');
-    r = await take(page, 8, sink); o = r.out; console.log(JSON.stringify(o));
-    check(o && o.frames < 30 * o.sr && o.frames > 6 * o.sr, 'free, 8 s take: whole, not cut to 30 s', o && (o.frames / o.sr).toFixed(2) + ' s');
-    check(o && o.last50 > 0.1 && Math.abs(o.last50 - o.at3s) < 0.05, 'no fade: the last 50 ms is as loud as 3 s before', o && o.last50.toFixed(3) + ' vs ' + o.at3s.toFixed(3));
-    check(!r.toasts.some(t => /Free saves/.test(t)), 'no "Free saves" message', '');
     await page.close();
     // Studio Pack: the whole take, no fade.
     page = await fresh(browser, 'pro');

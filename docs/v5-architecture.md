@@ -291,7 +291,7 @@ file reads (change a table, not a surface):
 - `FREE_LIMITS` and `FREE_NUMBERS`: what free gets. `FEATURE_MODULE` and `NUMBER_MODULE` say
   which module owns each row; the test fails on a row with none, which would be a lock
   nothing could open. A feature no table names is free.
-- `SOUNDS_VOICES` and `voiceModule(w)`: the Sounds Pack's seven voices, then mõdSynth, then
+- `SOUNDS_VOICES` and `voiceModule(w)`: the Sounds Pack's six voices, then mõdSynth, then
   any other recorded voice (the Sampler Engine's).
 - `MODULE_COPY` and `BUNDLE_COPY`: the buyer-facing words. Names are held to 30 characters
   and one-line descriptions to 45, because the descriptions are what goes into App Store
@@ -319,7 +319,7 @@ never opens it on its own.
 | Chord types, voicings | triads, plain sevenths; Close and Spread | **Theory**: 6/9, 11, 13, alterations; Drop 2, Drop 3, Soul, Neo-soul, Vary |
 | Key colours | which key is red (rotation) | **Theory**: the circle-of-fifths order |
 | Pure tuning | Equal temperament | **Theory**: Pure (just) intonation of chords, bass, melody and arp |
-| Voices | Sine, Saw, Square, Tri, SuperSaw, the Upright and Electric basses, Acid, 303 | **Sounds** (`piano`, `rhodes`, `organ`, `pad`, `vibes`, `bass_motown`, `bass_hofner`); **Sampler** (every other recorded voice); **mõdSynth** (`modsynth`) |
+| Voices | Piano (synth), Sine, Saw, Square, Tri, SuperSaw, the Upright and Electric basses, Acid, 303 | **Sounds** (`rhodes`, `organ`, `pad`, `vibes`, `bass_motown`, `bass_hofner`); **Sampler** (every other recorded voice); **mõdSynth** (`modsynth`) |
 | Sampler pads | none to play; the first 9 pads of PA are shown locked and each plays its sample softly twice (`modo-previews`) | **Sampler**: every bank, all 16 pads, your own clips |
 | Slice a clip onto pads | — | **Sampler** (`smpSliceToPads`): Hits, or 4, 8, 16 equal parts, from the sampler editor of a pad |
 | mõdFX pad | Filter Sweep, Tape Stop, Dub Delay | **mõdSynth**: the other patches, the X/Y menus, saving your own |
@@ -328,15 +328,17 @@ never opens it on its own.
 | Bass / melody styles | Rock, Funk / Hook, Rock | **Groove**: the rest, and Arrange |
 | Meters, steps | 4/4, 3/4, 12/8; 12, 16 or 24 (one bar of 12/8) | **Groove**: any meter, up to 64, a step length per part |
 | Live page | the standard layout | **Studio**: adding, swapping, moving, removing widgets |
-| Audio / MIDI export | first 30 s (fading out) / first 4 bars | **Studio**: the whole take; stems |
+| Audio / MIDI export | the whole mixed-down take / first 4 bars of MIDI | **Studio**: the whole MIDI; stems |
 | Saved songs | 5 (iReal charts count against them) | **Studio**: unlimited |
 | iReal import | one chart per import, counted against the slots | **Practice**: whole playlists, in a library outside the slots |
 | Practice trainer (Songs > Perform) | a visible row; a tap opens the pack sheet | **Practice**: Speed up, Next key, Loop bars (`practiceTrainer`) |
 
-Fresh-start defaults are free ones, with one change: **chords start on Piano (synth), which
-is now the Sounds Pack's**, so a free build plays the chords on Saw instead
-(`FREE_VOICE_FALLBACK`) and a paying one keeps the Piano. Drums on the Linn, bass on Upright
-(the synth one), Aux off for a free build.
+Fresh-start defaults are all free: chords on Piano (synth), which is also the chord voice
+a free build falls back to from a Sounds Pack voice it does not own (`FREE_VOICE_FALLBACK`).
+Drums on the Linn, bass on Upright (the synth one), Aux off for a free build.
+
+Full Studio and Complete Your Studio sell the packs listed and every update to them; no
+buyer-facing text promises packs added later.
 
 **Judgment calls the brief left open, all in the tables above and one line each to move:**
 the two free drum kits are Linn and 808 (606 and Jazz went to Groove); the free bass styles

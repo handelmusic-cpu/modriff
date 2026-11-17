@@ -114,7 +114,7 @@ const closeSheet = page => page.evaluate(() => { const o = document.getElementBy
     }
     return out;
   });
-  check(Object.keys(all).length === 7 && Object.values(all).every(v => v.sounded === 1 && v.peak === 0.45), 'all seven Sounds Pack voices preview, once each, at one level', JSON.stringify(all));
+  check(Object.keys(all).length === 6 && Object.values(all).every(v => v.sounded === 1 && v.peak === 0.45), 'all six Sounds Pack voices preview, once each, at one level', JSON.stringify(all));
   check(all.bass_motown.notes === 1 && all.bass_hofner.notes === 1 && all.organ.notes >= 3, 'a vintage bass plays the root, the others the chord');
 
   console.log('\n== free: a take');
