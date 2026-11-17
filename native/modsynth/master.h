@@ -98,6 +98,16 @@ enum MasterParam {
   MB_EQ_MID,
   MB_EQ_MID_HZ,
   MB_EQ_HI,
+  // The master EQ grown to six bands: the shelves' corner frequencies (120 Hz and
+  // 8 kHz until moved), the peak's Q (0.9, its width), a high-pass and a low-pass
+  // (each on/off, corner, Q linear, slope 12 or 24 dB per octave; eqpass.h), and a
+  // second movable peak (gain in dB, frequency, Q) between the first and the
+  // high shelf. Both filters start off and the second peak at 0 dB; everything
+  // here at its default is the three-band EQ above, to the bit.
+  MB_EQ_LO_HZ, MB_EQ_MID_Q, MB_EQ_HI_HZ,
+  MB_EQ_HPF_ON, MB_EQ_HPF_HZ, MB_EQ_HPF_Q, MB_EQ_HPF_SLOPE,
+  MB_EQ_LPF_ON, MB_EQ_LPF_HZ, MB_EQ_LPF_Q, MB_EQ_LPF_SLOPE,
+  MB_EQ_MID2, MB_EQ_MID2_HZ, MB_EQ_MID2_Q,
   MB_COUNT
 };
 

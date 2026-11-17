@@ -55,12 +55,12 @@ hosttest: synthseq.h hosttest.mm seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOST
 warmtest: synthseq.h warmtest.mm seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h capture.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp $(MACROLIB)
 	$(CXX) -std=c++17 -O2 -ffp-contract=off -I../macroosc -fobjc-arc -Wno-misleading-indentation -I. -I$(HOSTDIR) -framework Foundation -o $@ warmtest.mm $(HOSTDIR)/ModEngineHost.mm basscore.cpp seqcore.cpp voicebank.cpp graphpool.cpp graph.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp master.cpp modfxproc.cpp $(MACROLIB)
 # The master EQ against the browser's BiquadFilterNode responses.
-eqtest: eqtest.cpp master.cpp master.h dspkit.h mixfx.cpp mixfx.h modfxproc.cpp modfxproc.h fdlibm.cc
+eqtest: eqtest.cpp eqpass.h eqref.h eqgolden.h master.cpp master.h dspkit.h mixfx.cpp mixfx.h modfxproc.cpp modfxproc.h fdlibm.cc
 	$(CXX) $(CXXFLAGS) -o $@ eqtest.cpp master.cpp mixfx.cpp modfxproc.cpp fdlibm.cc
 trimtest: trimtest.cpp master.cpp master.h dspkit.h
 	$(CXX) $(CXXFLAGS) -o $@ trimtest.cpp master.cpp
 fxcheck: fxtest fxwire hangtest striptest mixfxtest mastertest capturetest trimtest eqtest
-	./trimtest | tail -1 && ./eqtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js && node ../../tests/modsynth/mixfx-order.test.js && node ../../tests/modsynth/gatepat.test.js
+	./trimtest | tail -1 && ./eqtest | tail -1 && ./capturetest | tail -1 && ./fxtest | tail -1 && ./fxwire | tail -1 && ./hangtest | tail -1 && ./striptest | tail -1 && ./mixfxtest | tail -1 && node ../../tests/modsynth/master.test.js && node ../../tests/modsynth/master-order.test.js && node ../../tests/modsynth/mixfx-order.test.js && node ../../tests/modsynth/gatepat.test.js && node ../../tests/eq/curve.test.js && node ../../tests/eq/agree.test.js
 
 # The sequencer's thread in the real host: steps on the render clock with no page, mirror, tempo, stop (macOS only).
 seqhosttest: extraseq.h chordplay.h chordcomp.h synthseq.h seqhosttest.mm arpcore.h arpplay.h melcore.h melplay.h melcell.h seqobserve.h $(HOSTDIR)/ModEngineHost.mm $(HOSTDIR)/ModEngineHost.h songcore.cpp songcore.h songvoice.h voicing.h tempomap.h basscore.cpp basscore.h bassplay.h seqcore.cpp seqcore.h voicebank.cpp voicebank.h tuning.h graphpool.cpp graph.cpp graphpool.h graph.h capture.h master.cpp modsynth.cpp fdlibm.cc fxrack.cpp mixfx.cpp modfxproc.cpp $(MACROLIB)
