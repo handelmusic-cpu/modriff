@@ -143,6 +143,12 @@ from far away: `var`. Cross-region APIs: `window.*` (`window.fxSendsAPI`,
   stems tap it, so a part without one silently has none of the three.
 - `_blChordWin` + `window._blOnChord` — the one chord timeline bass and melody follow.
 - `_slotExtSuffix(slot)` — how a chord quality is spelled everywhere.
+- Appearance is two settings: the mode (Dark/Light, `body.light-mode`) and the colourway (`html[data-way]`, key
+  `modo-colourway`, Colour or Monotone). Monotone is the `#monotone-css` block (tokens, tested by
+  `tests/theme/monotone.test.cjs`) plus a runtime net that greys any hard-coded colour in the sheet, so a new literal
+  colour needs no Monotone rule. A colour painted from script goes through `partColour(id)` / `monoInk(css)` /
+  `monoVar(css)`; a colour set inline as `--pc` stays the hue and CSS neutralises it. Sweep a change with
+  `tests/theme/hue-probe.js`.
 
 ## `modo-` storage keys are load-bearing
 

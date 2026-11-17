@@ -15,6 +15,14 @@
 // A class on <html> lets the CSS tell a Mac window from a phone without a media query,
 // since a phone in landscape and a small Mac window are the same size.
 try{ if(window.__modMacApp) document.documentElement.classList.add('mac-app'); }catch(e){}
+// Appearance has two independent halves: the mode (Dark or Light, a class on <body>, `prism-theme`) and the
+// colourway (Colour as it always was, or Monotone: one orange accent for what is live or unusual, everything
+// else neutral). The colourway is a data-way attribute on <html>, set here so the first paint is already in it
+// (a page that painted in Colour and then flipped would flash the whole interface). Nothing wrote this key
+// before, so every existing user stays on 'colour'.
+try{ var _w = (window.modStore || localStorage).getItem('modo-colourway'); document.documentElement.setAttribute('data-way', _w === 'mono' ? 'mono' : 'colour'); }
+catch(e){ document.documentElement.setAttribute('data-way', 'colour'); }
+window.modColourway = function(){ return document.documentElement.getAttribute('data-way') === 'mono' ? 'mono' : 'colour'; };
 // Desktop browsers share the Mac work areas without impersonating its native
 // host. Pointer capability keeps touch tablets on their existing layout.
 try{ if(!window.__modMacApp && matchMedia('(hover:hover) and (pointer:fine)').matches)
@@ -9128,6 +9136,250 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
  body:not(.mode-basic) .subnav-dock { position:fixed; top:var(--wt); bottom:auto; left:var(--wr); right:0; z-index:520; box-shadow:none; box-sizing:border-box; padding-right:env(safe-area-inset-right, 0px); }
 }
 </style>
+<style id="monotone-css">
+/* ═══════════════════════════════════════
+   MONOTONE — the second colourway (docs/key-ring-mock.html holds the design)
+   One orange for what is live or unusual; everything else neutral grey (dark) or warm paper (light).
+   Parts are told apart by position and label, never by hue, so every part-coloured surface reads --part-ink.
+   This block is last in the file and prefixed html[data-way=mono], so it wins over the Colour rules and the
+   `body.light-mode` ones without !important, except where a rule it must beat is itself !important.
+   The tokens are read by tests/theme/monotone.test.cjs, which asserts contrast on all four combinations —
+   change a value here and run it.
+═══════════════════════════════════════ */
+html[data-way=mono] {
+  --bg:#101113; --surf:#16171a; --surf2:#1b1c1f; --border:#26282c; --border2:#34373c;
+  --text:#e9e9e6; --muted:#8c9096; --play-surf:#202226; --play-edge:#464a50;
+  /* The key hue no longer colours anything: mhApply writes --ks:0% in Monotone, so any hsl(var(--kh),var(--ks),..)
+     the app still spells out directly comes out grey; these are the named accents, pinned by meaning. */
+  --pv:#ff6a3d; --pr:#ff6a3d; --accent:#ff6a3d; --modal:#ff6a3d; --ms-alert:#ff6a3d;
+  --pg:#ececea; --pb:#a9adb3; --py:#8c9096; --po:#7a7e85;
+  --tonic:#ececea; --subdom:#a9adb3; --dom:#7a7e85; --mel-c:#a9adb3;
+  --glow:transparent; --acc-dim:rgba(255,106,61,.12);
+  --mono-h:220; --mono-s:5%;   /* the tint of every grey the safety net below derives */
+  --accent-ink:#121110;   /* the ink on an orange fill */
+  --part-ink:#cfd0d2;     /* every part's colour: PARTS reads it through partColour() and the --pc rule below */
+  --led-off:#24262a; --step:#26282c; --step-q:#3a3d42; --step-on:#ff6a3d;
+}
+html[data-way=mono] body.light-mode {
+  --bg:#d8d4cb; --surf:#e3dfd6; --surf2:#e9e6de; --border:#c3beb2; --border2:#aea99d;
+  --text:#1c1c1b; --muted:#6a675f; --play-surf:#efece5; --play-edge:#9d988c;
+  /* #d4400f, not the mock's #f0541e: that one measures 2.4:1 on the paper and 3.5:1 under white ink, so it
+     fails both the 3:1 (orange on the page) and the 4.5:1 (ink on the orange) the test holds. */
+  --pv:#d4400f; --pr:#d4400f; --accent:#d4400f; --modal:#d4400f; --ms-alert:#d4400f;
+  --pg:#1c1c1b; --pb:#55524b; --py:#6a675f; --po:#7a766d;
+  --tonic:#1c1c1b; --subdom:#55524b; --dom:#7a766d; --mel-c:#55524b;
+  --glow:transparent; --acc-dim:rgba(212,64,15,.12);
+  --mono-h:42; --mono-s:6%;
+  --accent-ink:#ffffff; --part-ink:#1c1c1b;
+  --led-off:#c3beb2; --step:#bcb7ab; --step-q:#a39e92; --step-on:#d4400f;
+  /* The sequencer's aliases (--sq-*) are declared on :root from the DARK tokens, and a custom property that is a var() is
+     resolved where it is declared, so Light's --surf never reached them: every step cell stayed dark on the paper. */
+  --sq-acc:var(--pv); --sq-acc2:var(--pg); --sq-bg:var(--bg); --sq-sur:var(--surf); --sq-sur2:var(--surf2);
+  --sq-bdr:var(--border); --sq-bdr2:var(--border2); --sq-txt:var(--text); --sq-mut:var(--muted); --sq-red:var(--pr);
+}
+html[data-way=mono] body { background-image:none; }
+.kh-mono-note { display:none; font-size:.66rem; color:var(--muted); padding:2px 2px 8px; line-height:1.35; }
+html[data-way=mono] .kh-mono-note { display:block; }
+html[data-way=mono] .kh-ctl { opacity:.5; }
+
+/* ── Surfaces and chrome that spelled a colour out instead of reading a token ──
+   M = html[data-way=mono] body: (0,2,2), above every `body.light-mode .x` (0,2,1) rule, so one selector serves both
+   modes and only a rule that is itself !important needs the same here. */
+html[data-way=mono] body .tab-bar, html[data-way=mono] body .perf-bar { background:var(--surf) !important; border-color:var(--border2) !important; }
+/* Set inline from script as a literal (the Studio page title; the rotate hint's icon): outranked here, so a switch back to
+   Colour needs no repaint. */
+html[data-way=mono] body .part-title { color:var(--text) !important; }
+html[data-way=mono] body .seq-rotate-popup svg, html[data-way=mono] body .seq-rotate-popup svg * { stroke:var(--muted) !important; }
+html[data-way=mono] body .mix-fader-cap { background:linear-gradient(90deg,var(--text),color-mix(in srgb, var(--text) 68%, var(--bg)) 48%,color-mix(in srgb, var(--text) 38%, var(--bg))); }
+/* Logic Mode's suggestions are the likely next chords, not the live one: a plain ring, so the orange is the chord that is
+   sounding now and nothing else on the page competes with it. */
+html[data-way=mono] body :is(.chord-split, .cpick-split, .chord-out, .songs-chord-btn).logic-suggest,
+html[data-way=mono] body.mode-basic #lv-slots :is(.chord-split.logic-suggest, .chord-out.logic-suggest) { box-shadow:0 0 0 2px var(--part-ink); filter:none; border-color:var(--part-ink) !important; }
+html[data-way=mono] body :is(.chord-split, .chord-out).now-playing { box-shadow:0 0 14px 3px var(--accent), 0 0 0 2px var(--accent); border-color:var(--accent) !important; }
+/* Light keeps the Colour way's dark chord buttons by design; in Monotone they are the paper play surface (the mock's). */
+html[data-way=mono] body.light-mode :is(.chord-split .btn-tri, .chord-out, .songs-chord-btn) { background:var(--play-surf) !important; }
+html[data-way=mono] body.light-mode .chord-split .btn-tri:active { background:var(--surf2) !important; }
+html[data-way=mono] body.light-mode .chord-split, html[data-way=mono] body.light-mode .chord-out { border-color:var(--play-edge) !important; }
+html[data-way=mono] body.light-mode :is(.chord-split, .chord-out) :is(.cname) , html[data-way=mono] body.light-mode .songs-chord-btn { color:var(--text) !important; }
+html[data-way=mono] body.light-mode :is(.chord-split, .chord-out) :is(.cnum, .cqual) { color:var(--muted) !important; }
+html[data-way=mono] body.light-mode .songs-chord-btn.active { background:var(--pg) !important; color:var(--bg) !important; }
+/* The cards. Colour's Light spells them as near-white lavender; the mock's are the warm surface a step above the paper. */
+html[data-way=mono] body .panel, html[data-way=mono] body .settings-section { background:var(--surf); border-color:var(--border); }
+html[data-way=mono] body .tab-bar { --rainbow:linear-gradient(90deg,var(--part-ink),var(--part-ink)); }
+html[data-way=mono] body .ft-key-step { color:var(--text); }
+html[data-way=mono] body .ft-rate-val { color:var(--text); border-color:var(--border2); background:var(--surf2); }
+/* Play is the one thing you reach for to start: a solid neutral disc with the page colour as its glyph; stop sits in the
+   border colour. The recorders are the one place Monotone uses orange for a control at rest, because "armed" is live. */
+html[data-way=mono] body .perf-bar #ft-playstop-btn { background:var(--text) !important; color:var(--bg); box-shadow:none !important; }
+html[data-way=mono] body .perf-bar #ft-playstop-btn.tp-stop { background:var(--border2) !important; color:var(--text); }
+html[data-way=mono] body .ft-rec-ring, html[data-way=mono] body.light-mode .ft-rec-ring { border-color:var(--accent); }
+html[data-way=mono] body .ft-rec-ring .rec-ring-dot, html[data-way=mono] body.light-mode .ft-rec-ring .rec-ring-dot { background:var(--accent); }
+html[data-way=mono] body .ft-rec-ring.on .rec-ring-dot { background:var(--text); }
+/* Part switches: the fill and border are mixed from --pc, which is neutral here, so only the hard-coded navy bases remain. */
+html[data-way=mono] body .ft-btn.arp.pc { background:color-mix(in srgb, var(--pc) 22%, var(--surf2)); color:var(--text); border-color:color-mix(in srgb, var(--pc) 60%, var(--surf2)); }
+html[data-way=mono] body .ft-btn.arp.pc.off { background:var(--surf2); color:var(--muted); border-color:var(--border2); }
+html[data-way=mono] body.light-mode .ft-btn.arp.pc { background:color-mix(in srgb, var(--pc) 18%, var(--surf)) !important; color:var(--text) !important; border-color:color-mix(in srgb, var(--pc) 60%, var(--surf)) !important; }
+html[data-way=mono] body.light-mode .ft-btn.arp.pc.off { background:var(--surf) !important; color:var(--muted) !important; border-color:var(--border2) !important; }
+/* Ink on an orange fill: the near-black navy the app uses in Colour is a tint, so this reads the token. */
+html[data-way=mono] body :is(.tb.active, .hold-btn.active, .oct-pill, .sec-tab.active, .set-done, .ft-btn.snap-on, .csi-len .tb.active, .varm-btn.armed),
+html[data-way=mono] body.light-mode :is(.tb.active, .varm-btn.armed, .ft-btn.snap-on) { color:var(--accent-ink); }
+html[data-way=mono] body :is(.tb.active, .hold-btn.active, .sec-tab.active, .csi-len .tb.active) { box-shadow:none; }
+html[data-way=mono] body :is(.tb.active.blue, .tb.active.green, .tb.active.purple, .tb.active.red, .tb.active.amber) { background:var(--accent); color:var(--accent-ink); }
+/* The sub-tab rows (Studio/Song/Sound) wore a purple on the current one. */
+html[data-way=mono] body .subnav-btn.active, html[data-way=mono] body.light-mode .subnav-btn.active,
+html[data-way=mono] body #songs-subnav .subnav-btn.active, html[data-way=mono] body #mix-subnav .subnav-btn.active {
+  background:color-mix(in srgb, var(--text) 12%, var(--surf2)); color:var(--text); border-top-color:var(--accent); box-shadow:none; }
+html[data-way=mono] body .panel.p-perform, html[data-way=mono] body .panel.p-songs { border-color:var(--border); --panel-glow:transparent; }
+/* Chord buttons: the seventh and the quality row were hard-coded navy (and, in Light, stayed dark by design). In
+   Monotone they are the play surface. */
+html[data-way=mono] body .btn-sev, html[data-way=mono] body.light-mode .chord-split .btn-sev { background:var(--play-surf) !important; border-color:var(--play-edge) !important; }
+html[data-way=mono] body .btn-sev .sl-name, html[data-way=mono] body.light-mode .chord-split .btn-sev { color:var(--muted) !important; }
+html[data-way=mono] body .cpick-sev { background:var(--play-surf); color:var(--muted); }
+html[data-way=mono] body .mix-fxk { color:var(--muted); }
+html[data-way=mono] body .tmod-toggle.active { background:color-mix(in srgb, var(--accent) 14%, var(--surf2)); }
+html[data-way=mono] body .key-badge { background:var(--surf2); border-color:var(--border2); }
+html[data-way=mono] body .sec-plays-inf.active { background:color-mix(in srgb, var(--accent) 16%, transparent); }
+html[data-way=mono] body .sb-secdel { color:var(--accent); }
+html[data-way=mono] body .sc-btn#next-section-btn, html[data-way=mono] body .sc-btn#next-section-btn:hover { color:var(--text); border-color:var(--border2); }
+html[data-way=mono] body .pv-stage { color:var(--text); border-color:var(--border2); }
+html[data-way=mono] body #songs-perform-panel .pv-switch .tb.active, html[data-way=mono] body .crh .tg .tb.active { background:var(--accent); color:var(--accent-ink); }
+
+/* A part's colour set inline as a custom property (--pc on the transport switches, voice rows, chips; --tc, --smp-c,
+   --sq-tc, --wc, --mel-c on the rest). PARTS.color stays the hue, so the same element comes back in Colour the
+   moment the way is switched; this is the one place that turns it neutral. */
+html[data-way=mono] [style*="--pc:"], html[data-way=mono] [style*="--tc:"], html[data-way=mono] [style*="--smp-c:"],
+html[data-way=mono] [style*="--sq-tc:"], html[data-way=mono] [style*="--wc:"], html[data-way=mono] [style*="--fc:"],
+html[data-way=mono] [style*="--c:"], html[data-way=mono] [style*="--mel-c:"] { --pc:var(--part-ink) !important; --tc:var(--part-ink) !important; --smp-c:var(--part-ink) !important;
+  --sq-tc:var(--part-ink) !important; --wc:var(--part-ink) !important; --fc:var(--part-ink) !important; --c:var(--part-ink) !important; }
+html[data-way=mono] [style*="--mel-c:"] { --mel-c:var(--part-ink) !important; }
+/* The tab bar: one tint per tab in Colour, none here (the tab you are on is the one with the brighter label). */
+html[data-way=mono] .tab-bar, html[data-way=mono] #tab-build, html[data-way=mono] #tab-songs, html[data-way=mono] #tab-mix,
+html[data-way=mono] #tab-accomp, html[data-way=mono] #tab-perform, html[data-way=mono] #tab-live, html[data-way=mono] #tab-studio { --tab-c:var(--part-ink); }
+
+/* ── Exceptions: placed last, because the generic rules above (the `.tb.active` ink, the `:is()` lists) carry the specificity of
+   their longest member and would win a tie against these. ── */
+/* Dark fills in Light: a part's colour is --part-ink, which is near-black on paper, so the controls that fill with it (a
+   selected segment, a lit toggle) need the page colour as their ink, where in Colour they print dark ink on a bright fill. */
+html[data-way=mono] body.light-mode :is(.sq-layer-seg.active .sq-layer-btn, .tmod-axis-pill button.active, .csi-len .tb.active, .hold-btn.active, .sec-tab.active) { color:var(--bg) !important; }
+html[data-way=mono] body.light-mode .perf-bar #ft-playstop-btn, html[data-way=mono] body.light-mode .perf-bar #ft-playstop-btn.tp-play { color:var(--bg) !important; }
+html[data-way=mono] body.light-mode .perf-bar #ft-playstop-btn.tp-stop { color:var(--text) !important; }
+/* Arp card: its toggles are the accent at low strength with the accent as ink; the generic `.tb.active` ink above must not reach them. */
+html[data-way=mono] body :is(.arp-switch, .arp-opt, .arp-gate-btn).tb.active, html[data-way=mono] body .arp-feel .tb.active { background:color-mix(in srgb, var(--accent) 16%, transparent); color:var(--accent); }
+/* Panic wears its red as an inline style, which the sheet net cannot see. */
+html[data-way=mono] body #ft-panic-btn { color:var(--accent) !important; }
+html[data-way=mono] body.light-mode :is(.arp-switch, .arp-opt, .arp-gate-btn).tb.active, html[data-way=mono] body.light-mode .arp-feel .tb.active { color:color-mix(in srgb, var(--accent) 72%, #000); }
+html[data-way=mono] body.light-mode :is(.ac-gen-row .bl-genbtn.ac-gen-primary, .sq-layer-seg.active .pp-cap, .sq-layer-seg.active .pp-caret) { color:var(--bg) !important; }
+html[data-way=mono] body.light-mode .sq-layer-seg.active .sq-layer-mute { color:color-mix(in srgb, var(--bg) 60%, transparent) !important; }
+html[data-way=mono] body.light-mode .tmod-axis-pill.arp-clock-pill button.active { color:var(--text) !important; }
+html[data-way=mono] body.light-mode .tb.active.blue { background:var(--accent) !important; color:var(--accent-ink) !important; }
+/* The Kit picker wears the key's colour; Monotone has none, so it wears the neutral (hsl at 0% saturation was a mid grey, 2:1 on paper). */
+html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
+</style>
+<script>
+'use strict';
+// ── The Monotone safety net ──────────────────────────────────────────────────────────────────────────────────
+// The colour tokens are hand-tuned above, but the sheet above them still spells several hundred colours out as
+// literals (a purple #9b6dff on every selected sub-tab, a record red #e5384f in thirty rules, the navy of every
+// panel), and every feature added later will spell more. Hunting them one selector at a time is how Monotone would
+// rot, so in Monotone the sheet is read once and a copy of each rule that carries a hued literal is emitted with
+// only those colour properties changed: a record red becomes the accent, any other hue becomes a grey of the SAME
+// lightness (so text keeps the contrast it was drawn with), tinted by --mono-h / --mono-s so Light stays warm paper.
+// Each copy is inserted right after its original, in the same sheet, under :where(html[data-way=mono]): :where() adds no
+// specificity, so the copy keeps exactly its original's place in the cascade (it replaces the original in Monotone and
+// loses to whatever the original lost to), and in Colour it matches nothing. The hand-written block (specificity of its
+// own) wins any tie. Colours set by script (canvas, element.style) are not in any sheet; those go
+// through monoInk() / partColour() / uiTextColor() where they are made.
+(function(){
+ var RE = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b|rgba?\(\s*[\d.]+[\s,]+[\d.]+[\s,]+[\d.]+(?:\s*[,\/]\s*[\d.]+%?)?\s*\)|hsla?\(\s*[\d.]+(?:deg)?[\s,]+[\d.]+%[\s,]+[\d.]+%(?:\s*[,\/]\s*[\d.]+%?)?\s*\)/g;
+ function parse(m){
+  var r, g, b, a = 1, x;
+  if(m.charAt(0) === '#'){
+   var h = m.slice(1); if(h.length <= 4) h = h.replace(/./g, function(c){ return c + c; });
+   r = parseInt(h.substr(0,2),16); g = parseInt(h.substr(2,2),16); b = parseInt(h.substr(4,2),16);
+   if(h.length === 8) a = parseInt(h.substr(6,2),16) / 255;
+  } else {
+   x = m.match(/[\d.]+%?/g).map(function(v){ return v.slice(-1) === '%' ? parseFloat(v) / 100 : parseFloat(v); });
+   if(m.charAt(0) === 'h'){
+    var hh = (x[0] % 360) / 360, s = x[1], l = x[2];
+    var q = l < .5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    var f = function(t){ t = (t + 1) % 1; return t < 1/6 ? p + (q - p) * 6 * t : t < .5 ? q : t < 2/3 ? p + (q - p) * (2/3 - t) * 6 : p; };
+    r = f(hh + 1/3) * 255; g = f(hh) * 255; b = f(hh - 1/3) * 255;
+   } else { r = x[0]; g = x[1]; b = x[2]; }
+   if(x.length > 3) a = x[3];
+  }
+  return {r:r, g:g, b:b, a:a};
+ }
+ function conv(m){
+  var c = parse(m); if(!c || !isFinite(c.r + c.g + c.b)) return m;
+  var mx = Math.max(c.r,c.g,c.b), mn = Math.min(c.r,c.g,c.b), chroma = mx - mn;
+  if(chroma < 6) return m;                                    // already neutral
+  var d = chroma / 255, hue = 0;
+  if(mx === c.r) hue = ((c.g - c.b) / chroma + (c.g < c.b ? 6 : 0)); else if(mx === c.g) hue = (c.b - c.r) / chroma + 2; else hue = (c.r - c.g) / chroma + 4;
+  hue *= 60;
+  var a = Math.round(c.a * 1000) / 1000;
+  if((hue >= 340 || hue <= 12) && chroma >= 90)                // a record / alert red: what is live or unusual
+   return a >= 1 ? 'var(--accent)' : 'color-mix(in srgb, var(--accent) ' + Math.round(a * 100) + '%, transparent)';
+  var y = Math.round((.2126 * c.r + .7152 * c.g + .0722 * c.b) / 255 * 1000) / 10;
+  return 'hsla(var(--mono-h), var(--mono-s), ' + y + '%, ' + a + ')';
+ }
+ function prefix(sel){
+  var out = [], depth = 0, cur = '';
+  for(var i = 0; i < sel.length; i++){
+   var ch = sel.charAt(i);
+   if(ch === '(' || ch === '[') depth++; else if(ch === ')' || ch === ']') depth--;
+   if(ch === ',' && !depth){ out.push(cur); cur = ''; } else cur += ch;
+  }
+  out.push(cur);
+  return out.map(function(s){
+   s = s.trim();
+   if(/^html\b/.test(s)) return s.replace(/^html/, 'html:where([data-way=mono])');
+   if(/^:root\b/.test(s)) return s.replace(/^:root/, ':root:where([data-way=mono])');
+   return ':where(html[data-way=mono]) ' + s;
+  }).join(', ');
+ }
+ function decls(style){
+  var names = [], seen = {}, i, n;
+  for(i = 0; i < style.length; i++){ n = style[i]; if(!seen[n]){ seen[n] = 1; names.push(n); } }
+  // Safari lists custom properties in the declaration block too, but not every engine does: read them from the text.
+  var cm = style.cssText.match(/--[\w-]+(?=\s*:)/g) || [];
+  cm.forEach(function(c){ if(!seen[c]){ seen[c] = 1; names.push(c); } });
+  var out = [];
+  names.forEach(function(nm){
+   var v = style.getPropertyValue(nm);
+   if(!v || v.indexOf('url(') >= 0 || !RE.test(v)){ RE.lastIndex = 0; return; }
+   RE.lastIndex = 0;
+   var nv = v.replace(RE, conv);
+   if(nv !== v) out.push(nm + ':' + nv + (style.getPropertyPriority(nm) ? ' !important' : ''));
+  });
+  return out.join(';');
+ }
+ // Walks a sheet or a grouping rule backwards, so the inserts do not move the rules still to be visited.
+ function patch(owner){
+  var list = owner.cssRules;
+  for(var i = list.length - 1; i >= 0; i--){
+   var r = list[i], t = r.type;
+   if(t === 1){                                              // style rule
+    if(/data-way/.test(r.selectorText)) continue;
+    var d = decls(r.style);
+    if(d){ try{ owner.insertRule(prefix(r.selectorText) + '{' + d + '}', i + 1); }catch(e){} }
+   } else if(t === 4 || t === 12){ patch(r); }              // @media, @supports
+   // @keyframes are left alone: a keyframes rule cannot be made conditional, so the few that carry a hue keep it.
+  }
+ }
+ var built = false;
+ window.monoConv = conv;                                      // for tests/theme/monotone.test.cjs
+ window.monoBuild = function(){
+  if(built) return; built = true;
+  var sheets = document.styleSheets;
+  for(var i = 0; i < sheets.length; i++){
+   var sh = sheets[i];
+   if(sh.ownerNode && sh.ownerNode.id === 'monotone-css') continue;
+   try{ if(sh.cssRules) patch(sh); }catch(e){}
+  }
+ };
+ if(document.documentElement.getAttribute('data-way') === 'mono') window.monoBuild();
+})();
+</script>
 </head>
 <body>
 
@@ -9471,7 +9723,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.0</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.1</span></div>
  </div>
 </div>
 
@@ -10741,8 +10993,16 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
       <button class="tb" id="theme-light" onclick="setTheme('light')">Light</button>
      </div>
     </div>
+    <div class="ss-scope">Colours <b>Monotone is one orange for what is live and grey for the rest; parts are told apart by place and name</b></div>
+    <div class="row">
+     <div class="tg">
+      <button class="tb active" id="way-colour" onclick="setColourway('colour')" title="Every part and key has its own colour">Colour</button>
+      <button class="tb" id="way-mono" onclick="setColourway('mono')" title="One orange accent for what is live or unusual, everything else grey (dark) or warm paper (light)">Monotone</button>
+     </div>
+    </div>
     <!-- Key colours (Pro, 4.9.9.9.9.8.9o): which key is which colour. -->
-    <div class="ss-scope">Key colours <b>which key is which colour</b></div>
+    <div class="ss-scope">Key colours <b>which key is which colour. Not used in Monotone</b></div>
+    <div class="kh-mono-note" id="kh-mono-note">Monotone is on, so keys have no colour and these choices change nothing. They apply again in Colour.</div>
     <div class="kh-ctl" id="kh-ctl">
      <div class="row">
       <div class="tg">
@@ -10956,7 +11216,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.0</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.1</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12156,7 +12416,7 @@ body:not(.mode-basic) .ch-xhid { display:none !important; }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.0';
+const MODRIFF_VERSION = '1.1';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -16030,12 +16290,27 @@ const SCALE_SAME = {};    // alias id -> the scale it shares notes with
 // ink at low alpha is invisible on a light page, and that is exactly what the
 // oscilloscope grid, the drum knobs and the piano roll were all using.
 function uiLight(){ try{ return document.body.classList.contains('light-mode'); }catch(e){ return false; } }
+// Monotone's neutral, for anything painted from script that has a hue of its own (a part, a drum lane, a kit): Colour
+// hands the colour back untouched; Monotone hands back the one ink, which is --part-ink in the Monotone CSS block
+// (tests/theme/monotone.test.cjs asserts the two agree). monoInk() is the hex a canvas needs; monoVar() the var() for the DOM.
+var MONO_PART_INK = {dark:'#cfd0d2', light:'#1c1c1b'};
+function monoInk(css){
+ try{ if(window.modColourway && window.modColourway() === 'mono') return MONO_PART_INK[uiLight() ? 'light' : 'dark']; }catch(e){}
+ return css;
+}
+// The same neutral as a CSS variable, for anything that lands in a style attribute or a custom property: it stays right
+// when Dark and Light are switched, which a baked-in hex would not. A canvas cannot take a var(), so it asks monoInk().
+function monoVar(css){
+ try{ if(window.modColourway && window.modColourway() === 'mono') return 'var(--part-ink)'; }catch(e){}
+ return css;
+}
 function uiInk(a){ return uiLight() ? 'rgba(0,0,0,'+a+')' : 'rgba(255,255,255,'+a+')'; }
 // The per-track and per-channel accents were chosen to read on a dark
 // background. Used as TEXT on a light one they measure 1.1-2.1:1 against the
 // page, which is unreadable. This keeps the hue — the colour is how you tell
 // the tracks apart — and drops the lightness until it actually contrasts.
 function uiTextColor(css){
+ if(window.modColourway && window.modColourway() === 'mono') return 'var(--text)';
  if(!uiLight()) return css;
  let r,g,b;
  const hex = String(css).trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
@@ -31215,6 +31490,9 @@ const FIND_INDEX = [
   go:()=>{ closeFind(); if(typeof openKbShortcuts==='function') openKbShortcuts(); }},
  {name:'Light / dark mode', where:'More', keys:'light dark theme mode bright colour color',
   go:()=>{ closeFind(); if(typeof toggleTheme==='function') toggleTheme(); }},
+ {name:'Colour or Monotone', where:'Settings › Look & feel', keys:'monotone mono colour colours color colourway grey gray orange accent neutral outdoors sunlight appearance',
+  note:'Monotone is one orange accent for what is live or unusual and grey for the rest; parts are told apart by place and name. It works in Dark and in Light.',
+  go:()=>_findGo({tab:'build', sub:()=>setSettingsPane('ui'), el:'way-mono'})},
 ];
 
 // Play › Chords, its Sound menu open and the Shape drawer out — where the
@@ -33273,6 +33551,16 @@ ftTintSwitches();
 const PART_ORDER = PARTS.map(p=>p.id);
 function partIndex(id){ const i=PART_ORDER.indexOf(id); return i<0 ? 999 : i; }
 function partById(id){ return PARTS.find(p=>p.id===id) || null; }
+// The one reader of a part's colour for anything painted from script (a canvas, an inline style.color, a meter).
+// Colour: the part's own hue from PARTS. Monotone: the neutral ink, which is --part-ink in the Monotone CSS block
+// (tests/theme/monotone.test.cjs asserts the two agree). A colour that reaches the page as a custom property
+// (--pc and friends) is not routed through here: PARTS.color stays the hue so that element is right the moment
+// the way is switched back (a widget built in Monotone would otherwise keep its neutral after a switch to Colour), and the
+// Monotone block turns the property neutral in CSS. What does come through here: the mixer's channel list (faders, meters).
+function partColour(id){
+ var p = PARTS.find(function(x){ return x.id === id; });
+ return p ? monoVar(p.color) : '';
+}
 // Sorts any array of objects carrying a part id under `key` into canon order.
 function sortByPart(arr, key){ return arr.slice().sort((a,b)=>partIndex(a[key])-partIndex(b[key])); }
 
@@ -40190,7 +40478,8 @@ var TUT_LIST = [
   {t:'One list', x:'Playing, Gear and App, each row with what it is set to. Tap a row to open it.', el:'#set-find', go:function(){ _tutTab('build'); setSettingsPane('ui'); }},
   {t:'Setups', x:'Save everything under a name.', el:'#setups-panel'},
   {t:'Chords & timing', x:'Logic Mode, chord names as numbers, the Variants row and Bass+Mel Sync.', el:'#ss-playing'},
-  {t:'Key colours', x:'Which key is red, and whether the colours go round by semitone or by fifth.', el:'#kh-ctl', pro:'theory', go:function(){ _tutRow('ui'); }},
+  {t:'Colour or Monotone', x:'Dark or Light, and Colour or Monotone: one orange for what is live, grey for the rest. They are separate switches.', el:'#way-mono', go:function(){ _tutRow('ui'); }},
+  {t:'Key colours', x:'Which key is red, and whether the colours go round by semitone or by fifth. Not used in Monotone.', el:'#kh-ctl', pro:'theory', go:function(){ _tutRow('ui'); }},
   {t:'Touch', x:'Haptics: a tap under your finger on pads and the mõdFX pad, with the sound. Choose which instruments buzz.', el:'[data-haptics]', go:function(){ _tutRow('ui'); }},
   {t:'iCloud', x:'Keeps songs, setups and patches in step across your devices.', el:'[data-sync]', go:function(){ _tutRow('cloud'); }}
  ]},
@@ -40426,7 +40715,7 @@ var CTRL_TIPS = [
  ['#cb-inf','Chords ring until the next one'], ['#cb-1','Chords ring one beat'], ['#cb-2','Chords ring two beats'], ['#cb-4','Chords ring a bar'],
  ['#logic-btn','Highlights likely next chords'], ['#variants-btn','Offer 7ths, sus and other variants'],
  ['#auto-start-btn','The band starts with your first chord'],
- ['#theme-dark','Dark theme'], ['#theme-light','Light theme'],
+ ['#theme-dark','Dark theme'], ['#theme-light','Light theme'], ['#way-colour','Every part and key in its own colour'], ['#way-mono','One orange accent, everything else grey'],
  ['#vsel-chord','Default chord sound'], ['#vsel-mel','Default melody sound'], ['#vsel-bass','Default bass sound'], ['#vsel-arp','Default arp sound'],
  ['#fx-cutoff','Brightness of every voice'], ['#fx-reso','Resonance on every voice'], ['#fx-env','How much the filter moves per note'],
  ['#fx-drive','Saturation'], ['#fx-width','Stereo width'], ['#fx-drift','Analog drift — slight, living detune'],
@@ -45001,7 +45290,7 @@ function syncSSPreviews(){
   set('ss-sync-preview', ((document.querySelector('[data-steplock]')||{}).classList && document.querySelector('[data-steplock]').classList.contains('active') ? 'Steps linked' : 'Steps free') + ' · ' + ((document.querySelector('[data-ratelock]')||{}).classList && document.querySelector('[data-ratelock]').classList.contains('active') ? 'Rate linked' : 'Rate free') + ' · Humanize ' + ((document.getElementById('bl-human-val')||{}).textContent || 'off'));
   set('ss-recording-preview', (alwaysStems ? 'Stems on every Bounce' : 'Mix') + (bounceMidi ? ' and MIDI' : ', no MIDI'));
   set('ss-about-preview', 'Version ' + ((document.getElementById('ft-ver')||{}).textContent||'').replace(/^v/,'')); // read from the page: MODRIFF_VERSION is a const this runs before
-  set('ss-ui-preview', document.body.classList.contains('light-mode') ? 'Light' : 'Dark');
+  set('ss-ui-preview', (document.body.classList.contains('light-mode') ? 'Light' : 'Dark') + (window.modColourway && window.modColourway() === 'mono' ? ' · Monotone' : ''));
   set('ss-samples-preview', (typeof SMP_LIB!=='undefined' && SMP_LIB.length) ? SMP_LIB.length + (SMP_LIB.length===1 ? ' sample' : ' samples') : 'None yet');
   var _sy=document.querySelector('[data-sync]'); set('ss-cloud-preview', !_sy ? '' : /ON/.test(_sy.textContent) ? 'iCloud sync on' : /iPhone app/.test(_sy.textContent) ? 'iPhone app only' : 'iCloud sync off');
   set('ss-packs-preview', ((document.getElementById('pro-state')||{}).textContent || 'Free'));
@@ -45023,10 +45312,36 @@ function syncSSPreviews(){
 // ═══════════════════════════════════════
 function setTheme(t){
  document.body.classList.toggle('light-mode', t==='light');
+ try{ _mixStrips = null; }catch(e){}   // the meters' colours are cached per strip
  if(typeof syncSSPreviews==='function') syncSSPreviews();
  document.getElementById('theme-dark')?.classList.toggle('active', t==='dark');
  document.getElementById('theme-light')?.classList.toggle('active', t==='light');
  try{ modStore.setItem('prism-theme', t); }catch(e){}
+}
+// The colourway: Colour (as shipped) or Monotone. Independent of the mode above; <html data-way> was already set
+// before first paint (the top of the file), so this only keeps the page in step with a change made while it is open.
+// CSS follows the attribute by itself; what cannot follow is anything painted from script, so those are asked to
+// repaint along the same path a light/dark switch uses (prThemeChanged), plus the three that read part colours when
+// they are built: the transport/part tints, the mixer strips, the meters.
+function setColourway(w){
+ w = (w === 'mono') ? 'mono' : 'colour';
+ try{ if(w === 'mono') window.monoBuild(); }catch(e){}
+ document.documentElement.setAttribute('data-way', w);
+ try{ modStore.setItem('modo-colourway', w); }catch(e){}
+ document.getElementById('way-colour')?.classList.toggle('active', w === 'colour');
+ document.getElementById('way-mono')?.classList.toggle('active', w === 'mono');
+ try{
+  // The key hue is written inline on <html>, which outranks the stylesheet, so it is re-derived here
+  // (khColor has no saturation in Monotone). mhApply does the same plus a flash, which a settings tap should not.
+  var kc = khColor(((root % 12) + 12) % 12), el = document.documentElement;
+  el.style.setProperty('--kh', kc.h); el.style.setProperty('--ks', kc.s + '%'); el.style.setProperty('--kl', kc.l + '%');
+  khRender();
+ }catch(e){}
+ try{ ftTintSwitches(); }catch(e){}
+ try{ _mixStrips = null; document.querySelectorAll('.mix-chan-row, #lv-mixer-host, #mix-tab-channels').forEach(function(h){ if(h.children.length) window.buildMixChannelsInto(h); }); }catch(e){}
+ try{ if(typeof window.prThemeChanged === 'function') window.prThemeChanged(); }catch(e){}
+ try{ ['_sqRenderGrid','_blRenderGrid','_mlRenderGrid'].forEach(function(f){ if(typeof window[f] === 'function') window[f](); }); }catch(e){}
+ if(typeof syncSSPreviews === 'function') syncSSPreviews();
 }
 // Load saved theme
 (function(){ try{ const t=modStore.getItem('mv-theme')||modStore.getItem('prism-theme'); setTheme(t==='light'?'light':'dark'); }catch(e){ setTheme('dark'); } })();
@@ -48660,7 +48975,7 @@ These need <strong>Follow: ON</strong> — with Follow off there are no changes 
  body: `<strong>− / +</strong> transpose the key a semitone at a time. Every chord, the melody strip and the fingering charts follow instantly.<br><br>
 <strong>Maj / Min</strong>, <strong>Min Pent</strong> and <strong>Blues</strong> are free. <span class="tip-pro">Theory Pack</span> adds the other modes (Dorian, Phrygian, Lydian, Mixolydian, Locrian), Maj Pent, Harmonic Minor, Hijaz, the scales from around the world and scales of your own. <strong>Studio</strong> puts the modes in one row beside the key that scrolls sideways; the <strong>Major ▾</strong> dropdown lists every scale by family.<br><br>
 The key's <strong>‹ ›</strong> step a <strong>semitone</strong> at a time, or round the <strong>circle of fifths</strong> — › goes up a fifth (C to G), ‹ down a fifth (C to F), so each step is one chord-change away. Pick which under <strong>Key arrows</strong> at the top of the mode list.<br><br>
-<strong>Key colours</strong> (Settings › Look &amp; feel) choose which key is red. <span class="tip-pro">Theory Pack</span> adds going round the wheel by fifth instead of by semitone, so neighbours in the circle of fifths are neighbours in colour.<br><br>
+<strong>Colour or Monotone</strong> (Settings › Look &amp; feel) is separate from Dark and Light: Monotone draws everything in grey with one orange accent for what is live or unusual, and tells the parts apart by place and name. <strong>Key colours</strong> (same place) choose which key is red, in Colour; Monotone has no key colours. <span class="tip-pro">Theory Pack</span> adds going round the wheel by fifth instead of by semitone, so neighbours in the circle of fifths are neighbours in colour.<br><br>
 <strong>Numbers</strong> (Settings › Chords &amp; timing) switches chord names to Nashville / Roman numerals (I, ii, iii, IV, V, vi, vii°) so the relationships stay readable in any key. Reference pitch is standard A=440 unless you change it under <strong>Settings › Master tune</strong> (432 / 442 / 444 / 528, or anything from 415–466 Hz).<br><br>
 <strong>Arrow keys</strong> on Live and Studio: ← / → transpose, ↑ / ↓ step through every mode and scale in the row above, in the order they are drawn.`
  },
@@ -57041,6 +57356,9 @@ function khIndex(pc, cfg){
 }
 function khColor(pc, cfg){
   const i = khIndex(pc, cfg);
+  // Monotone has no key colours (the Theory Pack's key-colour modes are inert there): zero saturation turns every
+  // hsl(var(--kh), var(--ks), ..) the page still spells out directly into a grey, and the swatch strip into greys.
+  if(window.modColourway && window.modColourway() === 'mono') return {h:MH_HUE[i], s:0, l:MH_LT[i]};
   return {h:MH_HUE[i], s:MH_SAT[i], l:MH_LT[i]};
 }
 khLoad();
@@ -57153,6 +57471,7 @@ if(typeof applyLogicHighlights==='function') applyLogicHighlights(0, null);
 // opt.marks  positions (0..1) to tick, e.g. the default or the centre
 function sqDrawKnob(cvs, val, min, max, color, opt){
   opt = opt || {};
+  color = monoInk(color);
   var css = cvs._knobCss;
   if(!css){ css = parseFloat(cvs.style.width) || cvs.clientWidth || cvs.width || 24; cvs._knobCss = css; }
   var dpr = Math.min(3, window.devicePixelRatio || 1), px = Math.round(css*dpr);
@@ -58906,6 +59225,17 @@ var SQM={
     }}
   ]}
 };
+// Monotone: a kit and each of its lanes read neutral. `c`/`color` become accessors over the literal, so the 84 lane
+// colours above stay as written and every reader (the grid, the step cells, the kit chips, the shape preview)
+// follows without being touched; Colour returns the literal.
+Object.keys(SQM).forEach(function(k){
+ var m = SQM[k], mc = m.color;
+ Object.defineProperty(m, 'color', {get:function(){ return monoVar(mc); }, set:function(v){ mc = v; }, enumerable:true, configurable:true});
+ (m.tracks || []).forEach(function(t){
+  var tc = t.c;
+  Object.defineProperty(t, 'c', {get:function(){ return monoVar(tc); }, set:function(v){ tc = v; }, enumerable:true, configurable:true});
+ });
+});
 
 // Every lane carries its own machine key and index from here on. sqHitTrack
 // is reached from six call sites — the grid, ratchets, ornaments, the step
@@ -59659,6 +59989,7 @@ function sqShapePreview(track, sh, vol, ps, dur, cb){
 // is as long as the drum rings at its defaults times 2.5 — so Decay visibly
 // stretches or shortens the drum against a ruler that does not move.
 function sqShapeDraw(cv, buf, secs, color){
+  color = monoInk(color);
  var dpr=Math.min(2, window.devicePixelRatio||1), w=cv.clientWidth||300, h=cv.clientHeight||84;
  if(cv.width!==Math.round(w*dpr) || cv.height!==Math.round(h*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
  var g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
@@ -68151,6 +68482,7 @@ function _mixNorm(rms){
 }
 
 function _mixDrawMeter(cv, level, peak, colour){
+ colour = monoInk(colour);
  const dpr=Math.min(2,window.devicePixelRatio||1);
  const w=cv.clientWidth||8, h=cv.clientHeight||40;
  if(cv.width!==w*dpr || cv.height!==h*dpr){ cv.width=w*dpr; cv.height=h*dpr; }
@@ -68236,7 +68568,7 @@ function mixMetersStop(){ if(_mixMeterRaf) cancelAnimationFrame(_mixMeterRaf); _
 
 // Derived from PARTS — see the block above VOICE_PARTS. Adding a part there
 // gives it a mixer strip, a stem and a place in every ordered list at once.
-window.MIX_CHANNELS = PARTS.filter(p=>p.mix).map(p=>({id:p.id, label:p.label, short:p.short||p.label, color:p.color, fx:!!p.fx}));
+window.MIX_CHANNELS = PARTS.filter(p=>p.mix).map(p=>({id:p.id, label:p.label, short:p.short||p.label, get color(){ return partColour(p.id); }, fx:!!p.fx}));
 // ── Fader law ────────────────────────────────────────────────────────────
 // The travel used to be mapped straight onto gain: half the throw meant 0.5,
 // which is only 6dB down. That is why these did not feel like faders. On a
@@ -68367,7 +68699,7 @@ function _mixResolveColor(c){
  }catch(e){ return '#9aa4cc'; }
 }
 function _mixDrawSendKnob(cv, val, color){
- color=_mixResolveColor(color);
+ color=monoInk(_mixResolveColor(color));
  var dpr=Math.min(3, window.devicePixelRatio||1);
  // 24px, up from 18: the number beside it is what you read, but the ring is
  // what you hit with a thumb, and an 18px one was a third of a fingertip.
@@ -69066,7 +69398,7 @@ function _prBuildTheme(){
  const cs = getComputedStyle(document.documentElement);
  const v = (n,f)=>{ const x=cs.getPropertyValue(n).trim(); return x||f; };
  const NOTE = v('--pg','#2df09a');
- return {
+ const T = {
   light: light,
   bgWhite:  light ? '#ffffff' : '#151726',
   bgBlack:  light ? '#dfe3f2' : '#0d0e18',
@@ -69101,6 +69433,22 @@ function _prBuildTheme(){
   head:     light ? 'rgba(0,0,0,.75)' : 'rgba(255,255,255,.85)',
   oor:      '#ff6b35'
  };
+ // Monotone: the roll's navy, blue wash and blue ruler become the page's own greys, the tonic row and the downbeat wash
+ // the accent. Read from the tokens, so the four combinations stay one definition (the Monotone CSS block).
+ if(window.modColourway && window.modColourway() === 'mono'){
+  // From <body>, not <html>: Light's tokens are declared on body.light-mode, so <html> still answers with Dark's.
+  const cb = getComputedStyle(document.body), v = n => cb.getPropertyValue(n).trim();
+  const A = _prResolveRgb(v('--accent') || '#ff6a3d') || {r:255,g:106,b:61}, rgba = a => 'rgba('+A.r+','+A.g+','+A.b+','+a+')';
+  Object.assign(T, {
+   bgWhite: v('--surf2'), bgBlack: v('--bg'),
+   inKey: light ? 'rgba(0,0,0,.05)' : 'rgba(255,255,255,.05)', tonic: rgba(.18), down: rgba(.10),
+   rulerBg: v('--surf'), rulerTx: v('--muted'),
+   keyWhite: light ? '#efece5' : '#e9e9e6', keyBlack: light ? '#2a2926' : '#0d0e10',
+   keyLabel: light ? '#1c1c1b' : '#101113', keyLabelOnBlack: light ? '#e9e6de' : '#9a9ea4', keyEdge: v('--border2'),
+   slide: v('--pb'), oor: v('--accent')
+  });
+ }
+ return T;
 }
 
 // Pitch classes of the current key/mode, so the roll can show which notes are
