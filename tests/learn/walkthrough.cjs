@@ -60,7 +60,8 @@ const out = process.env.EVIDENCE;
    assert.equal(await find.innerText(),'Find');await find.tap();
    assert(await page.locator('#find-input').isVisible());
    await page.evaluate(()=>{closeFind();const m=document.getElementById('ft-more-menu');if(m.classList.contains('open'))toggleFtMore();});
-   await page.locator('.lv-slot .lv-cb').first().tap();
+   await page.locator('.lv-slot .lv-cb').first().tap();                                   // the widget's sheet
+   await page.locator('.lv-sheet .lv-arr-b.tier-locked').first().tap();                    // a locked arrange row opens the pack sheet
    assert.match(await page.locator('#_pro-sheet .pro-what').innerText(),/Rearranging the layout/);
    await page.evaluate(()=>{document.getElementById('_pro-sheet').remove();libOpenSheet('ireal');});
    assert.equal(await page.locator('.lib-tabs button.on').innerText(),'Chord charts');
