@@ -8,6 +8,11 @@ Search Results** (or import them through Asset Library):
 | Product page header | `modriff-header.png` | 3840 × 1646 |
 | Search results | `modriff-search.png` | 3840 × 2560 |
 
+Both use the actual splash-screen SVG logo from `#unlock-logo` in `index.html`,
+including its wave, knobs and envelope line. `splash-logo.svg` is exported from
+that source and its dark-theme palette on every render, rather than typesetting
+an approximation of the name.
+
 These are separate placement assets, not a Universal asset. Assign the search
 image explicitly rather than selecting “Use header asset in search results.”
 The artwork has an opaque background. The generous surrounding space is

@@ -7,10 +7,20 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 const out=path.dirname(fileURLToPath(import.meta.url)),root=path.resolve(out,'../../..');
+// Export the actual splash artwork: recreating the name with a font loses the wave, knobs and envelope.
+const app=await readFile(path.join(root,'index.html'),'utf8');
+const logo=app.match(/<button\b[^>]*\bid="unlock-logo"[^>]*>(<svg\b[\s\S]*?<\/svg>)/)?.[1];
+const palette=app.match(/\.unlock-logo\s*\{([\s\S]*?)\}/)?.[1];
+if(!logo||!palette)throw Error('Splash logo or palette not found');
+const colors=Object.fromEntries([...palette.matchAll(/(--wm-[\w]+):([^;]+);/g)].map(m=>[m[1],m[2]]));
+colors['--wm-bg']='#080a14';
+// The app uses overflow:visible: the final f extends past its viewBox. Standalone images need that canvas padding.
+const exported=logo.replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" ').replace('viewBox="-40 -830 3812 1390"','viewBox="-40 -830 3919 1390"').replace(/var\((--wm-[\w]+)\)/g,(_,key)=>{if(!colors[key])throw Error('Missing logo color '+key);return colors[key];});
+await writeFile(path.join(out,'splash-logo.svg'),exported+'\n');
 const server=createServer(async(req,res)=>{
   const file=path.resolve(root,'.'+decodeURIComponent(req.url.split('?')[0]));
   if(!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}
-  try{const data=await readFile(file);res.setHeader('Content-Type',({'.html':'text/html','.png':'image/png','.woff2':'font/woff2'})[path.extname(file)]||'application/octet-stream');res.end(data);}catch{res.writeHead(404).end();}
+  try{const data=await readFile(file);res.setHeader('Content-Type',({'.html':'text/html','.png':'image/png','.svg':'image/svg+xml','.woff2':'font/woff2'})[path.extname(file)]||'application/octet-stream');res.end(data);}catch{res.writeHead(404).end();}
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const profile=await mkdtemp(path.join(os.tmpdir(),'modriff-creative-'));
