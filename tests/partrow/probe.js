@@ -1,14 +1,13 @@
-/* The part switches in Studio (6.6): a tap switches the part, a hold or a slide opens its page; and a tap that will
-   not sound yet says it was heard (tapWait).
+/* The part switches (1.2): the bottom row only switches parts on and off, on Live and on Studio alike; the Studio strip picks the page.
+   Before 1.2 a hold or a slide along this row opened a part's page (6.6); those gestures are gone and this test pins that they stay
+   gone. Also kept from 6.6: a tap that will not sound yet says it was heard (tapWait).
 
    Driven on the real window with real touch (CDP Input.dispatchTouchEvent; touchEnd takes the points that ENDED):
-     - in Studio, on a page that is not Bass's, a tap on Bass switches Bass and does not change the page (in 6.0 - 6.5
-       it opened the page and a second tap switched it);
-     - a hold on Bass (past the hold time) opens the Bass page, does not switch Bass, and the release is not a tap;
-     - a slide along the row from Drums to Arp opens each page it passes, ends on Arp, and switches nothing;
-     - a hold on the switch of the page you are already on is a slow tap: it switches the part;
-     - a tap right after a hold or a slide still switches (the swallow is a short window, not a flag left standing);
-     - in Live nothing opens: a hold is a slow tap there;
+     - in Studio, a tap on Bass switches Bass and does not change the page;
+     - a hold on Bass (past the old hold time) opens nothing;
+     - a slide along the row switches nothing and opens nothing;
+     - the strip opens each page, marks the one showing, and its dots follow the switches;
+     - in Live a tap switches, a hold opens nothing, and no strip is drawn;
      - tapWait: Bass switched on mid-song joins on the drums' bar line and, while it waits, wears .tap-wait and reads
        as off; it lights, with the flash, when it lands; switching it off while it waits ends the wait; Stop ends it;
        a wait under 0.3 s draws nothing.
@@ -54,7 +53,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     for (let i = 1; i <= n; i++) { await touch('touchMove', [{ x: a.x + (b.x - a.x) * i / n, y: a.y }]); await page.waitForTimeout(25); }
     await touch('touchEnd', []); await page.waitForTimeout(250);
   };
-  const state = () => page.evaluate(() => ({ page: _activePageId(), sel: studioPartSel(), bass: blEnabled, mel: mlEnabled, arp: arpOn, drums: drumsEnabled, chords: chordsEnabled }));
+  const state = () => page.evaluate(() => ({ page: _activePageId(), sel: studioSel(), bass: blEnabled, mel: mlEnabled, arp: arpOn, drums: drumsEnabled, chords: chordsEnabled }));
 
   // Begin on Chords' page, Bass off.
   const s0 = await state();
@@ -68,45 +67,55 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   s = await state();
   check(s.bass === false && s.sel === 'chords', 'second tap: Bass off again', JSON.stringify(s));
 
-  // 2. A hold opens the page and does not switch.
+  // 2. A hold opens nothing. (Whether the browser turns a long press into a click is the engine's business: Chromium's touch
+  // emulation sends a contextmenu instead, WebKit a click. Either way no page opens, and the state is put back after.)
   await hold('ft-bas-btn', 700);
   s = await state();
-  check(s.sel === 'bass' && s.page === 'accomp', 'hold on Bass: its page is open', JSON.stringify(s));
-  check(s.bass === false, 'the hold did not switch Bass, and nor did its release', JSON.stringify(s));
+  check(s.sel === 'chords' && s.page === 'perform', 'hold on Bass: no page opens', JSON.stringify(s));
+  await page.evaluate(() => { if (blEnabled) ftBassClick(); }); await page.waitForTimeout(200);
 
-  // 3. A tap straight after still switches (the swallow is a window, not a flag).
-  await page.waitForTimeout(600);
-  await tap('ft-mel-btn');
-  s = await state();
-  check(s.mel === true && s.sel === 'bass', 'tap on Mel after the hold: Mel on, page unchanged', JSON.stringify(s));
-  await tap('ft-mel-btn');
-
-  // 4. A hold on the page you are on is a slow tap.
-  await hold('ft-bas-btn', 700);
-  s = await state();
-  check(s.bass === true && s.sel === 'bass', 'hold on the open page\'s own switch: it switches (slow tap)', JSON.stringify(s));
-  await tap('ft-bas-btn');
-
-  // 5. A slide from Drums to Arp opens each page on the way and switches nothing.
-  await page.evaluate(() => { switchTab('perform'); setPerformMode('chords'); partSelSync(); });
-  const seen = [];
-  await page.evaluate(() => { window.__seen = []; const o = partOpen; window.partOpen = function (p) { window.__seen.push(p); return o(p); }; });
+  // 3. A slide along the row does nothing.
   const before = await state();
   await slide('ft-drum-btn', 'ft-arp-btn');
   s = await state();
-  const passed = await page.evaluate(() => window.__seen.join('>'));
-  check(s.sel === 'arp', 'slide Drums to Arp: ends on the Arp page', JSON.stringify(s));
-  check(passed.indexOf('drums') === 0 && /bass/.test(passed) && /mel/.test(passed) && /arp$/.test(passed), 'the slide opened the pages it passed, in order', passed);
+  check(s.sel === 'chords' && s.page === 'perform', 'slide Drums to Arp: no page opens', JSON.stringify(s));
   check(s.drums === before.drums && s.bass === before.bass && s.mel === before.mel && s.arp === before.arp, 'a slide switches nothing', JSON.stringify([before.drums, s.drums, before.arp, s.arp]));
-  await tap('ft-arp-btn'); s = await state();
-  check(s.arp !== before.arp, 'a tap right after a slide switches', JSON.stringify(s));
-  await tap('ft-arp-btn');
+  const gone = await page.evaluate(() => ({ wire: typeof wirePartRow, hold: typeof partHoldWire, hint: typeof _partHintOnce, holding: document.querySelectorAll('.ft-btn.holding,.ft-btn.scrub').length }));
+  check(gone.wire === 'undefined' && gone.hold === 'undefined' && gone.hint === 'undefined' && gone.holding === 0, 'the hold and slide code is gone', JSON.stringify(gone));
 
-  // 6. Live: nothing opens, a hold is a slow tap.
+  // 4. The strip picks the page; its dots follow the switches.
+  const strip = await page.evaluate(() => { const el = document.getElementById('studio-strip'); return el ? [].slice.call(el.querySelectorAll('.ss-chip')).map(b => b.dataset.page) : null; });
+  check(strip && strip.join(',') === 'Drums,Bass,Melody,Mel Seq,Arp,Chords,Sampler,mõdFX', 'the strip lists the eight pages in order', JSON.stringify(strip));
+  const want = { 'Drums': ['accomp', 'drums'], 'Bass': ['accomp', 'bass'], 'Melody': ['perform', 'melody'], 'Mel Seq': ['accomp', 'melseq'], 'Arp': ['accomp', 'arp'], 'Chords': ['perform', 'chords'], 'Sampler': ['perform', 'smp'], 'mõdFX': ['perform', 'fx'] };
+  for (const name of Object.keys(want)) {
+    const k = await page.evaluate(n => [].slice.call(document.querySelectorAll('#studio-strip .ss-chip')).filter(b => b.dataset.page === n)[0].dataset.k, name);
+    const c = await centre('ss-' + k); await touch('touchStart', [c]); await touch('touchEnd', []); await page.waitForTimeout(350);
+    s = await state();
+    const on = await page.evaluate(() => [].slice.call(document.querySelectorAll('#studio-strip .ss-chip.on')).map(b => b.dataset.page).join());
+    check(s.page === want[name][0] && s.sel === want[name][1] && on === name, 'strip: ' + name + ' opens its page and is the one marked', JSON.stringify({ page: s.page, sel: s.sel, on }));
+  }
+  await page.evaluate(() => studioShow('bass')); await page.waitForTimeout(250);
+  let dot = await page.evaluate(() => document.getElementById('ss-bass').classList.contains('part-on'));
+  check(dot === false, 'Bass off: its chip has no dot');
+  await tap('ft-bas-btn');
+  dot = await page.evaluate(() => document.getElementById('ss-bass').classList.contains('part-on'));
+  check(dot === true, 'Bass switched on: its chip shows the dot', String(dot));
+  await tap('ft-bas-btn');
+  const mel = await page.evaluate(() => ({ melody: document.getElementById('ss-melody').classList.contains('part-on'), fx: document.getElementById('ss-fx').classList.contains('part-on') }));
+  check(!mel.melody && !mel.fx, 'Melody and mõdFX are not switched in the band, so their chips never carry a dot', JSON.stringify(mel));
+  const cyc = await page.evaluate(() => { studioShow('chords'); const r = []; for (let i = 0; i < 8; i++) { tabTap('studio'); r.push(studioSel()); } return r.join('>'); });
+  check(cyc === 'smp>fx>drums>bass>melody>melseq>arp>chords' || cyc === 'smp>drums>bass>melody>melseq>arp>chords>smp', 'a second tap on the Studio tab steps the strip, and wraps', cyc);
+
+  // 5. Live: a tap switches, a hold is a slow tap, and no strip is drawn.
   await page.evaluate(() => setViewMode('basic')); await page.waitForTimeout(400);
+  const shown = await page.evaluate(() => { const e = document.getElementById('studio-strip'); return e ? getComputedStyle(e).display : 'none'; });
+  check(shown === 'none', 'Live: the Studio strip is not drawn', shown);
   await hold('ft-bas-btn', 700);
   s = await state();
-  check(s.bass === true && s.page === 'perform', 'Live: a hold on Bass switches it and opens nothing', JSON.stringify(s));
+  check(s.page === 'perform' && s.sel === 'chords', 'Live: a hold on Bass opens nothing', JSON.stringify(s));
+  await page.evaluate(() => { if (blEnabled) ftBassClick(); }); await page.waitForTimeout(200);
+  await tap('ft-bas-btn'); s = await state();
+  check(s.bass === true, 'Live: a tap on Bass switches it', JSON.stringify(s));
   await tap('ft-bas-btn');
   await page.evaluate(() => { setViewMode('advanced'); switchTab('perform'); setPerformMode('chords'); }); await page.waitForTimeout(400);
 

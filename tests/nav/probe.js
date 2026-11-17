@@ -1,7 +1,7 @@
 /* Navigation and part switches (7.2).
 
    Driven on the real window with real touch (CDP):
-     - a tap on Studio, Song or Sound that is already lit steps to that tab's next section and wraps round
+     - a tap on Studio, Song or Sound that is already lit steps to that tab's next section (Studio: the next page of the strip) and wraps round
        (Studio: Chords, Melody, Sampler, mõdFX; Song: Build, Perform, Library; Sound: Mixer, Voices, mõdSynth); a tap from
        another tab only goes there, to the section it was left on;
      - Live, upright: scrolling the page down folds the tab row and the parts row away and shows a pull tab; the pull tab, a
@@ -55,8 +55,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   let s = await state(); check(s.live && s.lit === 'live', 'Live is lit', JSON.stringify(s));
   await tapEl('#tab-studio'); s = await state();
   check(!s.live && s.lit === 'studio' && s.perf === 'chords', 'from Live, Studio opens on the section it was left on (Chords)', JSON.stringify(s));
-  const studio = []; for (let i = 0; i < 4; i++) { await tapEl('#tab-studio'); studio.push((await state()).perf); }
-  check(studio.join() === 'melody,pads,fx,chords', 'Studio steps Melody, Sampler, mõdFX and wraps to Chords', studio.join());
+  const studio = []; for (let i = 0; i < 8; i++) { await tapEl('#tab-studio'); studio.push(await page.evaluate(() => studioSel())); }
+  check(studio.join() === 'smp,fx,drums,bass,melody,melseq,arp,chords', 'Studio steps the strip (Sampler, mõdFX, Drums, Bass, Melody, Mel Seq, Arp) and wraps to Chords', studio.join());
   await tapEl('#tab-songs'); s = await state(); check(s.lit === 'songs' && s.songs === 'build', 'Song opens on Build', JSON.stringify(s));
   const songs = []; for (let i = 0; i < 3; i++) { await tapEl('#tab-songs'); songs.push((await state()).songs); }
   check(songs.join() === 'perform,library,build', 'Song steps Perform, Library and wraps to Build', songs.join());
@@ -67,7 +67,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(s.mix === 'voices', 'a tap from another tab does not step: Sound is back on the section it was left on', JSON.stringify(s));
   await page.evaluate(() => { switchTab('accomp'); setAccompMode('bass'); }); await page.waitForTimeout(200);
   await tapEl('#tab-studio'); s = await state();
-  check(s.page === 'perform' && s.perf === 'chords', 'on a part page, a tap on Studio lands on Chords', JSON.stringify(s));
+  const sel = await page.evaluate(() => studioSel());
+  check(s.page === 'perform' && sel === 'melody', 'on a part page, a tap on Studio steps the strip to the next page (Bass to Melody)', JSON.stringify([s.page, sel]));
 
   // 2. Live folds its bars away while the page scrolls down.
   await tapEl('#tab-live'); await page.waitForTimeout(400);

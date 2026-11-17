@@ -75,12 +75,12 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
      chosen with Add / reorder widgets (`liveLayout`, a Studio Pack feature, not
      changed here). A Studio part page is that widget's real element at full size,
      moved and not copied, as the Live widgets are moved in from Accomp today.
-3. **Chrome "B": the bottom parts row picks the part in Studio.** In Live it is
-   the five on/off switches it is today. In Studio, a tap selects that part's
-   page; a tap on the part already selected switches it on or off. There is no
-   part strip on the page. Sampler and mõdFX, which are not in the bottom row,
-   are reached from a "Sampler, FX" menu in the page header.
-   - The risk is the double duty on one row. It has to be tried on a phone.
+3. **Studio has one part selector: a strip on top. The bottom row only switches parts on and off** (1.2). Eight pages in one row
+   (Drums, Bass, Melody, Mel Seq, Arp, Chords, Sampler, mõdFX), each at least 44 pt, from 390 pt wide; two rows of four on a narrower
+   phone and on the closed Duo. A dot on a chip says that part is switched on. The bottom row does the same thing on Live and on
+   Studio, and the caret, the hold and the slide are gone. Melody (the strip you play) and Mel Seq (the melody sequencer) are two
+   devices and each has its own page. Chrome "B", where the bottom row picked the page, was reversed in 6.6 and its hold-or-slide
+   replacement is what the strip replaced.
 4. **A song carries its sounds by default.** Saving a song saves its chart, its
    words and the sounds it was written with. A per-song switch ("Recalls sounds" /
    "Keeps my sounds") decides whether loading it changes what you hear. Setups
