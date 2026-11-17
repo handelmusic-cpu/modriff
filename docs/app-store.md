@@ -290,6 +290,11 @@ full stems/MIDI exports were exercised in the native Simulator app. Not uploaded
 processed by App Store Connect; not heard on a physical iPhone. Earlier treatments remain
 in `previews/high-impact/` and `previews/2026-11-13/`. iPad and Mac need their own footage.
 
+Six separate **social audience ads** are in `previews/audience-series/`: jazz, grooveboxes,
+piano, guitar, wind/brass students and producers. Each is 24 seconds at 1080 × 1920,
+with a temporary music preview, a silent replacement master, posters, a review gallery
+and a 124 BPM soundtrack cue sheet. See its README; these are campaign assets.
+
 The Duo draws its clock and status pill down the right edge and reports a right inset of 84pt (measured in the simulator:
 top 0, right 84, bottom 34, left 0). 1398 x 2034 is not one of the sizes App Store Connect lists, so the Duo set is a
 reference for checking the layout, not an upload. The splash ignored the inset and the wordmark ran under the pill; fixed
