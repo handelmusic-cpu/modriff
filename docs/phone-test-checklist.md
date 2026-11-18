@@ -185,3 +185,6 @@ Since 6.2:
 - Pick Garage in Recorded kits on Drums and Aux. Try a syncopated groove,
   all eight percussion pads, hat choking, and a kit swap while playing;
   check levels and background continuation. Not heard on device.
+
+- [ ] v1.9.6: Studio > Chords — the rhythm row follows every chord row, including borrowed, secondary-dominant and My Chords pads.
+- [ ] v1.9.6: Live > Melody and Chords > controls — tap the sound name, choose a patch, then close the sheet; the menu stays visible and responds to touch.

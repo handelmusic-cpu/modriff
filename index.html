@@ -738,6 +738,8 @@ input[type=range] { touch-action:none; }
  background:var(--surf); border:1px solid var(--border2);
  box-shadow:0 10px 28px rgba(0,0,0,.5);
 }
+/* Live's controls sheet is above the page; its body-mounted picker must be above the sheet too. */
+body.lv-sheet-on .snd-pick-pop.open { z-index:710; }
 body.light-mode .snd-pick-pop.open { box-shadow:0 10px 28px rgba(20,24,50,.18); }
 .snd-pick-menu { display:flex; flex-wrap:wrap; gap:3px; }
 /* A voice picker's sections (vpFill): a folding heading and its buttons, laid out
@@ -9036,14 +9038,15 @@ body.mode-basic .ft-more-menu .sh-g2.ft-extras-row { display:block; }
 /* ── Studio's Chords page: the chords first, the rhythm under them (6.0l, reversed in 6.0y) ──
    6.0l put the rhythm bar and the builder above "Play it", as the mock draws it. On a phone that is a screenful of
    steps, taps and a roll between the page's title and the chords it is about, and the pads are what you came for.
-   Now the seven, then the rhythm bar straight under them (as Live has it: what the pads play, on and off, Keep
-   going, Edit rhythm), then the other chord rows, and the builder below those: Edit rhythm scrolls to it. */
+   Keep every playable chord row together, including My Chords, before the rhythm controls. Splitting the
+   grid with the rhythm bar made the borrowed chords look like a separate instrument. */
 body:not(.mode-basic) #chords-col { display:flex; flex-direction:column; }
 body:not(.mode-basic) #chords-col > .chord-section-lbl { order:-6; }
 body:not(.mode-basic) #chords-col > #chords-diatonic { order:-5; }
-body:not(.mode-basic) #chords-col > #cr-bar { order:-4; }
-body:not(.mode-basic) #chords-col > #chords-modal-wrap { order:-3; }
-body:not(.mode-basic) #chords-col > #chords-dom-wrap { order:-2; }
+body:not(.mode-basic) #chords-col > #cr-bar { order:-2; }
+body:not(.mode-basic) #chords-col > #chords-modal-wrap { order:-4; }
+body:not(.mode-basic) #chords-col > #chords-dom-wrap { order:-3; }
+body:not(.mode-basic) #chords-col > #chords-user-wrap { order:-3; }
 body:not(.mode-basic) #chords-col > #crh { order:-1; }
 
 /* ── Live's melody controls as one flowing row (6.0l) ──
@@ -9153,7 +9156,7 @@ body:not(.mode-basic) .st-card-h[hidden] { display:none; }
  body:not(.mode-basic) #pf-chords-panel .chord-section-lbl.basic-hide { order:10; }
  body:not(.mode-basic) #pf-chords-panel #chords-diatonic { order:20; }
  body:not(.mode-basic) #pf-chords-panel .st-card-h[data-k="chords-pads"] { order:19; }
- body:not(.mode-basic) #pf-chords-panel #cr-bar { order:30; }
+ body:not(.mode-basic) #pf-chords-panel #cr-bar { order:56; }
  body:not(.mode-basic) #pf-chords-panel #chords-modal-wrap { order:40; }
  body:not(.mode-basic) #pf-chords-panel #chords-dom-wrap { order:50; }
  body:not(.mode-basic) #pf-chords-panel #chords-user-wrap { order:55; }
@@ -9914,7 +9917,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.5c</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.6</span></div>
  </div>
 </div>
 
@@ -11393,7 +11396,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.5c</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.6</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12589,7 +12592,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.5c';
+const MODRIFF_VERSION = '1.9.6';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -23109,6 +23112,7 @@ function lvSheetOpen(slot){
 }
 function lvSheetKey(e){ if(e.key==='Escape'){ e.stopPropagation(); lvSheetClose(); } }
 function lvSheetClose(){
+ sndPickClose();
  var slot=document.querySelector('#lv-slots .lv-slot.lv-sheet');
  document.removeEventListener('keydown', lvSheetKey, true);
  document.body.classList.remove('lv-sheet-on');
@@ -36646,7 +36650,8 @@ const SND_PICK_HOSTS = [
  {host:'mlvoice-settings', part:'melgen'},
  {host:'melvoice-inline'}
 ];
-let _sndPickOpen = null;
+// Live remounts close sheets during boot, before this region has initialized.
+var _sndPickOpen = null;
 
 function sndPickClose(){
  if(!_sndPickOpen) return;
