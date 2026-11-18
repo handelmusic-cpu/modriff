@@ -235,15 +235,13 @@ Contact: support@modriff.com
 ## Screenshots
 
 The upload set is `docs/app-store/screenshots/v7.1-captioned/` (the `iphone-6.9in-` and `ipad-13in-` files: 1320 x 2868 and
-2064 x 2752, opaque; five shots each, in this order: Live, Studio, Mix, Song, Stage, each with a caption over a framed screenshot).
-It was retaken for the layout overhaul from build 1.9.2 in the iOS Simulator (iPhone 18 Pro Max, iPad Pro 13-inch (M5)), status bar
+2064 x 2752, opaque; five shots each, in this order: Live, Studio, mõdSynth, Song, Stage, each with a caption over a framed screenshot).
+The Studio shot was refreshed from 1.9.4c on both devices: the larger two-row selector includes Aux and the duplicate Kit/Aux row is gone. The other raw shots were retaken for the layout overhaul from build 1.9.2 in the iOS Simulator (iPhone 18 Pro Max, iPad Pro 13-inch (M5)), status bar
 9:41, every pack open, the app playing a random song. The tabs read Live, Studio, Song, Mix, and the shots show what the overhaul
 made: Live's two rows of four split pads and tall keys, Studio's strip and pick row with a drum groove, the mõdSynth editor with the
 wavetable view, the Song builder and the chord chart. `raw/` holds the plain captures; `build.sh` regenerates the captioned files
 from them (it needs Chrome and `sips`). Everything under `v6.9.9.9.9.9.9.9a/`, `6.9in-`, `13in-`, `v6.9.2/` shows retired tab names
-or older layouts and is history only: do not upload it. `v6.9.6/` is the Duo layout reference. One caption, "A real synth and
-sampler inside", sits over the mõdSynth editor, which does not show the sampler; change the caption in `build.sh` or the shot.
-The app previews were not retaken.
+or older layouts and is history only: do not upload it. `v6.9.6/` is the Duo layout reference. The owner-approved synth caption is "Shape your sound with a real synth". `layout-followthrough-verification.json` records the refreshed stills and dimensions. `bash build.sh studio` or `bash build.sh sound` rebuilds only that pair; no argument rebuilds all five pairs.
 
 How to redo them: build the Simulator app with the optimiser on and the debug switch kept (a plain Debug build runs
 the C++ engine at -O0 and stalls the page; a Release build has no `__modDebug`, so no unlock switch):
