@@ -97,10 +97,14 @@ const PARTS = [['Chords', 'chord'], ['Melody', 'mel'], ['Bass', 'bass'], ['Mel S
       await page.click('#synth-ed .se-back'); await page.waitForTimeout(400);
       const back = await page.evaluate(() => ({ open: document.getElementById('synth-ed').classList.contains('open'), y: scrollY }));
       R.check(!back.open && back.y === pre, 'Back closes the editor and the page has not moved', JSON.stringify(back) + ' was ' + pre);
-      // Mix > mõdSynth still draws.
+      // The retired Mix route reaches the same editor, without restoring a duplicate pane.
       await L.goMix(page, 'mõdSynth');
-      const mix = await page.evaluate(() => ({ chips: document.querySelectorAll('#mix-synth-pane .msx-part').length, patch: !!document.querySelector('#mix-synth-pane .msx-patch') }));
-      R.check(mix.chips === 5 && mix.patch, 'Mix > mõdSynth still draws its part chips and patch card', JSON.stringify(mix));
+      const mix = await page.evaluate(() => ({ removed: !document.getElementById('mix-synth-pane') && !document.getElementById('mx-synth-btn'), open: document.getElementById('synth-ed').classList.contains('open'), patch: !!document.querySelector('#synth-ed .msx-patch'), mode: MSX_UI.mode }));
+      R.check(mix.removed && mix.open && mix.patch && mix.mode==='mixer', 'the retired Mix synth route opens the part editor; Mix has two panes', JSON.stringify(mix));
+      await page.click('#synth-ed .se-back');
+      await page.evaluate(() => msxOpenFor('melgen')); await page.waitForTimeout(300);
+      R.check(await page.evaluate(() => studioSel()==='melseq' && document.getElementById('synth-ed-title').textContent.includes('Mel Seq')), 'a sound-picker link selects the requested Studio part and opens its editor');
+      await page.click('#synth-ed .se-back');
       // Free build.
       await page.evaluate(() => setModTier('free')); await page.waitForTimeout(500);
       await L.goStudio(page, 'Arp');

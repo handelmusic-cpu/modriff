@@ -54,7 +54,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
    version of Studio. **Chords gets a pattern editor** like the others: the chord
    rhythm roll (`rhyEdit`, `crEditOpen`) drawn on the page instead of in a sheet.
    Drums (with its Aux layer), Bass, Melody, Arp, Chords, Sampler and mõdFX are the
-   part pages. Studio’s heavier sections are framed cards with independent 44 pt carets; new fold state lasts for the session, and the existing Chords folds retain their stored keys. Find and tutorials reveal closed controls. Live ignores Studio folds. The pick and write rows stay visible.
+   part pages. Mix has Mixer and Voices; the duplicate synth pane is removed, and its legacy links open the part editor. Studio’s heavier sections are framed cards with independent 44 pt carets; new fold state lasts for the session, and the existing Chords folds retain their stored keys. Find and tutorials reveal closed controls. Live ignores Studio folds. The pick and write rows stay visible.
    - **A part page keeps every control its parts have today; the layout only
      decides where they sit.** The Sampler is the one that looked cut down in the
      first mock (twelve blank pads), so it is spelled out: the pad count, the pads

@@ -162,3 +162,4 @@ Since 6.2:
 - [ ] v1.9.3: a part switched to mõdSynth on Mix, then its Studio page opened: the mõdSynth card shows the wavetable at once (it was a black box until something else moved).
 - [ ] v1.9.4: not heard on device — Song > Perform: altered chords and slash basses fit their tiles on a narrow phone; Chart puts a long song title below the heading without squeezing the controls.
 - [ ] v1.9.4a: not heard on device — Studio: fold and reopen the section cards on all eight pages; switch pages and return; Find and tutorials reveal closed controls; Live pads, keys and widget sheets remain usable after Studio cards are closed.
+- [ ] v1.9.4b: not heard on device — Mix has Mixer and Voices only; Edit synth and sound-picker/Find links open the full editor on the requested Studio part; an older saved Mix synth view returns to Mixer.

@@ -61,8 +61,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const songs = []; for (let i = 0; i < 3; i++) { await tapEl('#tab-songs'); songs.push((await state()).songs); }
   check(songs.join() === 'perform,library,build', 'Song steps Perform, Library and wraps to Build', songs.join());
   await tapEl('#tab-mix'); s = await state(); check(s.lit === 'mix' && s.mix === 'mixer', 'Sound opens on the Mixer', JSON.stringify(s));
-  const mix = []; for (let i = 0; i < 3; i++) { await tapEl('#tab-mix'); mix.push((await state()).mix); }
-  check(mix.join() === 'voices,synth,mixer', 'Sound steps Voices, mõdSynth and wraps to the Mixer', mix.join());
+  const mix = []; for (let i = 0; i < 2; i++) { await tapEl('#tab-mix'); mix.push((await state()).mix); }
+  check(mix.join() === 'voices,mixer', 'Mix steps Voices and wraps to the Mixer', mix.join());
   await tapEl('#tab-mix'); await tapEl('#tab-songs'); await tapEl('#tab-mix'); s = await state();
   check(s.mix === 'voices', 'a tap from another tab does not step: Sound is back on the section it was left on', JSON.stringify(s));
   await page.evaluate(() => { switchTab('accomp'); setAccompMode('bass'); }); await page.waitForTimeout(200);
