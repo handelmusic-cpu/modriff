@@ -181,3 +181,7 @@ Since 6.2:
 - Choose FM EP and Digital EP in Samples > Keys on each pitched part. Compare
   their distinct tones and levels, soft/hard notes, strums and background
   band playback. Both are recorded FM patches. Not heard on device.
+
+- Pick Garage in Recorded kits on Drums and Aux. Try a syncopated groove,
+  all eight percussion pads, hat choking, and a kit swap while playing;
+  check levels and background continuation. Not heard on device.

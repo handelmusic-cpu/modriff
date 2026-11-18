@@ -86,6 +86,15 @@ player and native bank; Electric Piano stays synthesized. `build/recorded-keys.p
 notes, tuning measurements and hashes; `samples/SOURCES.csv` and About
 Credits carry provenance. Device checks are in the phone checklist.
 
+Garage (1.9.5c) adds a twelve-voice recorded kit on Drums and Aux: four
+existing CC0 foundation drums and eight explicitly licensed CC0 lighter
+percussion recordings. It has voice-role mappings, lazy sample loads and
+the existing native bank/hat choke path. Only the exact eight files listed
+in the supplied grant ship; unlicensed teaser/kick/clap archives stay out.
+Garage uses a pitch-independent cleanup/choke-expiry guard for finite
+samples so pitch shifting remains bankable; the recordings end naturally.
+Source grants and hashes are in samples/licenses and build/garage-percussion.json.
+
 ### Audio: native, decided
 
 The app is going to the App Store and the complaint is the processor

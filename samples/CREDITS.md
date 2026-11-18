@@ -663,3 +663,40 @@ per-file manifests are `build/recorded-epfm.json` and `recorded-epbright.json`.
 Post-conversion worst measured tuning: 16 cents and 3 cents, respectively.
 Both are in Samples > Keys on every pitched part and keep the existing
 Sampler Engine entitlement. Electric Piano remains the synthesized voice.
+
+## Garage kit (1.9.5c)
+
+`GARAGE` offers twelve voices: the existing CC0 Hip-Hop kit's kick, snare,
+closed hat and open hat, plus eight distinct Signature Sounds lighter
+percussion recordings from the owner's `SS_Burial_Lighter_PERC_CC0.zip`.
+Only `Lighter_Perc_Burial_01.wav` through `_08.wav` in the archive's
+`Lightr_Prc_Burial_Add_On/` directory are used: those are the exact filenames
+enumerated in the included CC0 grant. The differently named root takes and
+other add-on takes are excluded. The separate kick/clap/teaser ZIPs have no
+recorded redistribution grant and are not shipped.
+
+Original source: https://signaturesounds.org. Full supplied grant:
+`samples/licenses/garage-percussion-cc0.txt`. CC0 permits commercial
+redistribution of these files, not just their use in songs. Credits are
+given voluntarily in About.
+
+`build/garage-percussion.py SOURCE_ROOT SCRATCH_OUTPUT` builds the eight
+new files: 44.1 kHz mono, silence trimmed with a short tail fade, peak at
+0.7 before MP3 VBR q2 encoding. `build/garage-percussion.json` retains the
+source member and SHA256 as well as the output hash and duration. The four
+foundation drums are reused by URL, with no duplicate audio assets.
+
+Garage is in Recorded kits, with explicit voice roles so existing grooves
+and kit changes preserve their kick, backbeat and time. It works on Drums
+and Aux, through the existing groove entitlement and native bank. Closed
+and open hats keep their normal choke group. The percussion voices are
+single recordings, not velocity layers or alternate takes.
+
+Validation: `KITS=GARAGE node tests/seq/bank.test.js` compares native C++
+hits and hat chokes against fresh browser programs; `tests/drums/roles.test.js`
+includes Garage in the kit-swap and groove-role checks.
+
+Garage's finite samples use a pitch-independent cleanup/choke-expiry guard
+at four times their buffer duration, safe for the existing 0.25 minimum
+playback rate. The buffers still end naturally; this avoids an inverse-rate
+stop timestamp the native bank cannot fit. Other kits keep their current path.

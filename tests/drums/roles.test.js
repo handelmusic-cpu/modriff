@@ -51,7 +51,7 @@ function serve() {
     // 1. The same beat on every drum kit is the same roles.
     window._sqPickDrumKit('808'); window._sqLoadPattern(0, 'Techno');
     const base = roles(0); o.base = base; o.sameRoles = {};
-    ['909', 'STUDIO', 'ROCK', 'ACU', '606', 'LIN', '808'].forEach(k => { window._sqPickDrumKit(k); o.sameRoles[k] = roles(0) === base; });
+    ['909', 'STUDIO', 'ROCK', 'GARAGE', 'ACU', '606', 'LIN', '808'].forEach(k => { window._sqPickDrumKit(k); o.sameRoles[k] = roles(0) === base; });
     // The jazz kit keeps its time on the ride; the roles are the same all the same.
     window._sqPickDrumKit('JAZZ'); o.jazz = roles(0) === base;
     // Away and back is exact.
@@ -87,7 +87,7 @@ function serve() {
     o.fams = starterGroups('aux').map(s => s.sect);
     return o;
   });
-  ok(Object.values(r.sameRoles).every(Boolean) && r.jazz, 'the same beat on the 808, 909, Studio, Rock, Acoustic, 606, Linn and Jazz kits is the same kick, backbeat and time', JSON.stringify(r));
+  ok(Object.values(r.sameRoles).every(Boolean) && r.jazz, 'the same beat on the drum-machine, Studio, Rock, Garage, Acoustic and Jazz kits is the same kick, backbeat and time', JSON.stringify(r));
   ok(r.roundTrip, 'swapping kits away and back leaves the grid exactly as it was', '');
   ok(r.kitsKept && r.drumsUntouched, 'a pattern on Aux leaves the Drums layer and both kits alone; a percussion kit on Drums plays the line', JSON.stringify(r));
   ok(r.auxBeat, 'a drum kit on Aux plays the pattern\'s beat', r.rockAux);
