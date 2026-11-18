@@ -80,7 +80,9 @@ The shared Samples > Keys palette now includes Grand (Osiris, CC0), Upright
 sample-cache collisions. They use the existing per-pitch native bank path;
 no DSP fork. Ukulele (FreePats 2026-08-11, CC0) joins Samples > Guitars
 with 13 pitched anchors C4–C6; body tap and chuck are excluded from pitched
-playback. `build/recorded-keys.py` and its JSON manifests retain source
+playback. FM EP and Digital EP add two distinct VCSL hardware-FM recorded
+patches under Samples > Keys (CC0; 22 anchors each). They share the existing
+player and native bank; Electric Piano stays synthesized. `build/recorded-keys.py` and its JSON manifests retain source
 notes, tuning measurements and hashes; `samples/SOURCES.csv` and About
 Credits carry provenance. Device checks are in the phone checklist.
 

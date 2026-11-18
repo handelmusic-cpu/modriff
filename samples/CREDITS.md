@@ -644,3 +644,22 @@ measurements: `build/recorded-ukulele.json`. All 13 measured on pitch after
 conversion. The actual source range is C4–C6; pitches outside it use the
 existing player's nearest-note pitch shifting. Every pitched part offers it
 in Samples > Guitars, with existing Sampler Engine entitlement behavior.
+
+## Sampled electric pianos (1.9.5b)
+
+**FM EP** (`epfm`, `samples/ep-fm-vcsl`) and **Digital EP** (`epbright`,
+`samples/ep-bright-vcsl`) use the VCSL TX81Z "FM Piano" and "Piano 1"
+recordings, respectively. These are two different user-programmed patches
+sampled from FM hardware, not recordings of mechanical tine/reed instruments.
+Each uses the middle recorded layer on a C/E/G-sharp grid across C1–C8
+(22 anchors). No claim of velocity-layer switching or embedded hardware
+emulation is made: the existing player pitch-shifts these recordings.
+
+Author: Versilian Studios / Sam Gossner. CC0. Source:
+https://github.com/sgossner/VCSL/tree/master/Electrophones/TX81Z. Original
+license and origin notes are in `samples/licenses/vcsl-keys-cc0.txt` and
+`vcsl-keys-origin.txt`. `build/recorded-keys.py SOURCE_ROOT . ep` builds them;
+per-file manifests are `build/recorded-epfm.json` and `recorded-epbright.json`.
+Post-conversion worst measured tuning: 16 cents and 3 cents, respectively.
+Both are in Samples > Keys on every pitched part and keep the existing
+Sampler Engine entitlement. Electric Piano remains the synthesized voice.

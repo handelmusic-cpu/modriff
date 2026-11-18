@@ -30,7 +30,7 @@ SETS = {
  'old': ('Old', 'piano-old', 'Piotr Barcz, Roberto / FreePats', 'https://freepats.zenvoid.org/Piano/honky-tonk-piano.html', 'pianos'),
  'ukulele': ('Ukulele', 'ukulele-freepats', 'Mateusz Dąbrowski / FreePats', 'https://freepats.zenvoid.org/GuitarFamily/ukulele.html', 'ukulele'),
  'epfm': ('FM EP', 'ep-fm-vcsl', 'Versilian Studios / Sam Gossner', 'https://github.com/sgossner/VCSL', 'ep'),
- 'epbright': ('Bright EP', 'ep-bright-vcsl', 'Versilian Studios / Sam Gossner', 'https://github.com/sgossner/VCSL', 'ep'),
+ 'epbright': ('Digital EP', 'ep-bright-vcsl', 'Versilian Studios / Sam Gossner', 'https://github.com/sgossner/VCSL', 'ep'),
 }
 
 def decode(path, filters=None):

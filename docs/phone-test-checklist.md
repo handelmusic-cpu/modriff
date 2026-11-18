@@ -177,3 +177,7 @@ Since 6.2:
 - Choose Ukulele under Samples > Guitars on each pitched part. Check picked
   notes and strummed chords, then a band continuing in the background. Not
   heard on device.
+
+- Choose FM EP and Digital EP in Samples > Keys on each pitched part. Compare
+  their distinct tones and levels, soft/hard notes, strums and background
+  band playback. Both are recorded FM patches. Not heard on device.
