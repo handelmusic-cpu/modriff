@@ -46,8 +46,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
   // 1. The pattern tools are over the grid, not behind a caret.
   const o = await page.evaluate(() => { const g = document.getElementById('sq-gScroll').getBoundingClientRect().top, t = id => document.getElementById(id).getBoundingClientRect().top;
-    return { fold: !!document.querySelector('.st-fold-g'), layer: t('sq-layerRow') < g, fill: t('sq-fillBtn') < g, clear: t('sq-clearBtn') < g }; });
-  check(!o.fold && o.layer && o.fill && o.clear, 'Kit | Aux and the pattern tools sit over the grid, with no fold', JSON.stringify(o));
+    return { fold: !!document.querySelector('.st-fold-g[data-k="drumtools"]'), layer: !!document.getElementById('ss-drums') && !!document.getElementById('ss-aux') && !document.getElementById('sq-layerRow'), fill: t('sq-fillBtn') < g, clear: t('sq-clearBtn') < g }; });
+  check(!o.fold && o.layer && o.fill && o.clear, 'Drums and Aux are in the Studio selector; pattern tools stay above the grid without a tools fold', JSON.stringify(o));
   const ids = ['sq-stepsDisp', 'sq-swingSl', 'sq-fillBtn', 'sq-dupextBtn', 'sq-tupcoverBtn', 'sq-aud-btn', 'sq-clearBtn'];
   const shown = []; for (const i of ids) shown.push(await vis('#' + i));
   check(shown.every(Boolean), 'Steps, Swing, Fill, Duplicate, Tuplets: Cover, Audition and Clear are all on show', shown.join());
