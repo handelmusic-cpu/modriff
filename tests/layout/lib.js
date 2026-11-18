@@ -62,7 +62,7 @@ async function boot(h, vp, view) {
 
 /* The pages of Studio, by the name the owner sees. `go` uses the strip when it exists and the older part-switch route when
    it does not, so the same tests ran before and after slice 1. */
-const STUDIO = ['Drums', 'Bass', 'Melody', 'Mel Seq', 'Arp', 'Chords', 'Sampler', 'mõdFX'];
+const STUDIO = ['Drums', 'Aux', 'Bass', 'Melody', 'Mel Seq', 'Arp', 'Chords', 'Sampler', 'mõdFX'];
 async function goStudio(page, name) {
   await page.evaluate(n => {
     var strip = document.getElementById('studio-strip');

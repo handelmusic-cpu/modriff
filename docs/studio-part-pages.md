@@ -1,6 +1,6 @@
 # Studio part pages: one layout
 
-Drums, Bass, Melody and Arp are four pages of the same kind of thing and were built as four. This is the shape they all move to, and where
+Drums, Aux, Bass, Melody and Arp share the Studio page structure. Drums and Aux open the same drum editor on their respective layers; the Studio selector replaces the Kit/Aux row. This is the shape they all move to, and where
 each one stands. It is the spec for the order of a page and the sizes of what is on it; colours are each part's own (PARTS) and stay.
 
 ## The order of a page, top to bottom
@@ -37,9 +37,9 @@ Before 6.0y the same controls came out at eleven font sizes (11 to 15 px) and ei
 - **Bass** — conforms: pick, write, surface, timing, sound (its filter is now the shared block, Cutoff and Resonance with readouts; it has
   no ladder to choose), mõdFX. It is the reference.
 - **Melody** — the same page as Bass, with Mode and Glide beside Follow and a ladder choice in Filter. Conforms.
-- **Drums** (6.2) — conforms. Pick (Groove, Kit), the Kit | Aux switch, then **Write**: Draw | Play in, with Draw's tools (Fill, Duplicate ×2,
+- **Drums** (6.2) — conforms. Pick (Kit, Groove), then **Write**: Draw | Play in, with Draw's tools (Fill, Duplicate ×2,
   Tuplets, Audition) or Play in's one action (Start recording) under it and CLR in both; the grid; Steps, Rate and Swing under it; the eight
-  pattern slots and the song chain; mõdFX. Drums has two write modes, not three: the groove list is its generator.
+  pattern slots and the song chain; mõdFX. The Studio selector now opens Drums or Aux directly; there is no Kit/Aux switch on the page.
 - **Arp** (6.2) — conforms as far as it can. Pick (Arp pattern, Patch) with the eight pattern buttons kept hidden as the owners of the handlers, the
   switch and status, the preview strip as its surface (it is generated from the chords, so there is no roll to draw on), then Range, Timing and Rate
   motion directly under it, then Dynamics and Feel, then Sound and mõdFX.

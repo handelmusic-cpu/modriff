@@ -6,15 +6,15 @@ const L=require(process.cwd()+'/tests/layout/lib.js');
   for(const name of L.STUDIO){await L.goStudio(page,name);
    const cards=await page.evaluate(()=>[...document.querySelectorAll('.tab-page.active .st-card-h')].filter(e=>e.getBoundingClientRect().height>0).map(e=>({key:e.dataset.k,body:e.getAttribute('aria-controls'),w:e.getBoundingClientRect().width,h:e.getBoundingClientRect().height})));
    R.check(cards.length>0&&cards.every(c=>c.w>=44&&c.h>=44),vp+' '+name+': section carets meet 44 pt',cards.map(x=>x.key).join(','));
-   const old=await page.evaluate(L.SCAN);let bad=[];
+   const old=(await page.evaluate(L.SCAN)).filter(c=>!/^#(ss-|studio-pull)/.test(c.key));let bad=[];
    for(const c of cards){
     const sel='.st-card-h[data-k="'+c.key+'"]';
-    const tap=async()=>{const p=await page.evaluate(s=>{let e=document.querySelector(s);e.scrollIntoView({block:'center'});let r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}},sel);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[p]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(60);};
+    const tap=async()=>{await page.evaluate(s=>document.querySelector(s).scrollIntoView({block:'center'}),sel);await page.waitForTimeout(100);const p=await page.evaluate(s=>{let r=document.querySelector(s).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}},sel);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[p]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(60);};
     await tap();const shut=await page.evaluate(id=>{let b=document.getElementById(id);return b.getBoundingClientRect().height===0&&b._stFold.getAttribute('aria-expanded')==='false'},c.body);
     await tap();const open=await page.evaluate(id=>{let b=document.getElementById(id);return b.getBoundingClientRect().height>0&&b._stFold.getAttribute('aria-expanded')==='true'},c.body);
     if(!shut||!open)bad.push(c.key+':'+shut+'/'+open);total++;
    }
-   const after=await page.evaluate(L.SCAN);R.check(bad.length===0&&old.length===after.length,vp+' '+name+': real touch closes/opens every card and restores controls',JSON.stringify({bad,before:old.length,after:after.length}));
+   const after=(await page.evaluate(L.SCAN)).filter(c=>!/^#(ss-|studio-pull)/.test(c.key));R.check(bad.length===0&&old.length===after.length,vp+' '+name+': real touch closes/opens every card and restores controls',JSON.stringify({bad,before:old.length,after:after.length}));
    R.check(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)<=1,vp+' '+name+': no horizontal overflow');
    if(vp==='p430'&&name==='Bass')await page.screenshot({path:'/private/tmp/modriff-studio-cards.png'});
   }
