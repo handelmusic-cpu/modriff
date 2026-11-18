@@ -165,3 +165,11 @@ Since 6.2:
 - [ ] v1.9.4c: not heard on device — Studio: two rows with larger labels and separate Drums/Aux entries; each opens its own drum layer with no Kit/Aux row. Scroll to tuck the selector away, restore it with Studio parts or a downward pull, and return to the top; the bottom part switches keep their on/off behavior.
 - [ ] v1.9.4d: not heard on device — Tutorials > Aux drums opens the new Aux page, points at its kit picker, then shows Aux’s mute control in Mix.
 - [ ] Launch previews: not heard on device — play the three layout-overhaul previews through the iPhone speaker and headphones; check clicks/crackle, readable grid/rolls and audio/visual timing. Upload the refreshed stills, eleven IAP shots and preview set in App Store Connect.
+
+### Recorded instrument additions (1.9.5)
+
+- On each pitched part, choose Grand, Upright, Old and Room under Samples >
+  Keys. Play low and high notes and repeated chords; compare levels. Room
+  must keep its previous sound when an older saved song is loaded.
+- With each new piano, start a band and leave the app; check continuation,
+  timing and return to the foreground. These changes are not heard on device.

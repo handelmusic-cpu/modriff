@@ -595,3 +595,35 @@ surdo-f ← x-surdo-4bar-f ([36110](https://freesound.org/s/36110/)) · caixeta-
 All loops have 5 ms fades at both ends. Each set downloads only when asked for
 (`PS_LOOP_SETS`), and a decoded loop is held to its computed length
 (`_psLoopTrim`) in case a decoder leaves mp3's encoder delay and padding in.
+
+## Recorded pianos (1.9.5)
+
+- **Grand** (`pianogrand`, `samples/piano-grand`): Osiris Piano by Versilian
+  Studios and Karoryfer Samples, CC0. Source: the owner's
+  `Osiris_Piano_0925.zip`, originally from
+  https://shop.karoryfer.com/pages/free-osiris-piano. Uses microphone B,
+  upper recorded layer, pedal up, low-noise articulation. This is a quiet
+  grand, not the full multi-microphone SFZ instrument. Original CC0 grant:
+  `samples/licenses/osiris-cc0.txt`.
+- **Upright** (`pianoupright`, `samples/piano-upright`): FreePats Upright Piano
+  KW, 2022-02-21, Gonzalo and Roberto, CC0. Uses the harder recorded layer.
+  https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html. Source notes:
+  `samples/licenses/upright-kw-source.txt`.
+- **Old** (`pianoold`, `samples/piano-old`): FreePats Old Piano FB, 2020-04-01,
+  recorded by Piotr Barcz, assembled by Roberto, CC0.
+  https://freepats.zenvoid.org/Piano/honky-tonk-piano.html.
+- **Room** is the existing `pianoreal2` recording, with the same files and
+  saved identifier. The older `pianoreal` alias still resolves to it.
+
+The first three are built by `build/recorded-keys.py`: mono at 44.1 kHz,
+measured tuning corrected by resampling, at most six seconds with a 350 ms
+fade, level-matched, MP3 VBR q2. One recorded articulation per instrument;
+velocity changes the app's envelope, not a claim of velocity-layer playback.
+The per-file manifests in `build/recorded-{grand,upright,old}.json` record
+the exact source member, correction, measured output tuning, peak, and hash.
+Post-conversion worst measured tuning: Grand 6 cents, Upright 18, Old 2.
+Part gains are measured through the app (`tests/levels/measure.js`) and
+verified against native C++ chord playback (`tests/seq/chordbank.test.js`).
+
+All three CC0 grants permit redistributing the actual recordings in a
+commercial app, with no attribution requirement. Credits are given in About.

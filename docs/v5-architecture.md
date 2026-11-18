@@ -72,6 +72,16 @@ app script runs, and the web versions only fill in what it left out.
 Capacitor fits that exactly. Everything below adds to that layer rather than
 reaching into the app.
 
+### Recorded keys (1.9.5)
+
+The shared Samples > Keys palette now includes Grand (Osiris, CC0), Upright
+(FreePats KW, CC0), Old (FreePats FB, CC0), and Room (the existing
+`pianoreal2`, unchanged audio and saved id). New directories avoid immutable
+sample-cache collisions. They use the existing per-pitch native bank path;
+no DSP fork. `build/recorded-keys.py` and its JSON manifests retain source
+notes, tuning measurements and hashes; `samples/SOURCES.csv` and About
+Credits carry provenance. Device checks are in the phone checklist.
+
 ### Audio: native, decided
 
 The app is going to the App Store and the complaint is the processor
