@@ -18,6 +18,8 @@ each one stands. It is the spec for the order of a page and the sizes of what is
 6. **Sound** — Filter (a segment where the part has a choice of ladder, then Cutoff and Resonance), always the same block (`.sf-block`).
 7. **mõdFX** — the readout bar and the part's mix.
 
+The surface, timing, sound, pattern banks and Sampler/mõdFX settings use framed cards with a 44 pt caret. New folds stay per section for the current session, including rebuilt pages; the existing Chord voice and Rhythm builder folds retain their saved keys. The pick and write rows stay visible. Find and tutorials open a closed card before highlighting a control. Studio folds never hide Live widgets. Test: `tests/layout/cards.probe.js`.
+
 ## Sizes
 
 Heights are the 44 pt floor everywhere. Three roles, set once at the end of the stylesheet under `#page-accomp` (`--pp-r`, `--pp-fs`):

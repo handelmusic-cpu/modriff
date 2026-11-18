@@ -66,7 +66,8 @@ const PARTS = [['Chords', 'chord'], ['Melody', 'mel'], ['Bass', 'bass'], ['Mel S
       R.check(small.every(x => x >= 44), 'Back is at least 44 pt', small.join());
       // The wavetable view: drawn (ink on the canvas), named for the oscillator, and it follows the Shape knob and the chips.
       const ink = sel => page.evaluate(s => { const c = document.querySelector(s); if (!c || !c.width) return -1; const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 20) n++; return n; }, sel);
-      await page.evaluate(() => document.querySelector('#synth-ed .mu-tab[data-page="osc"]').click()); await page.waitForTimeout(700);
+      // Random can choose Pulse, whose picture follows pulse width rather than Shape; test morph on a known wavetable.
+      await page.evaluate(() => { msxSetParam('bass', 'osc1.wave', 'saw'); document.querySelector('#synth-ed .mu-tab[data-page="osc"]').click(); }); await page.waitForTimeout(700);
       const big = '#synth-ed canvas.msx-wt.big';
       const inkA = await ink(big), labA = await page.evaluate(s => document.querySelector(s).getAttribute('aria-label'), big);
       R.check(inkA > 500 && /oscillator 1/.test(labA), 'the editor draws the wavetable of Osc 1', inkA + ' px; ' + labA);
@@ -87,7 +88,8 @@ const PARTS = [['Chords', 'chord'], ['Melody', 'mel'], ['Bass', 'bass'], ['Mel S
         R.check(pg.on && pg.panels.length > 0 && pg.small === 0 && pg.over <= 1, 'editor page ' + tab + ': drawn, tabs and chips at least 44 pt, no sideways overflow', JSON.stringify(pg));
         if (tab === 'osc') R.check(pg.panels.length === 1 && pg.panels[0] === 'Oscillator 1', 'Osc shows one panel at a time (Oscillator 1 first)', pg.panels.join());
       }
-      await page.evaluate(() => document.querySelector('#synth-ed .mu-tab[data-page="osc"]').click());
+      // Random can choose Pulse, whose picture follows pulse width rather than Shape; test morph on a known wavetable.
+      await page.evaluate(() => { msxSetParam('bass', 'osc1.wave', 'saw'); document.querySelector('#synth-ed .mu-tab[data-page="osc"]').click(); });
       await page.evaluate(() => [].slice.call(document.querySelectorAll('#synth-ed .mu-subtab')).filter(b => b.dataset.title === 'Voice')[0].click()); await page.waitForTimeout(300);
       R.check(await page.evaluate(() => [].slice.call(document.querySelectorAll('#synth-ed .mu-page.on .mu-rack > .mu-panel')).filter(e => e.getBoundingClientRect().height > 0).map(e => e.dataset.title).join() === 'Voice'), 'the Voice chip shows the Voice panel');
       const nIds = await page.evaluate(() => MSX.rack.ui.controls.size);

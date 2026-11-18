@@ -161,3 +161,4 @@ Since 6.2:
 - [ ] v1.9.2: the words: Find (type EQ, voice tone, mõdSynth, rearrange) lands on the right page; Settings > Tutorials > Levels, Chord rhythm, Sampler and Live & Studio read right and point at what is on screen; the Guide's Mixer, EQ, mõdSynth and Live widget paragraphs describe what you see.
 - [ ] v1.9.3: a part switched to mõdSynth on Mix, then its Studio page opened: the mõdSynth card shows the wavetable at once (it was a black box until something else moved).
 - [ ] v1.9.4: not heard on device — Song > Perform: altered chords and slash basses fit their tiles on a narrow phone; Chart puts a long song title below the heading without squeezing the controls.
+- [ ] v1.9.4a: not heard on device — Studio: fold and reopen the section cards on all eight pages; switch pages and return; Find and tutorials reveal closed controls; Live pads, keys and widget sheets remain usable after Studio cards are closed.
