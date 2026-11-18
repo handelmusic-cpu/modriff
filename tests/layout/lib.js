@@ -62,7 +62,7 @@ async function boot(h, vp, view) {
 
 /* The pages of Studio, by the name the owner sees. `go` uses the strip when it exists and the older part-switch route when
    it does not, so the same tests ran before and after slice 1. */
-const STUDIO = ['Drums', 'Bass', 'Melody', 'Mel Seq', 'Arp', 'Chords', 'Sampler', 'mõdFX'];
+const STUDIO = ['Drums', 'Aux', 'Bass', 'Melody', 'Mel Seq', 'Arp', 'Chords', 'Sampler', 'mõdFX'];
 async function goStudio(page, name) {
   await page.evaluate(n => {
     var strip = document.getElementById('studio-strip');
@@ -75,9 +75,8 @@ async function goStudio(page, name) {
   await page.waitForTimeout(450);
 }
 
-/* The pages of Mix (the tab that was Sound until 1.3). Mixer and Voices are the two pages; mõdSynth is a third until slice 4 puts
-   it on the part pages. */
-const MIX = ['Mixer', 'Voices', 'mõdSynth'];
+/* Mix has two pages. goMix still accepts the retired synth route to exercise its editor hand-off. */
+const MIX = ['Mixer', 'Voices'];
 async function goMix(page, name) {
   await page.evaluate(n => { switchTab('mix'); setMixMode({ 'Mixer': 'mixer', 'Voices': 'voices', 'mõdSynth': 'synth' }[n]); }, name);
   await page.waitForTimeout(name === 'mõdSynth' ? 1500 : 600);

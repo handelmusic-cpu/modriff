@@ -54,7 +54,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
    version of Studio. **Chords gets a pattern editor** like the others: the chord
    rhythm roll (`rhyEdit`, `crEditOpen`) drawn on the page instead of in a sheet.
    Drums (with its Aux layer), Bass, Melody, Arp, Chords, Sampler and mõdFX are the
-   part pages.
+   part pages. Mix has Mixer and Voices; the duplicate synth pane is removed, and its legacy links open the part editor. Studio’s heavier sections are framed cards with independent 44 pt carets; new fold state lasts for the session, and the existing Chords folds retain their stored keys. Find and tutorials reveal closed controls. Live ignores Studio folds. The pick and write rows stay visible.
    - **A part page keeps every control its parts have today; the layout only
      decides where they sit.** The Sampler is the one that looked cut down in the
      first mock (twelve blank pads), so it is spelled out: the pad count, the pads
@@ -75,12 +75,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
      chosen with Add / reorder widgets (`liveLayout`, a Studio Pack feature, not
      changed here). A Studio part page is that widget's real element at full size,
      moved and not copied, as the Live widgets are moved in from Accomp today.
-3. **Studio has one part selector: a strip on top. The bottom row only switches parts on and off** (1.2). Eight pages in one row
-   (Drums, Bass, Melody, Mel Seq, Arp, Chords, Sampler, mõdFX), each at least 44 pt, from 390 pt wide; two rows of four on a narrower
-   phone and on the closed Duo. A dot on a chip says that part is switched on. The bottom row does the same thing on Live and on
-   Studio, and the caret, the hold and the slide are gone. Melody (the strip you play) and Mel Seq (the melody sequencer) are two
-   devices and each has its own page. Chrome "B", where the bottom row picked the page, was reversed in 6.6 and its hold-or-slide
-   replacement is what the strip replaced.
+3. **Studio has one part selector: two rows on top, with 15 pt labels and 44 pt targets.** Drums, Aux, Bass, Melody and Mel Seq are the first row; Arp, Chords, Sampler and mõdFX are the second. Drums and Aux open the existing drum editor on their own layers; its duplicate Kit/Aux row is removed. The selector folds while scrolling, with the same stay-folded rule as Live’s transport. Return to the top, tap Studio parts or pull down from its handle to restore it. The bottom row only switches parts on and off. A second tap on Studio steps through all nine entries.
 4. **A song carries its sounds by default.** Saving a song saves its chart, its
    words and the sounds it was written with. A per-song switch ("Recalls sounds" /
    "Keeps my sounds") decides whether loading it changes what you hear. Setups

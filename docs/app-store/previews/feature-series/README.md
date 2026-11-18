@@ -1,5 +1,7 @@
 # mõdRïff feature films
 
+The current layout’s App Store selections are in `../layout-overhaul/`. These earlier captures and campaign films remain as history and editable sources.
+
 Seven focused motion films and three App Store selections, all 27.1 seconds. The native app footage covers a continuous Live performance, genuine landscape piano rolls, harmony and learning tools, complete songs, imports, sampler, mõdSynth and full performance exports. No app UI or DSP changes are included.
 
 ## App Store selection

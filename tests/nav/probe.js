@@ -55,14 +55,14 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   let s = await state(); check(s.live && s.lit === 'live', 'Live is lit', JSON.stringify(s));
   await tapEl('#tab-studio'); s = await state();
   check(!s.live && s.lit === 'studio' && s.perf === 'chords', 'from Live, Studio opens on the section it was left on (Chords)', JSON.stringify(s));
-  const studio = []; for (let i = 0; i < 8; i++) { await tapEl('#tab-studio'); studio.push(await page.evaluate(() => studioSel())); }
-  check(studio.join() === 'smp,fx,drums,bass,melody,melseq,arp,chords', 'Studio steps the strip (Sampler, mõdFX, Drums, Bass, Melody, Mel Seq, Arp) and wraps to Chords', studio.join());
+  const studio = []; for (let i = 0; i < 9; i++) { await tapEl('#tab-studio'); studio.push(await page.evaluate(() => studioSel())); }
+  check(studio.join() === 'smp,fx,drums,aux,bass,melody,melseq,arp,chords', 'Studio steps the strip (Sampler, mõdFX, Drums, Aux, Bass, Melody, Mel Seq, Arp) and wraps to Chords', studio.join());
   await tapEl('#tab-songs'); s = await state(); check(s.lit === 'songs' && s.songs === 'build', 'Song opens on Build', JSON.stringify(s));
   const songs = []; for (let i = 0; i < 3; i++) { await tapEl('#tab-songs'); songs.push((await state()).songs); }
   check(songs.join() === 'perform,library,build', 'Song steps Perform, Library and wraps to Build', songs.join());
   await tapEl('#tab-mix'); s = await state(); check(s.lit === 'mix' && s.mix === 'mixer', 'Sound opens on the Mixer', JSON.stringify(s));
-  const mix = []; for (let i = 0; i < 3; i++) { await tapEl('#tab-mix'); mix.push((await state()).mix); }
-  check(mix.join() === 'voices,synth,mixer', 'Sound steps Voices, mõdSynth and wraps to the Mixer', mix.join());
+  const mix = []; for (let i = 0; i < 2; i++) { await tapEl('#tab-mix'); mix.push((await state()).mix); }
+  check(mix.join() === 'voices,mixer', 'Mix steps Voices and wraps to the Mixer', mix.join());
   await tapEl('#tab-mix'); await tapEl('#tab-songs'); await tapEl('#tab-mix'); s = await state();
   check(s.mix === 'voices', 'a tap from another tab does not step: Sound is back on the section it was left on', JSON.stringify(s));
   await page.evaluate(() => { switchTab('accomp'); setAccompMode('bass'); }); await page.waitForTimeout(200);
@@ -101,8 +101,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
   // 3. Drums: Kit | Aux above the grid.
   await page.evaluate(() => { switchTab('accomp'); setAccompMode('drums'); }); await page.waitForTimeout(400);
-  const ord = await page.evaluate(() => { const t = s => document.querySelector(s).getBoundingClientRect().top; return [t('#sq-layerRow'), t('#sq-gScroll')]; });
-  check(ord[0] < ord[1], 'Kit | Aux is above the drum grid', ord.map(Math.round).join('<'));
+  const ord = await page.evaluate(() => ({ duplicate:!!document.getElementById('sq-layerRow'),drums:!!document.getElementById('ss-drums'),aux:!!document.getElementById('ss-aux') }));
+  check(!ord.duplicate && ord.drums && ord.aux, 'Drums and Aux are in the Studio selector; the duplicate Kit/Aux row is gone', JSON.stringify(ord));
 
   // 4. A part switched on with nothing in it is heard.
   await page.evaluate(() => { localStorage.clear(); }); await boot();

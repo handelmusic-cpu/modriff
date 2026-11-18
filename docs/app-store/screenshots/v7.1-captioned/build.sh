@@ -14,15 +14,17 @@ render() { # name w h caption raw
   sips -s format png "$out.jpg" --out "$out" >/dev/null; rm "$out.jpg"
   sips -g pixelWidth -g pixelHeight -g hasAlpha "$out" | tail -3 | tr '\n' ' '; echo
 }
+ONLY="${1:-}"
 n=1
 while IFS='|' read -r tag cap; do
+  if [[ -n "$ONLY" && "$tag" != "$ONLY" ]]; then n=$((n+1)); continue; fi
   render "iphone-6.9in-0$n-$tag" 1320 2868 "$cap" "iphone-0$n-$tag.png"
   render "ipad-13in-0$n-$tag"   2064 2752 "$cap" "ipad-0$n-$tag.png"
   n=$((n+1))
 done <<'LIST'
 live|Every part, always in key
 studio|A whole band that follows your chords
-sound|A real synth and sampler inside
+sound|Shape your sound with a real synth
 song|Chain sections into a song
 stage|Practise, perform, export
 LIST

@@ -81,7 +81,7 @@ const SCAN = () => {
 // Sub-pages: a tab is several pages, and each is a different set of controls.
 const SUBS = {
   accomp: ['#ac-drums-btn', '#ac-bass-btn', '#ac-mel-btn', '#ac-arp-btn'],
-  mix: ['#mx-mixer-btn', '#mx-voices-btn', '#mx-synth-btn'],
+  mix: ['#mx-mixer-btn', '#mx-voices-btn'],
   songs: ['#songs-build-btn', '#songs-perform-btn', '#songs-chart-btn'],
   build: ['#set-ui-btn', '#set-sounds-btn', '#set-midi-btn'],
   perform: [null],

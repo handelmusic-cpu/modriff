@@ -235,15 +235,13 @@ Contact: support@modriff.com
 ## Screenshots
 
 The upload set is `docs/app-store/screenshots/v7.1-captioned/` (the `iphone-6.9in-` and `ipad-13in-` files: 1320 x 2868 and
-2064 x 2752, opaque; five shots each, in this order: Live, Studio, Mix, Song, Stage, each with a caption over a framed screenshot).
-It was retaken for the layout overhaul from build 1.9.2 in the iOS Simulator (iPhone 18 Pro Max, iPad Pro 13-inch (M5)), status bar
+2064 x 2752, opaque; five shots each, in this order: Live, Studio, mõdSynth, Song, Stage, each with a caption over a framed screenshot).
+The Studio shot was refreshed from 1.9.4c on both devices: the larger two-row selector includes Aux and the duplicate Kit/Aux row is gone. The other raw shots were retaken for the layout overhaul from build 1.9.2 in the iOS Simulator (iPhone 18 Pro Max, iPad Pro 13-inch (M5)), status bar
 9:41, every pack open, the app playing a random song. The tabs read Live, Studio, Song, Mix, and the shots show what the overhaul
 made: Live's two rows of four split pads and tall keys, Studio's strip and pick row with a drum groove, the mõdSynth editor with the
 wavetable view, the Song builder and the chord chart. `raw/` holds the plain captures; `build.sh` regenerates the captioned files
 from them (it needs Chrome and `sips`). Everything under `v6.9.9.9.9.9.9.9a/`, `6.9in-`, `13in-`, `v6.9.2/` shows retired tab names
-or older layouts and is history only: do not upload it. `v6.9.6/` is the Duo layout reference. One caption, "A real synth and
-sampler inside", sits over the mõdSynth editor, which does not show the sampler; change the caption in `build.sh` or the shot.
-The app previews were not retaken.
+or older layouts and is history only: do not upload it. `v6.9.6/` is the Duo layout reference. The owner-approved synth caption is "Shape your sound with a real synth". `layout-followthrough-verification.json` records the refreshed stills and dimensions. `bash build.sh studio` or `bash build.sh sound` rebuilds only that pair; no argument rebuilds all five pairs.
 
 How to redo them: build the Simulator app with the optimiser on and the debug switch kept (a plain Debug build runs
 the C++ engine at -O0 and stalls the page; a Release build has no `__modDebug`, so no unlock switch):
@@ -255,8 +253,7 @@ launch, tap Random, tap play, tap a chord, then `xcrun simctl io <udid> screensh
 Simulator: the shared one gets other sessions' builds installed over it. Driving a new Simulator needs the owner's
 approval in the app once per device.
 
-**IAP review shots** (`screenshots/iap/`, 1320 x 2868) were not retaken here: they are the 6.9.9.3a set. Retake them if
-a pack's copy, price or the sheet changed since (the Theory Pack copy changed at 6.9.9.9.9.9.9.7d).
+**IAP review shots** (`screenshots/iap/`, 1320 x 2868, opaque) were retaken from 1.9.4a: all eleven, including Studio’s EQ, Theory’s pure tuning and Practice’s current playlist-import wording. `verification.json` records each sheet’s text, ownership and image hash; `source/` holds the disposable Simulator capture automation.
 
 There is no Mac set in this folder: the old `mac-16x10-*` files in `v6.9.2/` are the web build in Chrome. Mac App Store
 needs 16:10 shots (2880 x 1800 at 2x, a 1440 x 900 window). `ios/mac-catalyst/run-mac.sh` builds and opens the Mac app, but it
@@ -272,17 +269,7 @@ Profile: Handel.modRiff` embedded and the sandbox entitlements present. Not done
 Store Connect (a build cannot be uploaded until it exists), then upload, and the purchase flow on the Mac through
 StoreKit. Audio and bounce saving work on the Mac (owner-tested).
 
-The current **iPhone app previews** are the three `store-*.mp4` files in
-`docs/app-store/previews/feature-series/`: Live/theory/exports, landscape instruments,
-and songs/imports/learning. Each is 27.1 seconds at constant 30 fps, H.264 High Level 4.0
-with an 11 Mbps target and stereo AAC. Portrait is 886 × 1920; landscape is 1920 × 886.
-The folder also contains seven separate motion feature films, five-second posters,
-editable sources, original import fixtures and measured audio/video verification.
-See its README for coverage and the three-file upload order. The Live performance shows
-chords, melody and mõdFX together with its real native audio; playlist/PDF imports and
-full stems/MIDI exports were exercised in the native Simulator app. Not uploaded or
-processed by App Store Connect; not heard on a physical iPhone. Earlier treatments remain
-in `previews/high-impact/` and `previews/2026-11-13/`. iPad and Mac need their own footage.
+The current **iPhone app previews** are the three `store-*.mp4` files in `docs/app-store/previews/layout-overhaul/`: Live and Mix, landscape instruments, then Song and learning. They were retaken from the native Simulator for 1.9.4a–1.9.4c; the instruments film shows the larger two-row Studio selector and Aux, and Mix has Mixer and Voices only. Each is 27.1 seconds at constant 30 fps, H.264 High Level 4.0 and stereo AAC; portrait is 886 × 1920 and landscape 1920 × 886. The README lists coverage and rebuild commands, and `verification.json` records decoding, frame counts, loudness, true peak and hashes. Not uploaded or processed by App Store Connect; not heard on a physical iPhone. iPad and Mac need their own footage. `previews/feature-series/`, `high-impact/` and `2026-11-13/` retain the earlier films and their original editable sources; do not upload those earlier selections for this layout.
 
 Six separate **social audience ads** are in `previews/audience-series/`: jazz, grooveboxes,
 piano, guitar, wind/brass students and producers. Each is 24 seconds at 1080 × 1920,
@@ -359,9 +346,7 @@ The descriptions are written to sell, within 45 characters, and each says what t
 not what it is called. Two words are kept out of every field the store shows, because they are
 other companies' trademarks: **iReal** (the Practice & Perform line used to end "iReal batch",
 now "chart import") and **Rhodes** (the Sounds line says "electric piano", as the pack's own list
-does). The pack's list inside the app says "Chart import: a whole playlist at once" (6.9.9.9.9.5), so no
-trademark is named in the sheet either. The `iap/Handel.modRiff.practice.png` review shot was taken before
-that and still shows the old "iReal" bullet: retake it before upload (the line is `MODULE_COPY.practice`).
+does). The pack’s list inside the app and its retaken `iap/Handel.modRiff.practice.png` review shot say "Chart import: a whole playlist at once", so no trademark is named in the sheet either (`MODULE_COPY.practice`).
 
 - **Family Sharing: on for all eleven** (it cannot be turned off once a product is live, and
   mixing on and off is how a family ends up owning half a bundle).
@@ -374,7 +359,7 @@ that and still shows the old "iReal" bullet: retake it before upload (the line i
   eleven different. Upload each under that product's Review Information. Each is the pack's
   sheet over a rolled song, with the store's launch prices filled in; the three Complete Your
   Studio shots come from owning one, two and three packs (Groove; Groove and Sounds; Groove,
-  Sounds and Studio), and `Full Studio` is the All packs screen. They were retaken at 6.9.9.3a
+  Sounds and Studio), and `Full Studio` is the All packs screen. They were retaken at 1.9.4a
   from the web build in a phone-sized browser (not a device) once the descriptions changed, so
   they show the current look and wording. Retake them on a device once a purchase runs, and
   again if a pack's copy, price or the sheet changes.

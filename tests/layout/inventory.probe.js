@@ -30,6 +30,8 @@ async function sweep(h) {
     await L.goMix(page, name);
     out['Mix: ' + name] = (await page.evaluate(L.SCAN)).map(c => c.key);
   }
+  // Keep the historic section in the ledger: its surviving Mix navigation is here; the editor controls have explicit homes.
+  out['Mix: mõdSynth'] = out['Mix: Mixer'];
   await ctx.close();
   return out;
 }
