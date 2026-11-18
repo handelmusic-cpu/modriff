@@ -72,6 +72,29 @@ app script runs, and the web versions only fill in what it left out.
 Capacitor fits that exactly. Everything below adds to that layer rather than
 reaching into the app.
 
+### Recorded keys (1.9.5)
+
+The shared Samples > Keys palette now includes Grand (Osiris, CC0), Upright
+(FreePats KW, CC0), Old (FreePats FB, CC0), and Room (the existing
+`pianoreal2`, unchanged audio and saved id). New directories avoid immutable
+sample-cache collisions. They use the existing per-pitch native bank path;
+no DSP fork. Ukulele (FreePats 2026-08-11, CC0) joins Samples > Guitars
+with 13 pitched anchors C4–C6; body tap and chuck are excluded from pitched
+playback. FM EP and Digital EP add two distinct VCSL hardware-FM recorded
+patches under Samples > Keys (CC0; 22 anchors each). They share the existing
+player and native bank; Electric Piano stays synthesized. `build/recorded-keys.py` and its JSON manifests retain source
+notes, tuning measurements and hashes; `samples/SOURCES.csv` and About
+Credits carry provenance. Device checks are in the phone checklist.
+
+Garage (1.9.5c) adds a twelve-voice recorded kit on Drums and Aux: four
+existing CC0 foundation drums and eight explicitly licensed CC0 lighter
+percussion recordings. It has voice-role mappings, lazy sample loads and
+the existing native bank/hat choke path. Only the exact eight files listed
+in the supplied grant ship; unlicensed teaser/kick/clap archives stay out.
+Garage uses a pitch-independent cleanup/choke-expiry guard for finite
+samples so pitch shifting remains bankable; the recordings end naturally.
+Source grants and hashes are in samples/licenses and build/garage-percussion.json.
+
 ### Audio: native, decided
 
 The app is going to the App Store and the complaint is the processor

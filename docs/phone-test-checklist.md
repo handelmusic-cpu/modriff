@@ -165,3 +165,23 @@ Since 6.2:
 - [ ] v1.9.4c: not heard on device — Studio: two rows with larger labels and separate Drums/Aux entries; each opens its own drum layer with no Kit/Aux row. Scroll to tuck the selector away, restore it with Studio parts or a downward pull, and return to the top; the bottom part switches keep their on/off behavior.
 - [ ] v1.9.4d: not heard on device — Tutorials > Aux drums opens the new Aux page, points at its kit picker, then shows Aux’s mute control in Mix.
 - [ ] Launch previews: not heard on device — play the three layout-overhaul previews through the iPhone speaker and headphones; check clicks/crackle, readable grid/rolls and audio/visual timing. Upload the refreshed stills, eleven IAP shots and preview set in App Store Connect.
+
+### Recorded instrument additions (1.9.5)
+
+- On each pitched part, choose Grand, Upright, Old and Room under Samples >
+  Keys. Play low and high notes and repeated chords; compare levels. Room
+  must keep its previous sound when an older saved song is loaded.
+- With each new piano, start a band and leave the app; check continuation,
+  timing and return to the foreground. These changes are not heard on device.
+
+- Choose Ukulele under Samples > Guitars on each pitched part. Check picked
+  notes and strummed chords, then a band continuing in the background. Not
+  heard on device.
+
+- Choose FM EP and Digital EP in Samples > Keys on each pitched part. Compare
+  their distinct tones and levels, soft/hard notes, strums and background
+  band playback. Both are recorded FM patches. Not heard on device.
+
+- Pick Garage in Recorded kits on Drums and Aux. Try a syncopated groove,
+  all eight percussion pads, hat choking, and a kit swap while playing;
+  check levels and background continuation. Not heard on device.

@@ -595,3 +595,108 @@ surdo-f ← x-surdo-4bar-f ([36110](https://freesound.org/s/36110/)) · caixeta-
 All loops have 5 ms fades at both ends. Each set downloads only when asked for
 (`PS_LOOP_SETS`), and a decoded loop is held to its computed length
 (`_psLoopTrim`) in case a decoder leaves mp3's encoder delay and padding in.
+
+## Recorded pianos (1.9.5)
+
+- **Grand** (`pianogrand`, `samples/piano-grand`): Osiris Piano by Versilian
+  Studios and Karoryfer Samples, CC0. Source: the owner's
+  `Osiris_Piano_0925.zip`, originally from
+  https://shop.karoryfer.com/pages/free-osiris-piano. Uses microphone B,
+  upper recorded layer, pedal up, low-noise articulation. This is a quiet
+  grand, not the full multi-microphone SFZ instrument. Original CC0 grant:
+  `samples/licenses/osiris-cc0.txt`.
+- **Upright** (`pianoupright`, `samples/piano-upright`): FreePats Upright Piano
+  KW, 2022-02-21, Gonzalo and Roberto, CC0. Uses the harder recorded layer.
+  https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html. Source notes:
+  `samples/licenses/upright-kw-source.txt`.
+- **Old** (`pianoold`, `samples/piano-old`): FreePats Old Piano FB, 2020-04-01,
+  recorded by Piotr Barcz, assembled by Roberto, CC0.
+  https://freepats.zenvoid.org/Piano/honky-tonk-piano.html.
+- **Room** is the existing `pianoreal2` recording, with the same files and
+  saved identifier. The older `pianoreal` alias still resolves to it.
+
+The first three are built by `build/recorded-keys.py`: mono at 44.1 kHz,
+measured tuning corrected by resampling, at most six seconds with a 350 ms
+fade, level-matched, MP3 VBR q2. One recorded articulation per instrument;
+velocity changes the app's envelope, not a claim of velocity-layer playback.
+The per-file manifests in `build/recorded-{grand,upright,old}.json` record
+the exact source member, correction, measured output tuning, peak, and hash.
+Post-conversion worst measured tuning: Grand 6 cents, Upright 18, Old 2.
+Part gains are measured through the app (`tests/levels/measure.js`) and
+verified against native C++ chord playback (`tests/seq/chordbank.test.js`).
+
+All three CC0 grants permit redistributing the actual recordings in a
+commercial app, with no attribution requirement. Credits are given in About.
+
+## Ukulele (1.9.5a)
+
+`ukulele` / `samples/ukulele-freepats`: Mateusz Dąbrowski's tenor ukulele,
+FreePats 2026-08-11, CC0. Source:
+https://freepats.zenvoid.org/GuitarFamily/ukulele.html and
+https://github.com/freepats/ukulele1. The uploaded 7z uses an unsupported
+compression filter here, so the 13 pitched FLACs were retrieved directly
+from that original repository with its CC0 grant (`samples/licenses/ukulele-cc0.txt`).
+The non-pitched body tap and chuck are not mapped as notes.
+
+Build: `build/recorded-keys.py SOURCE_ROOT . ukulele`, same processing as
+the pianos, with a 3.2-second ceiling. Source members, output hashes and
+measurements: `build/recorded-ukulele.json`. All 13 measured on pitch after
+conversion. The actual source range is C4–C6; pitches outside it use the
+existing player's nearest-note pitch shifting. Every pitched part offers it
+in Samples > Guitars, with existing Sampler Engine entitlement behavior.
+
+## Sampled electric pianos (1.9.5b)
+
+**FM EP** (`epfm`, `samples/ep-fm-vcsl`) and **Digital EP** (`epbright`,
+`samples/ep-bright-vcsl`) use the VCSL TX81Z "FM Piano" and "Piano 1"
+recordings, respectively. These are two different user-programmed patches
+sampled from FM hardware, not recordings of mechanical tine/reed instruments.
+Each uses the middle recorded layer on a C/E/G-sharp grid across C1–C8
+(22 anchors). No claim of velocity-layer switching or embedded hardware
+emulation is made: the existing player pitch-shifts these recordings.
+
+Author: Versilian Studios / Sam Gossner. CC0. Source:
+https://github.com/sgossner/VCSL/tree/master/Electrophones/TX81Z. Original
+license and origin notes are in `samples/licenses/vcsl-keys-cc0.txt` and
+`vcsl-keys-origin.txt`. `build/recorded-keys.py SOURCE_ROOT . ep` builds them;
+per-file manifests are `build/recorded-epfm.json` and `recorded-epbright.json`.
+Post-conversion worst measured tuning: 16 cents and 3 cents, respectively.
+Both are in Samples > Keys on every pitched part and keep the existing
+Sampler Engine entitlement. Electric Piano remains the synthesized voice.
+
+## Garage kit (1.9.5c)
+
+`GARAGE` offers twelve voices: the existing CC0 Hip-Hop kit's kick, snare,
+closed hat and open hat, plus eight distinct Signature Sounds lighter
+percussion recordings from the owner's `SS_Burial_Lighter_PERC_CC0.zip`.
+Only `Lighter_Perc_Burial_01.wav` through `_08.wav` in the archive's
+`Lightr_Prc_Burial_Add_On/` directory are used: those are the exact filenames
+enumerated in the included CC0 grant. The differently named root takes and
+other add-on takes are excluded. The separate kick/clap/teaser ZIPs have no
+recorded redistribution grant and are not shipped.
+
+Original source: https://signaturesounds.org. Full supplied grant:
+`samples/licenses/garage-percussion-cc0.txt`. CC0 permits commercial
+redistribution of these files, not just their use in songs. Credits are
+given voluntarily in About.
+
+`build/garage-percussion.py SOURCE_ROOT SCRATCH_OUTPUT` builds the eight
+new files: 44.1 kHz mono, silence trimmed with a short tail fade, peak at
+0.7 before MP3 VBR q2 encoding. `build/garage-percussion.json` retains the
+source member and SHA256 as well as the output hash and duration. The four
+foundation drums are reused by URL, with no duplicate audio assets.
+
+Garage is in Recorded kits, with explicit voice roles so existing grooves
+and kit changes preserve their kick, backbeat and time. It works on Drums
+and Aux, through the existing groove entitlement and native bank. Closed
+and open hats keep their normal choke group. The percussion voices are
+single recordings, not velocity layers or alternate takes.
+
+Validation: `KITS=GARAGE node tests/seq/bank.test.js` compares native C++
+hits and hat chokes against fresh browser programs; `tests/drums/roles.test.js`
+includes Garage in the kit-swap and groove-role checks.
+
+Garage's finite samples use a pitch-independent cleanup/choke-expiry guard
+at four times their buffer duration, safe for the existing 0.25 minimum
+playback rate. The buffers still end naturally; this avoids an inverse-rate
+stop timestamp the native bank cannot fit. Other kits keep their current path.
