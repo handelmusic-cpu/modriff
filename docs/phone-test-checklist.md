@@ -163,3 +163,4 @@ Since 6.2:
 - [ ] v1.9.4a: not heard on device — Studio: fold and reopen the section cards on all eight pages; switch pages and return; Find and tutorials reveal closed controls; Live pads, keys and widget sheets remain usable after Studio cards are closed.
 - [ ] v1.9.4b: not heard on device — Mix has Mixer and Voices only; Edit synth and sound-picker/Find links open the full editor on the requested Studio part; an older saved Mix synth view returns to Mixer.
 - [ ] v1.9.4c: not heard on device — Studio: two rows with larger labels and separate Drums/Aux entries; each opens its own drum layer with no Kit/Aux row. Scroll to tuck the selector away, restore it with Studio parts or a downward pull, and return to the top; the bottom part switches keep their on/off behavior.
+- [ ] v1.9.4d: not heard on device — Tutorials > Aux drums opens the new Aux page, points at its kit picker, then shows Aux’s mute control in Mix.
