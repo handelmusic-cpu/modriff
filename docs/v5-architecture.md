@@ -95,6 +95,12 @@ Garage uses a pitch-independent cleanup/choke-expiry guard for finite
 samples so pitch shifting remains bankable; the recordings end naturally.
 Source grants and hashes are in samples/licenses and build/garage-percussion.json.
 
+The three new acoustic pianos use their recorded tone (1.9.6a): `naturalTone`
+in `SAMPLE_LIBS` keeps the shared synth Tone/Reso/Sweep filter out of their
+Chords, Melody and Arp graphs, including the native bank recordings. Width,
+Touch Mod, channel EQ and mõdFX remain available; Room retains its existing
+playback. No sample files or saved voice ids change.
+
 ### Audio: native, decided
 
 The app is going to the App Store and the complaint is the processor
