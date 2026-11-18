@@ -173,3 +173,7 @@ Since 6.2:
   must keep its previous sound when an older saved song is loaded.
 - With each new piano, start a band and leave the app; check continuation,
   timing and return to the foreground. These changes are not heard on device.
+
+- Choose Ukulele under Samples > Guitars on each pitched part. Check picked
+  notes and strummed chords, then a band continuing in the background. Not
+  heard on device.

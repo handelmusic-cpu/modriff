@@ -627,3 +627,20 @@ verified against native C++ chord playback (`tests/seq/chordbank.test.js`).
 
 All three CC0 grants permit redistributing the actual recordings in a
 commercial app, with no attribution requirement. Credits are given in About.
+
+## Ukulele (1.9.5a)
+
+`ukulele` / `samples/ukulele-freepats`: Mateusz Dąbrowski's tenor ukulele,
+FreePats 2026-08-11, CC0. Source:
+https://freepats.zenvoid.org/GuitarFamily/ukulele.html and
+https://github.com/freepats/ukulele1. The uploaded 7z uses an unsupported
+compression filter here, so the 13 pitched FLACs were retrieved directly
+from that original repository with its CC0 grant (`samples/licenses/ukulele-cc0.txt`).
+The non-pitched body tap and chuck are not mapped as notes.
+
+Build: `build/recorded-keys.py SOURCE_ROOT . ukulele`, same processing as
+the pianos, with a 3.2-second ceiling. Source members, output hashes and
+measurements: `build/recorded-ukulele.json`. All 13 measured on pitch after
+conversion. The actual source range is C4–C6; pitches outside it use the
+existing player's nearest-note pitch shifting. Every pitched part offers it
+in Samples > Guitars, with existing Sampler Engine entitlement behavior.
