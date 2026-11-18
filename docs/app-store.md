@@ -255,8 +255,7 @@ launch, tap Random, tap play, tap a chord, then `xcrun simctl io <udid> screensh
 Simulator: the shared one gets other sessions' builds installed over it. Driving a new Simulator needs the owner's
 approval in the app once per device.
 
-**IAP review shots** (`screenshots/iap/`, 1320 x 2868) were not retaken here: they are the 6.9.9.3a set. Retake them if
-a pack's copy, price or the sheet changed since (the Theory Pack copy changed at 6.9.9.9.9.9.9.7d).
+**IAP review shots** (`screenshots/iap/`, 1320 x 2868, opaque) were retaken from 1.9.4a: all eleven, including Studio’s EQ, Theory’s pure tuning and Practice’s current playlist-import wording. `verification.json` records each sheet’s text, ownership and image hash; `source/` holds the disposable Simulator capture automation.
 
 There is no Mac set in this folder: the old `mac-16x10-*` files in `v6.9.2/` are the web build in Chrome. Mac App Store
 needs 16:10 shots (2880 x 1800 at 2x, a 1440 x 900 window). `ios/mac-catalyst/run-mac.sh` builds and opens the Mac app, but it
@@ -359,9 +358,7 @@ The descriptions are written to sell, within 45 characters, and each says what t
 not what it is called. Two words are kept out of every field the store shows, because they are
 other companies' trademarks: **iReal** (the Practice & Perform line used to end "iReal batch",
 now "chart import") and **Rhodes** (the Sounds line says "electric piano", as the pack's own list
-does). The pack's list inside the app says "Chart import: a whole playlist at once" (6.9.9.9.9.5), so no
-trademark is named in the sheet either. The `iap/Handel.modRiff.practice.png` review shot was taken before
-that and still shows the old "iReal" bullet: retake it before upload (the line is `MODULE_COPY.practice`).
+does). The pack’s list inside the app and its retaken `iap/Handel.modRiff.practice.png` review shot say "Chart import: a whole playlist at once", so no trademark is named in the sheet either (`MODULE_COPY.practice`).
 
 - **Family Sharing: on for all eleven** (it cannot be turned off once a product is live, and
   mixing on and off is how a family ends up owning half a bundle).
@@ -374,7 +371,7 @@ that and still shows the old "iReal" bullet: retake it before upload (the line i
   eleven different. Upload each under that product's Review Information. Each is the pack's
   sheet over a rolled song, with the store's launch prices filled in; the three Complete Your
   Studio shots come from owning one, two and three packs (Groove; Groove and Sounds; Groove,
-  Sounds and Studio), and `Full Studio` is the All packs screen. They were retaken at 6.9.9.3a
+  Sounds and Studio), and `Full Studio` is the All packs screen. They were retaken at 1.9.4a
   from the web build in a phone-sized browser (not a device) once the descriptions changed, so
   they show the current look and wording. Retake them on a device once a purchase runs, and
   again if a pack's copy, price or the sheet changes.
