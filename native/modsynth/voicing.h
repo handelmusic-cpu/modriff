@@ -29,6 +29,9 @@ enum VoicingStyle { kVoiceClose = 0, kVoiceOpen, kVoiceDrop2, kVoiceDrop3, kVoic
 struct VoicingConfig {
   int style = kVoiceClose;          // the voicing set in Settings (a chord can carry its own: passed per call)
   bool vary = false;                // each fresh strike takes the next voicing type
+  int varyMask = (1 << kVoicingStyles) - 1;   // which types Vary walks through, a bit per VoicingStyle; never 0
+  // The page's field: 0 off; 64 + the mask on; a bare 1 is the older all-six on.
+  void setVaryCode(double d) { vary = d != 0; const int m = d >= 64 ? (int)d - 64 : 0; varyMask = (m & ((1 << kVoicingStyles) - 1)) ? (m & ((1 << kVoicingStyles) - 1)) : (1 << kVoicingStyles) - 1; }
   bool autoInv = true;              // VoiceLead
   int keyRoot = 0;                  // the key (the page's `root`), a pitch class, with the live capo added
   std::vector<int> modeSteps = {0, 2, 4, 5, 7, 9, 11};   // MODES[mode].steps; empty: no key to ask
@@ -115,8 +118,12 @@ class VoiceLead {
     int style = voicing, vk = 0;
     if (c.vary) {
       const int step = vvStep(rootM, rel, c);
-      style = (voicing + step) % kVoicingStyles;
-      vk = step / kVoicingStyles;
+      // The lap is the ticked types, starting at the voicing in use or the next ticked one after it (the page's _varyStart).
+      std::vector<int> lap; for (int t = 0; t < kVoicingStyles; t++) if (c.varyMask >> t & 1) lap.push_back(t);
+      if (lap.empty()) for (int t = 0; t < kVoicingStyles; t++) lap.push_back(t);
+      size_t i0 = 0; for (size_t j = 0; j < lap.size(); j++) if (lap[j] >= voicing) { i0 = j; break; }
+      style = lap[(i0 + step) % lap.size()];
+      vk = step / (int)lap.size();
     }
     std::vector<int> styled; bool haveStyled = false;
     if (style == kVoiceRnb || style == kVoiceNeo) haveStyled = styledVoicing(rootM, rel, style, vk, c, styled);

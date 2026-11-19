@@ -60,7 +60,7 @@ struct ChordScore {
     }
     if(k<n && d[k]==-9) {
       if(k+9>n) return false;
-      k++;s.liveVoice=true;s.root=(int)d[k++];s.slash=(int)d[k++];s.vc.style=(int)d[k++];s.vc.vary=d[k++]!=0;s.vc.autoInv=d[k++]!=0;s.vc.keyRoot=(int)d[k++];s.tapMs=d[k++];
+      k++;s.liveVoice=true;s.root=(int)d[k++];s.slash=(int)d[k++];s.vc.style=(int)d[k++];s.vc.setVaryCode(d[k++]);s.vc.autoInv=d[k++]!=0;s.vc.keyRoot=(int)d[k++];s.tapMs=d[k++];
       auto list=[&](std::vector<int>&v){if(k>=n || d[k]<1 || d[k]>24 || d[k]!=std::floor(d[k]))return false;size_t c=(size_t)d[k++];if(k+c>n)return false;v.clear();while(c--)v.push_back((int)d[k++]);return true;};
       if(!list(s.intervals) || !list(s.vc.modeSteps)) return false;
     }
