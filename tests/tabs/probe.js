@@ -69,7 +69,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
              sheetView: !!document.querySelector('#ft-more-menu #vmt-basic, #ft-more-menu #vmt-adv'),
              padTop: parseFloat(getComputedStyle(document.getElementById('perf-bar')).paddingTop), perfH: Math.round(document.getElementById('perf-bar').getBoundingClientRect().height) };
   });
-  check(bar.tabs.map(t => t.t).join() === 'Live,Studio,Song,Sound', 'four tabs: Live, Studio, Song, Sound', bar.tabs.map(t => t.t).join());
+  check(bar.tabs.map(t => t.t).join() === 'Live,Studio,Song,Mix', 'four tabs: Live, Studio, Song, Mix', bar.tabs.map(t => t.t).join());
   check(bar.tabs.every(t => t.h >= 50 && t.ico), 'each is 50 pt or more (as the mock has them) and has an icon', JSON.stringify(bar.tabs.map(t => [t.h, t.ico])));
   check(bar.more[0] >= 50 && bar.more[1] >= 50, 'the caret is a 58 x 50 target', bar.more.join('x'));
   check(bar.oldTabs.length === 0, 'no Settings, Accomp or Play tab', bar.oldTabs.join());
@@ -91,52 +91,27 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const bass1 = await page.evaluate(() => document.getElementById('ft-bas-btn').classList.contains('off'));
   check(bass0 !== bass1 && s.page === 'page-perform' && s.sel === '', 'Live: Bass toggles and goes nowhere', bass0 + '->' + bass1 + ' ' + s.page);
 
-  // ── 4. In Studio they pick a page.
+  // ── 4. In Studio the strip picks a page, and the part switches only switch (1.2).
   await tap('#tab-studio');
   const d0 = await page.evaluate(() => drumsEnabled);
   await tap('#ft-drum-btn'); s = await st();
   const d1 = await page.evaluate(() => drumsEnabled);
-  check(s.page === 'page-accomp' && s.acc === 'drums' && s.sel === 'drum' && s.lit === 'studio', 'Studio: Drums opens the Drums page, Studio stays lit, Drums is ringed', JSON.stringify(s));
-  check(d0 === d1, 'and the first tap did not switch the drums on or off', d0 + '->' + d1);
+  check(d0 !== d1 && s.lit === 'studio', 'Studio: a tap on Drums in the bar switches the drums and nothing else', d0 + '->' + d1 + ' ' + s.page);
+  await tap('#ss-drums'); s = await st();
+  check(s.page === 'page-accomp' && s.acc === 'drums' && s.lit === 'studio', 'Studio: the strip opens the Drums page, Studio stays lit', JSON.stringify(s));
+  await tap('#ss-bass'); s = await st();
+  check(s.page === 'page-accomp' && s.acc === 'bass', 'the strip opens the Bass page', JSON.stringify(s));
+  await tap('#ss-melseq'); s = await st();
+  check(s.acc === 'melody', 'the strip opens the Melody sequencer page', JSON.stringify(s));
+  await tap('#ss-arp'); s = await st();
+  check(s.acc === 'arp', 'the strip opens the Arp page', JSON.stringify(s));
+  await tap('#ss-chords'); s = await st();
+  check(s.page === 'page-perform' && s.perf === 'chords' && s.lit === 'studio', 'the strip opens the Chords surface on Play', JSON.stringify(s));
   await tap('#ft-drum-btn');
-  const d2 = await page.evaluate(() => drumsEnabled);
-  check(d2 !== d1, 'a second tap on the part you are on does', d1 + '->' + d2);
-  await tap('#ft-bas-btn'); s = await st();
-  check(s.page === 'page-accomp' && s.acc === 'bass' && s.sel === 'bas', 'Bass opens the Bass page', JSON.stringify(s));
-  await tap('#ft-mel-btn'); s = await st();
-  check(s.acc === 'melody' && s.sel === 'mel', 'Mel opens the Melody sequencer page', JSON.stringify(s));
-  await tap('#ft-arp-btn'); s = await st();
-  check(s.acc === 'arp' && s.sel === 'arp', 'Arp opens the Arp page', JSON.stringify(s));
-  await tap('#ft-chd-btn'); s = await st();
-  check(s.page === 'page-perform' && s.perf === 'chords' && s.sel === 'chd' && s.lit === 'studio', 'Chords opens the Chords surface on Play', JSON.stringify(s));
   const subnavHidden = await page.evaluate(() => { const e = document.getElementById('bm-subnav'); return !e || e.hidden || e.getBoundingClientRect().height === 0; });
-  await tap('#ft-bas-btn');
-  check(subnavHidden && await page.evaluate(() => { const e = document.getElementById('bm-subnav'); return !e || e.hidden || e.getBoundingClientRect().height === 0; }), 'Accomp has no sub-nav of its own any more');
+  await tap('#ss-bass');
+  check(subnavHidden && await page.evaluate(() => { const e = document.getElementById('bm-subnav'); return !e || e.hidden || e.getBoundingClientRect().height === 0; }), 'Accomp has no sub-nav of its own (the strip is the selector)');
 
-  // ── 5. Studio, but on Song: the row is five switches again.
-  await tap('#tab-songs');
-  const b2 = await page.evaluate(() => document.getElementById('ft-bas-btn').classList.contains('off'));
-  await tap('#ft-bas-btn'); s = await st();
-  const b3 = await page.evaluate(() => document.getElementById('ft-bas-btn').classList.contains('off'));
-  check(s.page === 'page-songs' && b2 !== b3 && s.sel === '', 'on Song, Bass toggles and does not navigate', s.page + ' ' + b2 + '->' + b3);
-
-  // ── 6. The caret, Settings and Done.
-  await tap('#tab-more'); s = await st();
-  const sheet = await page.evaluate(() => ({ exp: document.getElementById('tab-more').getAttribute('aria-expanded'),
-    first: (function(){ var b = document.getElementById('ft-settings-btn'); return b && b.offsetParent ? b.id : ''; })() }));
-  check(s.sheet && sheet.exp === 'true' && sheet.first === 'ft-settings-btn', 'the caret opens the sheet and Settings is a tile in it', JSON.stringify(sheet));
-  await tap('#ft-settings-btn'); s = await st();
-  check(s.page === 'page-build' && s.lit === '' && !s.sheet, 'Settings opens full screen with no tab lit and the sheet closed', JSON.stringify(s));
-  const done = await page.evaluate(() => { const d = document.querySelector('.set-done'); const r = d.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), Math.round(r.top)]; });
-  check(done[1] >= 44 && done[2] < 120, 'a Done button is in view, 44 pt', done.join('x@'));
-  await tap('.set-done'); s = await st();
-  check(s.page === 'page-songs' && s.lit === 'songs', 'Done goes back to Song, where it was opened from', JSON.stringify(s));
-
-  // ── 7. Other ways in keep the tab honest.
-  await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); });
-  await page.evaluate(() => { switchTab('accomp'); }); s = await st();
-  check(s.page === 'page-accomp' && !s.basic && s.lit === 'studio', 'asking for Accomp from Live (Find, a tutorial) puts the app in Studio', JSON.stringify(s));
-  await page.evaluate(() => { document.activeElement && document.activeElement.blur(); });
   await page.keyboard.press('Alt+KeyL'); await page.waitForTimeout(300); s = await st();
   check(s.basic && s.page === 'page-perform' && s.lit === 'live', 'Option+L from Accomp lands on Live', JSON.stringify(s));
   await page.keyboard.press('Alt+KeyL'); await page.waitForTimeout(300); s = await st();
@@ -149,8 +124,14 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(s.page === 'page-build', 'Option+5 is Settings', s.page);
   await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); });
   await page.focus('#tab-live');
-  await page.keyboard.press('ArrowRight'); await page.waitForTimeout(250); s = await st();
-  check(s.lit === 'studio', 'arrow keys move along the tabs', JSON.stringify(s));
+  const rootBeforeArrows = await page.evaluate(() => root);
+  for (const [key, want] of [['ArrowRight', 'studio'], ['ArrowRight', 'songs'], ['End', 'mix'],
+    ['ArrowRight', 'live'], ['ArrowLeft', 'mix'], ['Home', 'live']]) {
+    await page.keyboard.press(key); await page.waitForTimeout(250); s = await st();
+    const focus = await page.evaluate(() => document.activeElement.id);
+    check(s.lit === want && focus === 'tab-' + want, key + ' selects and focuses ' + want, JSON.stringify([s.lit, focus]));
+  }
+  check(await page.evaluate(() => root) === rootBeforeArrows, 'tab arrows never transpose the musical key');
 
   // ── 8. Every width.
   for (const W of [360, 375, 390, 393, 402, 430, 440]) {

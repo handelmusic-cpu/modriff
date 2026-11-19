@@ -1,0 +1,70 @@
+<!doctype html><meta charset="utf-8"><title>EQ references</title>
+<!-- The EQ's reference numbers: what the browser's own BiquadFilterNode says.
+     Not a test; tests/eq/record-refs.js opens this in headless Chrome and writes
+     tests/eq/refs.json and native/modsynth/eqref.h from what it prints.
+
+     Each case is an EQ in the page's terms (the keys sqMixEq / modo-mastereq hold)
+     and the nodes that EQ becomes in Web Audio, built here by hand and NOT from
+     index.html, so the page's own mapping is what the numbers check:
+       high-pass / low-pass: type highpass / lowpass, Q in dB = 20*log10(q) (the
+         node takes dB), a second node at q = 1/sqrt 2 when the slope is 24;
+       shelves: lowshelf / highshelf at the corner; peaks: peaking, Q linear.
+     The answer is getFrequencyResponse of each node, in dB, summed. -->
+<pre id="out"></pre>
+<script>
+const FREQS = [20, 40, 80, 120, 250, 500, 1000, 2000, 4000, 6000, 8000, 10000, 12000, 16000, 18000, 20000];
+const DEF = {lo:0, mid:0, midHz:1000, hi:0, loHz:120, hiHz:8000, midQ:0.9,
+  hpfOn:0, hpfHz:80, hpfQ:Math.SQRT1_2, hpfSlope:12, lpfOn:0, lpfHz:12000, lpfQ:Math.SQRT1_2, lpfSlope:12,
+  mid2:0, mid2Hz:3000, mid2Q:0.9};
+const cases = [];
+const add = (name, m, sr) => cases.push({name, sr: sr || 48000, model: Object.assign({}, DEF, m)});
+// the filters: both slopes, three resonances each
+for (const slope of [12, 24]) for (const q of [Math.SQRT1_2, 2.5, 8]) {
+  add('hpf ' + slope + ' dB/oct, 200 Hz, Q ' + q.toFixed(2), {hpfOn:1, hpfHz:200, hpfQ:q, hpfSlope:slope});
+  add('lpf ' + slope + ' dB/oct, 4 kHz, Q ' + q.toFixed(2), {lpfOn:1, lpfHz:4000, lpfQ:q, lpfSlope:slope});
+}
+add('hpf 24 dB/oct, 80 Hz, 44.1 kHz', {hpfOn:1, hpfHz:80, hpfQ:1.4, hpfSlope:24}, 44100);
+add('lpf 12 dB/oct, 16 kHz, 44.1 kHz', {lpfOn:1, lpfHz:16000, lpfQ:3, lpfSlope:12}, 44100);
+// the width of the peak
+for (const q of [0.3, 0.9, 4]) add('peak +6 at 1.5 kHz, Q ' + q, {mid:6, midHz:1500, midQ:q});
+add('peak -8 at 3 kHz, Q 4', {mid:-8, midHz:3000, midQ:4});
+// the shelves' corners
+add('low shelf +8, corner 60 Hz', {lo:8, loHz:60});
+add('low shelf -6, corner 300 Hz', {lo:-6, loHz:300});
+add('high shelf +7, corner 3 kHz', {hi:7, hiHz:3000});
+add('high shelf -9, corner 12 kHz', {hi:-9, hiHz:12000});
+// the master's second peak
+add('two peaks +5 at 400 Hz Q 1.5, -4 at 3.5 kHz Q 2', {mid:5, midHz:400, midQ:1.5, mid2:-4, mid2Hz:3500, mid2Q:2});
+// everything at once
+add('everything on', {hpfOn:1, hpfHz:100, hpfQ:1.2, hpfSlope:24, lo:4, loHz:200, mid:-3, midHz:700, midQ:1.1,
+  mid2:5, mid2Hz:2500, mid2Q:0.6, hi:3, hiHz:6000, lpfOn:1, lpfHz:14000, lpfQ:2, lpfSlope:12});
+add('everything on, 44.1 kHz', {hpfOn:1, hpfHz:100, hpfQ:1.2, hpfSlope:12, lo:-4, loHz:90, mid:3, midHz:1800, midQ:3,
+  mid2:-5, mid2Hz:900, mid2Q:0.5, hi:-3, hiHz:9000, lpfOn:1, lpfHz:15000, lpfQ:0.9, lpfSlope:24}, 44100);
+
+const dbOf = q => 20 * Math.log10(q);
+function nodes(ctx, m) {
+  const out = [];
+  const mk = (type, f, q, gain) => {
+    const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = f;
+    if (q != null) n.Q.value = q; if (gain != null) n.gain.value = gain; out.push(n);
+  };
+  if (m.hpfOn) { mk('highpass', m.hpfHz, dbOf(m.hpfQ)); if (m.hpfSlope >= 18) mk('highpass', m.hpfHz, dbOf(Math.SQRT1_2)); }
+  if (m.lo)    mk('lowshelf', m.loHz, null, m.lo);
+  if (m.mid)   mk('peaking', m.midHz, m.midQ, m.mid);
+  if (m.mid2)  mk('peaking', m.mid2Hz, m.mid2Q, m.mid2);
+  if (m.hi)    mk('highshelf', m.hiHz, null, m.hi);
+  if (m.lpfOn) { mk('lowpass', m.lpfHz, dbOf(m.lpfQ)); if (m.lpfSlope >= 18) mk('lowpass', m.lpfHz, dbOf(Math.SQRT1_2)); }
+  return out;
+}
+const res = cases.map(c => {
+  const ctx = new OfflineAudioContext(1, 128, c.sr), f = Float32Array.from(FREQS);
+  const db = FREQS.map(() => 0);
+  for (const n of nodes(ctx, c.model)) {
+    const mag = new Float32Array(f.length), ph = new Float32Array(f.length);
+    n.getFrequencyResponse(f, mag, ph);
+    mag.forEach((v, i) => { db[i] += 20 * Math.log10(v); });
+  }
+  return {name: c.name, sr: c.sr, model: c.model, db: db.map(v => Math.round(v * 1000) / 1000)};
+});
+document.getElementById('out').textContent = 'EQREF' + JSON.stringify({freqs: FREQS, cases: res}) + 'EQREF';
+</script>

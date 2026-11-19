@@ -11,7 +11,7 @@
    banked; changing what is baked into a recording (the Drums fader, a lane's Shape) changes the signature, so the lane is
    recorded again, and the new entry plays at the new level.
 
-   Run: make -C native/modsynth banktest && node tests/seq/bank.test.js        Env: CHROMIUM, PLAYWRIGHT, PASS_DB (90) */
+   Run: make -C native/modsynth banktest && node tests/seq/bank.test.js        Env: CHROMIUM, PLAYWRIGHT, PASS_DB (90), KITS (comma-separated) */
 'use strict';
 const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
 const { spawnSync } = require('child_process');
@@ -21,6 +21,7 @@ catch (e) { try { ({ chromium } = require('playwright-core')); }
   catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); } }
 const root = path.join(__dirname, '..', '..');
 const PASS_DB = parseFloat(process.env.PASS_DB || '90');
+const KITS = (process.env.KITS || '808,909').split(',');
 let fail = 0;
 const ok = (c, label, detail) => { if (!c) fail++; console.log((c ? 'ok   ' : 'FAIL ') + label + (c ? '' : '  -> ' + detail)); };
 function serve() {
@@ -39,13 +40,13 @@ function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>
   const browser = await chromium.launch({ executablePath: chrome, args: ['--autoplay-policy=no-user-gesture-required'] });
   const page = await browser.newPage({ viewport: { width: 430, height: 900 } });
   const errs = []; page.on('pageerror', e => errs.push(String(e)));
-  await page.goto('http://127.0.0.1:' + srv.address().port + '/index.html'); await page.waitForTimeout(1200);
+  await page.goto('http://127.0.0.1:' + srv.address().port + (process.env.PAGE_PATH || '/index.html')); await page.waitForTimeout(1200);
   await page.getByText('Start', { exact: true }).first().click(); await page.waitForTimeout(1500);
 
   const rnd = prng(2468);
   const cases = [];     // what to record fresh: part, kit, lane, vel, accent, pitch, onset
   const out = await page.evaluate(async (arg0) => {
-    const { rndCases } = arg0;
+    const { rndCases, kits } = arg0;
     const sr = 48000, SECS = 8;
     const offline = new OfflineAudioContext(2, sr * SECS, sr);
     audioCtx = offline;
@@ -75,7 +76,13 @@ function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>
       drumsEnabled = true;
     };
     const b64 = typed => { const u = new Uint8Array(typed.buffer, typed.byteOffset, typed.byteLength); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
-    for (const kit of ['808', '909']) {
+    for (const kit of kits) {
+      // Go through the same picker as the app; its preload helper is private
+      // to the drum module. A fallback synth must not pass a sample-kit test.
+      setModTier('pro'); window._sqPickDrumKit(kit);
+      const names = window._sqMachines()[kit].samples || [], until = Date.now() + 15000;
+      while(names.some(n => !window._drumBuffers()[n]) && Date.now() < until) await new Promise(r => setTimeout(r, 20));
+      if(names.some(n => !window._drumBuffers()[n])) throw new Error('kit recordings did not load: ' + kit);
       setScore(kit, kit === '808');
       window._nsBank.have = {}; window._nsBank.bad = {};
       report[kit] = await window._nsBank.ensure();
@@ -129,7 +136,7 @@ function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>
     const refusedOff = await window._nsDrum.start();
     MODGRAPH.on = true;
     return { started: { ok: started.ok, built: started.bank && started.bank.built, failed: started.bank && started.bank.failed.length, scores: posted.length, entries: sentEntries }, refusedOff: refusedOff.why, report, held, fresh, chokeCases, bufs: Array.from(BUFS, ([id, b]) => ({ id, sr: b.sr, ch: b.ch })), sigChanged: sigBefore !== sigAfter, rebuilt: rep2.built, kept: rep2.kept, grew };
-  }, { rndCases: [
+  }, { kits: KITS, rndCases: [
     // controls first: each parameter alone, so a failure names its cause
     { vel: 0.9, accent: false, pitch: 0, onset: 2304 + 128 * 400 },        // the reference itself, on the grid
     { vel: 0.9, accent: false, pitch: 0, onset: 2304 + 128 * 400 + 77 },   // onset between grid lines
@@ -164,7 +171,7 @@ function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>
   const refused = Object.values(out.report).flatMap(r => r.failed.map(f => f.kit + ' ' + f.lane));
   // The one voice the prober cannot bank: its program changes size above some pitch, so no one reference covers it.
   // It is named here so that fixing it, or a second one appearing, is noticed.
-  ok(refused.length === 1 && refused[0] === 'PERC 6', 'only the Aux Perc Triangle (PERC lane 6) is refused, with its reason above', refused.join(', '));
+  ok(KITS.includes('808') ? refused.length === 1 && refused[0] === 'PERC 6' : refused.length === 0, 'only the expected Aux Perc Triangle may be refused', refused.join(', '));
 
   // ── the bank's patches against the fresh recordings ───────────────────────────────────────────
   const buf = [];

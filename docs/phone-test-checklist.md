@@ -141,3 +141,57 @@ Since 6.2:
 - [ ] v6.9.9.9.9.9.9.9.9.7: Macro Osc (iPhone and Mac only): on Melody and Bass open the patch list, the new Macro Osc category (12 patches), and play each over its whole range: none crackles, none is far louder or quieter than the patch you came from, Plucked String and Modal Bar ring when struck. In the synth editor's Mix & Sources the Macro Osc row picks a model and its Harmonics, Timbre, Morph knobs change the sound; Settings > About > Credits lists the code credit. The web page must not show the category or the row.
 - [ ] v7.1: the World Loops set is gone from the Sampler Load sheet (its recordings were made on a Roland unit with no recorded redistribution terms): open Load and check only Samba Band and Samba Loops are listed, and that a song or pad saved earlier with a World Loops clip opens without an error.
 - [ ] v7.1a: background audio with a recorded kit: pick Batá, Rock or any kit marked ◆, Play, lock the phone (also on Bluetooth) → every part keeps playing; Copy diagnostics `nativeTransport.state` reads `native`. The takes still alternate and a soft step still plays a softer recording.
+- [ ] v7.2: on the phone, in Live scroll down the page: the tab row and the parts row fold away (Play, key and tempo stay) and a small pull tab shows; swipe up from the bottom centre (or tap the tab) and they return, with no Play press from the swipe. Tapping Studio, Song or Sound while already on it steps to that tab's next section.
+- [ ] v7.2: switch Bass, Mel or Drums on over nothing: a starter line is written and the band starts at once; Studio > Chords reads pads, colour key, Chord voice (Sub switch with its ?, strum, glide), then the Rhythm builder; Studio > Drums has Kit | Aux above the grid.
+- [ ] v7.3: delete and reinstall (no packs): the chords play on Piano, with no lock on Piano in the voice lists; Electric Piano, Organ, Pad and Vibes still preview twice and then open the Sounds Pack sheet.
+- [ ] v7.3: without the Studio Pack, bounce a take over a minute long: the .wav in Files > mõdRïff > Bounces is the whole take with no fade at the end, the toast names only the 4-bar MIDI limit, and the Stems switch still opens the Studio Pack sheet.
+- [ ] v7.3: Settings > About > Packs > Store with Full Studio owned reads "Every pack listed is unlocked, and every update to them."; the Full Studio sheet lists "All seven packs, and every update to them".
+- [ ] v7.4: with no packs, Studio > Bass: Arrange and Play in are dimmed with a lock and open the Studio Pack sheet; Generate works. Studio > Chords: Attack, Release, Reverb, Tone, Reso, Sweep, Width, Drift and every Filter (Off, Ladder, Screamer, Cutoff, Resonance) are dimmed and open the same sheet. With the Studio Pack all of it works.
+- [ ] EQ filters: on the EQ card (Mix > Mixer, tap a channel name), switch a strip's and the master's high-pass and low-pass on and off over music, at 12 and 24 dB and at high resonance: no click or thump, and the resonance is a clean peak, not a whistle, on real speakers.
+- [ ] v1.1: Settings > Look & feel > Colours > Monotone, in Dark and in Light, outdoors in daylight: the orange (what is sounding, armed, selected) and the grey/paper read at a glance, the labels and part switches are legible without their colours, and nothing is a hue except the orange; switch back to Colour and everything is as it was.
+- [ ] v1.3: the tab that was Sound reads Mix. Mix > Voices on an iPhone SE or mini: every part's name is readable and tappable, and the Voice tone card (Tone, Reso, Sweep, Width, Drift) sits under the list; Chords, Melody and Arp each have a link row to it.
+- [ ] v1.4: Mix > Mixer on an iPhone: nine rows, drag each fader with a thumb (the name at the left is its own button, the rest of the row is the fader); the Level / Pan / Rev / Dly / Drv / Mix switch changes what the faders control; tap a channel name for its strip (pan, four sends, EQ) and the master's (glue, room, bus, clip, EQ); mute and solo dim the row; the meters move. The Live page's Mixer widget still has the old strips.
+- [ ] v1.5: each part page (Chords, Melody, Bass, Mel Seq, Arp) has a mõdSynth card under what you play: ‹ › step the patch, Random rolls one, the caret folds the card, Edit synth opens the editor over the page (patch card, all eight macros, Synth/Mod/FX) and Back returns to the same spot. Try it with a thumb on an iPhone SE, and with the part not on mõdSynth (the card offers to switch it).
+- [ ] v1.6: the mõdSynth editor (Edit synth on a part page, or Mix > mõdSynth) has seven tabs: Osc (chips for Osc 1, 2, 3, Sources, Voice), FM, Filter, Env, LFO, Matrix, FX. Swipe the tab row on an iPhone SE to reach Matrix and FX; turn a few dials on each page; a part set on the greyed Attack/Release sliders lands on Env.
+- [ ] v1.5a: Bounce responds near its padded edge on a narrow phone; Undo and chord-editor fold labels respond across their full height. With a keyboard attached, focus the tab bar: Left/Right/Home/End select tabs without changing the musical key.
+- [ ] v1.8: the EQ card in each channel's strip and the master's (five bands, six on the master): drag the dots with a thumb on an iPhone SE, sweep the filters at 12 and 24 dB over music, Set EQ back to flat. On a free install the card is dimmed and a tap opens the Studio Pack sheet; an EQ saved earlier keeps sounding.
+- [ ] v1.7: the wavetable view on each mõdSynth card and at the top of the editor's Osc page: the oscillator's frames stacked with the Shape setting in front; turn Shape, change Wave, tap the Osc 1/2/3 chips and watch it follow. It shows the saved setting only, it does not move with an LFO or the matrix.
+- [ ] v1.9: Live on an iPhone: Chords are two rows of four split pads (the 7th half on top, the triad half below, both easy to hit), the eighth pad steps Borrowed / Dominants / Mine / More; the melody keys are tall (380 pt) and Touch Mod still follows your finger up the key; every widget has one three-dot button that opens its sheet (the rhythm bar, octave and Touch Mod, the sampler's rows, mõdFX's axes, then Arrange this widget); the Mixer widget is the Mix tab's rows. On a free install the Arrange rows are locked.
+- [ ] v1.9.1: every Studio page on an iPhone SE: the pick row (voice and pattern) is the top of the Bass, Mel Seq, Melody-sequencer, Drums and Arp pages, as in the mock; every button, ? mark, slider row and the Sampler's and mõdFX's small buttons is at least 44 pt (try the Sampler's bank, pattern and chip rows and mõdFX's send chips with a thumb); the Filter and timing rows are cards.
+- [ ] v1.9.2: the words: Find (type EQ, voice tone, mõdSynth, rearrange) lands on the right page; Settings > Tutorials > Levels, Chord rhythm, Sampler and Live & Studio read right and point at what is on screen; the Guide's Mixer, EQ, mõdSynth and Live widget paragraphs describe what you see.
+- [ ] v1.9.3: a part switched to mõdSynth on Mix, then its Studio page opened: the mõdSynth card shows the wavetable at once (it was a black box until something else moved).
+- [ ] v1.9.4: not heard on device — Song > Perform: altered chords and slash basses fit their tiles on a narrow phone; Chart puts a long song title below the heading without squeezing the controls.
+- [ ] v1.9.4a: not heard on device — Studio: fold and reopen the section cards on every Studio page; switch pages and return; Find and tutorials reveal closed controls; Live pads, keys and widget sheets remain usable after Studio cards are closed.
+- [ ] v1.9.4b: not heard on device — Mix has Mixer and Voices only; Edit synth and sound-picker/Find links open the full editor on the requested Studio part; an older saved Mix synth view returns to Mixer.
+- [ ] v1.9.4c: not heard on device — Studio: two rows with larger labels and separate Drums/Aux entries; each opens its own drum layer with no Kit/Aux row. Scroll to tuck the selector away, restore it with Studio parts or a downward pull, and return to the top; the bottom part switches keep their on/off behavior.
+- [ ] v1.9.4d: not heard on device — Tutorials > Aux drums opens the new Aux page, points at its kit picker, then shows Aux’s mute control in Mix.
+- [ ] Launch previews: not heard on device — play the three layout-overhaul previews through the iPhone speaker and headphones; check clicks/crackle, readable grid/rolls and audio/visual timing. Upload the refreshed stills, eleven IAP shots and preview set in App Store Connect.
+
+### Recorded instrument additions (1.9.5)
+
+- On each pitched part, choose Grand, Upright, Old and Room under Samples >
+  Keys. Play low and high notes and repeated chords; compare levels. Room
+  must keep its previous sound when an older saved song is loaded.
+- With each new piano, start a band and leave the app; check continuation,
+  timing and return to the foreground. These changes are not heard on device.
+
+- Choose Ukulele under Samples > Guitars on each pitched part. Check picked
+  notes and strummed chords, then a band continuing in the background. Not
+  heard on device.
+
+- Choose FM EP and Digital EP in Samples > Keys on each pitched part. Compare
+  their distinct tones and levels, soft/hard notes, strums and background
+  band playback. Both are recorded FM patches. Not heard on device.
+
+- Pick Garage in Recorded kits on Drums and Aux. Try a syncopated groove,
+  all eight percussion pads, hat choking, and a kit swap while playing;
+  check levels and background continuation. Not heard on device.
+
+- [ ] v1.9.6: Studio > Chords — the rhythm row follows every chord row, including borrowed, secondary-dominant and My Chords pads.
+- [ ] v1.9.6: Live > Melody and Chords > controls — tap the sound name, choose a patch, then close the sheet; the menu stays visible and responds to touch.
+
+- [ ] v1.9.6a: Play Grand, Upright and Old on Chords and Melody with the synth Tone lowered, then reset it — the recorded piano stays clear; check deliberate Touch Mod, channel EQ and mõdFX still shape it. Not heard on device.
+
+- [ ] v1.9.7: Live and Studio Solo keys are the same shorter height (128 pt); slide up a held key and release it to check Touch Mod and note release by ear.
+- [ ] v1.9.7: Solo three-dot sheet: Width cycles AUTO / S / M / L / XL and survives relaunch; Glide, Mod and Slide Depth / Speed share one row, and every control responds.
+- [ ] v1.9.7: rotate Live both landscape directions: instruments use the width between the safe areas, all eight chord pads stay in one row, and the notch and home indicator cover no playing targets.

@@ -20,6 +20,14 @@ are cheaper to make before code than after.
 
 **App Store submission** (listing text, privacy answers, review notes, screenshots, and the Xcode items still open) is in `docs/app-store.md`. The public site it links to (landing, support, privacy, terms) lives in its own repo at modriff.com.
 
+**iOS SDK signatures (7.5):** Capacitor/Cordova stay at 8.5.2; their official SDKs
+are signed by Drifty Co. (`9YN2HU59K8`). The local Catalyst repackaging changes
+the outer SDK signature, so iOS store archives must use `npm run ios:archive`.
+That command verifies pinned zip checksums, temporarily installs the vendor
+copies, validates Xcode's collected signature records and the distribution IPA,
+and restores the Mac copies. A build phase blocks iOS archives using non-vendor
+SDKs. Full upload gates and upgrade instructions are in `docs/app-store.md`.
+
 **Audio output (6.9.9.9.9.9.9.9.2):** Settings > Sound & response > Audio output.
 On Mac Catalyst, Core Audio lists output-capable devices by stable UID; selection changes only
 a playback-only Core Audio HAL output, leaving the system default alone. Catalyst's RemoteIO output
@@ -44,6 +52,8 @@ The free web page keeps its browser's output controls. Physical Bluetooth/USB sw
 
 **Mac Live (6.9.9.9.9.9.9.4).** In the Catalyst app at window widths of 1000px and up, Live uses two independently scrolling work areas: Chords, Melody and mõdFX on the left; Styles, Sampler, recording and the remaining widgets on the right. The existing widgets are moved once, not duplicated; Studio restores their original hosts. Playing targets, style labels and transport switches are larger. Expanded chord controls keep Chord Forms below the pads, so the reference no longer squeezes the grid sideways. Narrow Mac windows return to one column in the saved widget order; the iPhone layout is unchanged. `tests/mac-layout/live.cjs` drives the built page at 820–1920px and checks expanding, independent scrolling, Live/Studio remounting, a chord click and the phone layout.
 
+**Solo layout (1.9.7).** Live and Studio share 128 pt Solo keys. The Live three-dot sheet exposes the existing saved key width as AUTO / S / M / L / XL (automatic or 26 / 44 / 64 / 96 pt); pinched widths keep their stored numeric value. Glide, Mod and Slide Depth / Speed share one row, followed by the effect and its static knobs. On landscape phones up to 520 pt high, Live uses the safe-area width instead of the portrait 640 pt column, and the chord pads occupy one row. `tests/livefixes/solo-layout.test.js` measures the built page at eight phone sizes and checks width persistence, Live/Studio remounting and real touch modulation. Physical rotation and playing feel remain on the phone checklist.
+
 **Versioning, as decided:** the numbering restarts at 5.0 with the first build
 after `4.9.9.9.9.9.9f`: `major.minor` and an optional trailing letter for a
 follow-up, no third dotted part (the rule is in CLAUDE.md, "Numbering"). "5.0.0 is
@@ -63,6 +73,35 @@ the Live and Studio split, parts as pages, lyrics and Stage), is planned in
 app script runs, and the web versions only fill in what it left out.
 Capacitor fits that exactly. Everything below adds to that layer rather than
 reaching into the app.
+
+### Recorded keys (1.9.5)
+
+The shared Samples > Keys palette now includes Grand (Osiris, CC0), Upright
+(FreePats KW, CC0), Old (FreePats FB, CC0), and Room (the existing
+`pianoreal2`, unchanged audio and saved id). New directories avoid immutable
+sample-cache collisions. They use the existing per-pitch native bank path;
+no DSP fork. Ukulele (FreePats 2026-08-11, CC0) joins Samples > Guitars
+with 13 pitched anchors C4–C6; body tap and chuck are excluded from pitched
+playback. FM EP and Digital EP add two distinct VCSL hardware-FM recorded
+patches under Samples > Keys (CC0; 22 anchors each). They share the existing
+player and native bank; Electric Piano stays synthesized. `build/recorded-keys.py` and its JSON manifests retain source
+notes, tuning measurements and hashes; `samples/SOURCES.csv` and About
+Credits carry provenance. Device checks are in the phone checklist.
+
+Garage (1.9.5c) adds a twelve-voice recorded kit on Drums and Aux: four
+existing CC0 foundation drums and eight explicitly licensed CC0 lighter
+percussion recordings. It has voice-role mappings, lazy sample loads and
+the existing native bank/hat choke path. Only the exact eight files listed
+in the supplied grant ship; unlicensed teaser/kick/clap archives stay out.
+Garage uses a pitch-independent cleanup/choke-expiry guard for finite
+samples so pitch shifting remains bankable; the recordings end naturally.
+Source grants and hashes are in samples/licenses and build/garage-percussion.json.
+
+The three new acoustic pianos use their recorded tone (1.9.6a): `naturalTone`
+in `SAMPLE_LIBS` keeps the shared synth Tone/Reso/Sweep filter out of their
+Chords, Melody and Arp graphs, including the native bank recordings. Width,
+Touch Mod, channel EQ and mõdFX remain available; Room retains its existing
+playback. No sample files or saved voice ids change.
 
 ### Audio: native, decided
 
@@ -291,7 +330,7 @@ file reads (change a table, not a surface):
 - `FREE_LIMITS` and `FREE_NUMBERS`: what free gets. `FEATURE_MODULE` and `NUMBER_MODULE` say
   which module owns each row; the test fails on a row with none, which would be a lock
   nothing could open. A feature no table names is free.
-- `SOUNDS_VOICES` and `voiceModule(w)`: the Sounds Pack's seven voices, then mõdSynth, then
+- `SOUNDS_VOICES` and `voiceModule(w)`: the Sounds Pack's six voices, then mõdSynth, then
   any other recorded voice (the Sampler Engine's).
 - `MODULE_COPY` and `BUNDLE_COPY`: the buyer-facing words. Names are held to 30 characters
   and one-line descriptions to 45, because the descriptions are what goes into App Store
@@ -319,30 +358,34 @@ never opens it on its own.
 | Chord types, voicings | triads, plain sevenths; Close and Spread | **Theory**: 6/9, 11, 13, alterations; Drop 2, Drop 3, Soul, Neo-soul, Vary |
 | Key colours | which key is red (rotation) | **Theory**: the circle-of-fifths order |
 | Pure tuning | Equal temperament | **Theory**: Pure (just) intonation of chords, bass, melody and arp |
-| Voices | Sine, Saw, Square, Tri, SuperSaw, the Upright and Electric basses, Acid, 303 | **Sounds** (`piano`, `rhodes`, `organ`, `pad`, `vibes`, `bass_motown`, `bass_hofner`); **Sampler** (every other recorded voice); **mõdSynth** (`modsynth`) |
+| Voices | Piano (synth), Sine, Saw, Square, Tri, SuperSaw, the Upright and Electric basses, Acid, 303 | **Sounds** (`rhodes`, `organ`, `pad`, `vibes`, `bass_motown`, `bass_hofner`); **Sampler** (every other recorded voice); **mõdSynth** (`modsynth`) |
 | Sampler pads | none to play; the first 9 pads of PA are shown locked and each plays its sample softly twice (`modo-previews`) | **Sampler**: every bank, all 16 pads, your own clips |
 | Slice a clip onto pads | — | **Sampler** (`smpSliceToPads`): Hits, or 4, 8, 16 equal parts, from the sampler editor of a pad |
 | mõdFX pad | Filter Sweep, Tape Stop, Dub Delay | **mõdSynth**: the other patches, the X/Y menus, saving your own |
 | Drum kits | Linn, 808 | **Groove**: all others, the Aux channel |
 | Grooves | 4/4 Basic, Shuffle, Half-Time Rock, 4/4 Funk, House, 3/4 Waltz, 12/8 Slow | **Groove**: the rest, including Bossa Nova |
-| Bass / melody styles | Rock, Funk / Hook, Rock | **Groove**: the rest, and Arrange |
+| Bass / melody styles | Rock, Funk / Hook, Rock | **Groove**: the rest |
 | Meters, steps | 4/4, 3/4, 12/8; 12, 16 or 24 (one bar of 12/8) | **Groove**: any meter, up to 64, a step length per part |
 | Live page | the standard layout | **Studio**: adding, swapping, moving, removing widgets |
-| Audio / MIDI export | first 30 s (fading out) / first 4 bars | **Studio**: the whole take; stems |
+| Studio part pages: how a part is written | Generate (and the pickers, steps, rate, octave) | **Studio**: Arrange (a line per chord) and Play in (keys, MIDI or the home row into a roll or the grid; `noteInputArm`). Both show locked, not hidden (7.4) |
+| Studio part pages: sound shaping | the voice as picked, at its defaults | **Studio** (`soundShaping`): each part's Filter, Attack, Release, Reverb and the five voice-tone knobs (Tone, Reso, Sweep, Width, Drift). The sliders lock; a saved song or link that carries a value still plays it. Picking a voice, Sub, Strum, Glide, Drive and the mixer stay free (`soundShapingSync`) |
+| Audio / MIDI export | the whole mixed-down take / first 4 bars of MIDI | **Studio**: the whole MIDI; stems |
 | Saved songs | 5 (iReal charts count against them) | **Studio**: unlimited |
 | iReal import | one chart per import, counted against the slots | **Practice**: whole playlists, in a library outside the slots |
 | Practice trainer (Songs > Perform) | a visible row; a tap opens the pack sheet | **Practice**: Speed up, Next key, Loop bars (`practiceTrainer`) |
 
-Fresh-start defaults are free ones, with one change: **chords start on Piano (synth), which
-is now the Sounds Pack's**, so a free build plays the chords on Saw instead
-(`FREE_VOICE_FALLBACK`) and a paying one keeps the Piano. Drums on the Linn, bass on Upright
-(the synth one), Aux off for a free build.
+Fresh-start defaults are all free: chords on Piano (synth), which is also the chord voice
+a free build falls back to from a Sounds Pack voice it does not own (`FREE_VOICE_FALLBACK`).
+Drums on the Linn, bass on Upright (the synth one), Aux off for a free build.
+
+Full Studio and Complete Your Studio sell the packs listed and every update to them; no
+buyer-facing text promises packs added later.
 
 **Judgment calls the brief left open, all in the tables above and one line each to move:**
 the two free drum kits are Linn and 808 (606 and Jazz went to Groove); the free bass styles
 are Rock and Funk and the free melody styles Hook and Rock; Bossa Nova left the free grooves
-as a world groove; arp rates beyond 1/8 and 1/16 are Groove; Arrange (a line per chord) is
-Groove; the rotatable key colours stay free and only the fifths order is Theory; the chord
+as a world groove; arp rates beyond 1/8 and 1/16 are Groove; Arrange (a line per chord) moved
+from Groove to Studio in 7.4, with Play in and sound shaping (the owner's call: the Studio tab is where a sound is tweaked); the rotatable key colours stay free and only the fifths order is Theory; the chord
 vocabulary beyond the plain sevenths is Theory (it was already locked); the free sampler gets
 the first two preset banks; free steps are one bar of any free meter, up to 16, with 12/8's
 own 24-sixteenth bar allowed because the free 12/8 groove cannot be written without it.
@@ -468,12 +511,25 @@ at 120 Hz, a peak (Q 0.9) that moves from 200 Hz to 5 kHz, a high shelf at 8 kHz
 plus or minus 12 dB. It sits between the glue compressor and the limiter, so a
 boost cannot get past the limiter, and the Master Bus switch leaves it in (the
 switch bypasses the glue, room and limiter; the EQ is the user's tone, like the
-volume). Opened from **EQ** on the master strip in the mixer. Free: the doc's
-tier table has no row for it, so it is not locked; one entry in `FREE_LIMITS`
-would. (The packs brief lists a 3-band EQ *with a low cut* under the Studio Pack, "when
-built". This one has no low cut and stays free; the low-cut version is what moves.) Saved as a device preference (`modo-mastereq`) and in a project file.
-Native: three parameters appended to the master message (`eqLo`, `eqMid`,
-`eqMidHz`, `eqHi`), a band is not run at all while it is at 0 dB, the gains are
+volume). Saved as a device preference (`modo-mastereq`) and in a project file.
+**Studio Pack (1.8).** The whole EQ, every strip's and the master's, is the Studio Pack's: one row, `eq`, in `FREE_LIMITS` and
+`FEATURE_MODULE`. Only the controls are gated. On a free build the EQ card is drawn, dimmed, with "EQ is part of the Studio Pack"; a tap opens the pack sheet
+(the app's `.tier-locked` convention), a saved EQ (or an old song's) keeps sounding because nothing on the audio path asks, and
+"Set EQ back to flat" is never locked, so nobody is stuck with a curve they cannot change.
+**Grown to six bands (slice 6 of the layout overhaul; DSP only, the panel is still the
+four sliders; 1.8 gave it the card below).** High-pass and low-pass (each on/off, corner, resonance as a linear Q,
+12 or 24 dB per octave = one or two biquads), the two shelves with movable corners
+(`loHz`, `hiHz`; 120 Hz and 8 kHz), the peak with a width (`midQ`, default exactly 0.9)
+and a second peak (`mid2`, `mid2Hz`, `mid2Q`). A part's strip gets the same minus the
+second peak. Every new field is optional in `modo-mastereq` and `sqMixEq[id]` and
+missing means default, so a saved EQ and an old song sound as they did, to the bit
+(`eqtest`'s golden hashes); the filters are off until switched on and count in "flat".
+Both engines take a filter on or off as a glide of its corner from or to the inert end
+(5 Hz, or just under Nyquist) and add or drop the stage only there (`eqpass.h`, `_eqRackApply`).
+`native/modsynth/eqtest.cpp` states the cost: all nine strips and the master at their
+worst are about 0.6% of one core on an M-series Mac.
+Native: parameters appended to the master message (`eqLo`, `eqMid`,
+`eqMidHz`, `eqHi`, then the new ones), a band is not run at all while it is at 0 dB, the gains are
 smoothed and the coefficients rebuilt once a block. `native/modsynth/eqtest.cpp`
 holds the coefficients to the browser's own `getFrequencyResponse` (within
 0.05 dB over five settings and ten frequencies) and the bus to what the filters

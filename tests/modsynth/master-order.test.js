@@ -21,7 +21,11 @@ const js = m ? [...m[1].matchAll(/'([A-Za-z0-9]+)'/g)].map(x => x[1]) : [];
 const pairs = {
   vol: 'VOL', compTh: 'CMP_TH', compRatio: 'CMP_RATIO', limTh: 'LIM_TH', limRatio: 'LIM_RATIO',
   revSend: 'REV_SEND', drvAmt: 'DRV_AMT', drvOut: 'DRV_OUT', webTrim: 'WEB_TRIM',
-  eqLo: 'EQ_LO', eqMid: 'EQ_MID', eqMidHz: 'EQ_MID_HZ', eqHi: 'EQ_HI'
+  eqLo: 'EQ_LO', eqMid: 'EQ_MID', eqMidHz: 'EQ_MID_HZ', eqHi: 'EQ_HI',
+  eqLoHz: 'EQ_LO_HZ', eqMidQ: 'EQ_MID_Q', eqHiHz: 'EQ_HI_HZ',
+  eqHpfOn: 'EQ_HPF_ON', eqHpfHz: 'EQ_HPF_HZ', eqHpfQ: 'EQ_HPF_Q', eqHpfSlope: 'EQ_HPF_SLOPE',
+  eqLpfOn: 'EQ_LPF_ON', eqLpfHz: 'EQ_LPF_HZ', eqLpfQ: 'EQ_LPF_Q', eqLpfSlope: 'EQ_LPF_SLOPE',
+  eqMid2: 'EQ_MID2', eqMid2Hz: 'EQ_MID2_HZ', eqMid2Q: 'EQ_MID2_Q'
 };
 
 let fail = 0;

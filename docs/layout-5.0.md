@@ -37,7 +37,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
 
 ## Decided
 
-1. **Tabs along the bottom: Live | Studio | Song | Sound | caret.** Live and
+1. **Tabs along the bottom: Live | Studio | Song | Mix | caret.** (Sound was renamed Mix in 1.3.) Live and
    Studio become two tabs; the switch leaves the transport bar and the page.
    Settings stops being a tab and becomes the first row of the transport sheet
    (below). Accomp stops being a tab. Tabs are 52 pt tall.
@@ -54,7 +54,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
    version of Studio. **Chords gets a pattern editor** like the others: the chord
    rhythm roll (`rhyEdit`, `crEditOpen`) drawn on the page instead of in a sheet.
    Drums (with its Aux layer), Bass, Melody, Arp, Chords, Sampler and mõdFX are the
-   part pages.
+   part pages. Mix has Mixer and Voices; the duplicate synth pane is removed, and its legacy links open the part editor. Studio’s heavier sections are framed cards with independent 44 pt carets; new fold state lasts for the session, and the existing Chords folds retain their stored keys. Find and tutorials reveal closed controls. Live ignores Studio folds. The pick and write rows stay visible.
    - **A part page keeps every control its parts have today; the layout only
      decides where they sit.** The Sampler is the one that looked cut down in the
      first mock (twelve blank pads), so it is spelled out: the pad count, the pads
@@ -75,12 +75,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
      chosen with Add / reorder widgets (`liveLayout`, a Studio Pack feature, not
      changed here). A Studio part page is that widget's real element at full size,
      moved and not copied, as the Live widgets are moved in from Accomp today.
-3. **Chrome "B": the bottom parts row picks the part in Studio.** In Live it is
-   the five on/off switches it is today. In Studio, a tap selects that part's
-   page; a tap on the part already selected switches it on or off. There is no
-   part strip on the page. Sampler and mõdFX, which are not in the bottom row,
-   are reached from a "Sampler, FX" menu in the page header.
-   - The risk is the double duty on one row. It has to be tried on a phone.
+3. **Studio has one part selector: two rows on top, with 15 pt labels and 44 pt targets.** Drums, Aux, Bass, Melody and Mel Seq are the first row; Arp, Chords, Sampler and mõdFX are the second. Drums and Aux open the existing drum editor on their own layers; its duplicate Kit/Aux row is removed. The selector folds while scrolling, with the same stay-folded rule as Live’s transport. Return to the top, tap Studio parts or pull down from its handle to restore it. The bottom row only switches parts on and off. A second tap on Studio steps through all nine entries.
 4. **A song carries its sounds by default.** Saving a song saves its chart, its
    words and the sounds it was written with. A per-song switch ("Recalls sounds" /
    "Keeps my sounds") decides whether loading it changes what you hear. Setups
@@ -147,35 +142,16 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     ones (`makeOutBtn`, `cpRenderAll`), so nothing is a second copy. A chord grid
     (columns as degrees, all lanes at once) was drawn and rejected.
 
-12. **Extras on and off per widget, so three widgets fit one screen.** Every Live
-    widget's title becomes a button with a caret (a 44 pt target). Tapping it
-    hides or shows that widget's *extras*, the controls around the thing you play:
-    - Chords: the rhythm bar and the More row (the diatonic pads stay).
-    - Melody: the Keys / Strip, octave, Hold and Glide row (the keys stay).
-    - Sampler: the bank, quantize, pattern and pattern-length rows (the pads, Hold,
-      Roll, Stop, Load and Reverse stay). The sampler already has a switch for the
-      rows under its grid (`psLiveApply`); this is that one idea given to every
-      widget.
-    - Drum, Aux, Bass and Melody grids: the pickers, modes, Generate row, steps and
-      rate (the grid stays).
-    - mõdFX: the preset, the parts it aims at, the X and Y parameters, the pad
-      filter (Clean, Moog, MS-20) and Sample, Release, the motion recorder and the
-      mix per part (`fx-presets`, `fx-targets`, `fx-axes`, `fx-motion`,
-      `fx-mixes`). The pad, Hold and Clear stay. Styles and Endings have no extras.
-
-    The choice is kept per widget and goes with the layout; Add / reorder widgets
-    is unchanged, so the order is still the player's. The transport sheet has two
-    eye buttons, one to show every widget's extras and one to hide them all.
-    **Three widgets on one screen needs nothing more**: hide their extras and put
-    them first. (An earlier version had a "Three at once" button that did both and
-    stretched the pads to fill the screen; the owner did not want a button for it.)
-
-    In the mock (708 pt of page on a 932 pt phone), Chords, Melody and mõdFX end at
-    612 pt with their extras off, which leaves about 96 pt, and at 718 pt with all
-    extras on, about 10 pt too tall, and more once a More row is open. Which
-    controls count as extras for each widget is the thing to review: Hold, Glide and
-    the octave buttons are in Melody's extras in the mock and a player may want them
-    kept.
+12. **One ··· sheet per Live widget** (1.9; it was a caret on every title that folded the widget's extras, an "All controls" button
+    at its foot and two eye buttons in the transport sheet). A Live widget shows what you play and a heading with its name, its
+    record dot where it has one, and one ··· button (44 pt). The button turns the widget itself into a sheet at the foot of the
+    screen: its real controls in place (the sound and Sub, the rhythm bar and the Studio chord editors; the Keys / Strip, octave,
+    Hold, Glide and Touch Mod row; the sampler's bank, quantize and pattern rows and the selected pad's editor; mõdFX's preset,
+    axes, targets, motion and mixes), the instrument hidden, and under them **Arrange this widget**: Move up, Move down, Swap
+    with…, Take off the Live page and Back to the standard layout. Changing a layout is the Studio Pack's: on a free install the
+    rows are locked and say so, and Back to the standard layout is always open. Chords are two rows of four split pads, 96 pt
+    tall (each half at least 44), and an eighth pad steps the More row (Borrowed, Dominants, Mine, More); the melody keys are
+    380 pt tall; the Mixer widget is the Mix tab's rows. `tests/layout/live.probe.js` measures all of it.
 
 13. **Settings becomes a short list that opens pages.** It stops being a tab and
     the three panes (General, Sounds, MIDI, about 95 buttons with every section
@@ -200,12 +176,12 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     Chords & timing in full; the other pages are listed by their real rows and
     shortened, and the MIDI pane (long today) only by its top-level items. The group
     names are new; the rows are the app's own.
-14. **Part pages keep their voice controls too.** The Chords page in Studio carries
-    today's Chord Voice panel: octave, Attack, Release, Reverb and size, the voice
-    tone set (Tone, Reso, Sweep, Width, Drift), Sub with its wave and level,
-    Strum and its length, Chord under arp, Glide and its time, and the voicing with
-    Vary. The first mock left it out; the rule in decision 2 covers it. The Melody,
-    Bass and Arp voice panels still have to be checked the same way.
+14. **Part pages keep their voice controls too, except the shared voice tone.** The Chords page in Studio carries today's Chord
+    Voice panel: octave, Attack, Release, Reverb and size, Sub with its wave and level, Strum and its length, Chord under arp,
+    Glide and its time, and the voicing with Vary. The voice tone set (Tone, Reso, Sweep, Width, Drift) is one set shared by the
+    Chords, the Melody strip and the Arp, not a Chords control, so since 1.3 it is a card on Mix > Voices and Chords, Melody and
+    Arp each carry a link row to it. The rule in decision 2 covers the rest; the Melody, Bass and Arp voice panels still have to
+    be checked the same way.
 
 15. **The record dot and Keep stay in the widget headings.** Today the headings of
     Chords, Melody and the Sampler carry a record dot (the sheet's own Capture

@@ -71,7 +71,10 @@ you are on: `6.4` → `6.5`, `6.9` → `6.9.1` → `6.9.2`, `6.9.9` → `6.9.9.1
 part would pass 9, add a decimal part, never carry into the part before). A
 follow-up to the release just out is a letter (`a`–`z`, last part only; more than
 26 means it was a new release). A fifth part is probably the owner's call. Old
-history keeps its old labels. **Never move to a new major (`6.x` → `7.0`) without
+history keeps its old labels. **Release 1.0 is the first App Store submission: the label restarted
+at `1.0` (it was `7.5`) so the page, About and the store listing say the same number; `MARKETING_VERSION`
+in the Xcode project stays `1.0` until the store release moves. From here the steps above apply to `1.x`.**
+**Never move to a new major (`6.x` → `7.0`) without
 asking first**; the rule never makes it next by itself.
 
 The version lives in `#ft-ver`, `#unlock-ver` and `MODRIFF_VERSION`
@@ -140,6 +143,12 @@ from far away: `var`. Cross-region APIs: `window.*` (`window.fxSendsAPI`,
   stems tap it, so a part without one silently has none of the three.
 - `_blChordWin` + `window._blOnChord` — the one chord timeline bass and melody follow.
 - `_slotExtSuffix(slot)` — how a chord quality is spelled everywhere.
+- Appearance is two settings: the mode (Dark/Light, `body.light-mode`) and the colourway (`html[data-way]`, key
+  `modo-colourway`, Colour or Monotone). Monotone is the `#monotone-css` block (tokens, tested by
+  `tests/theme/monotone.test.cjs`) plus a runtime net that greys any hard-coded colour in the sheet, so a new literal
+  colour needs no Monotone rule. A colour painted from script goes through `partColour(id)` / `monoInk(css)` /
+  `monoVar(css)`; a colour set inline as `--pc` stays the hue and CSS neutralises it. Sweep a change with
+  `tests/theme/hue-probe.js`.
 
 ## `modo-` storage keys are load-bearing
 
