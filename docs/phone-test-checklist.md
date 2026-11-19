@@ -32,7 +32,7 @@ been fine for a while):
 - [ ] 5. Native sound, the bounce and the clock — bounce a take; run `bounce-check.py` on it.
 - [ ] 6. Packs and purchase — StoreKit test purchase, restore, Test as Free / Everything.
 - [ ] 7. The older iPad — stress test only, not a target.
-- [ ] 8. Key colours, the master EQ, iCloud — settings stick; iCloud sync across two devices.
+- [ ] 8. Key colours, the master EQ, iCloud — settings stick; iCloud sync across two devices (first build with the entitlement: confirm it signs, the switch turns on and a song arrives on the second device; then deploy the CloudKit schema to Production).
 - [ ] 9. The rhythm and live-page batch — touch, layout and the clock on the Live page.
 - [ ] 10. Native sound, all eight parts at once — clean status line, a recorded voice on the melody,
   a stem bounce, background. (The last step of the Web Audio removal is not waiting on this.)
