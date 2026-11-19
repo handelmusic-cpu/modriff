@@ -195,3 +195,4 @@ Since 6.2:
 - [ ] v1.9.7: Live and Studio Solo keys are the same shorter height (128 pt); slide up a held key and release it to check Touch Mod and note release by ear.
 - [ ] v1.9.7: Solo three-dot sheet: Width cycles AUTO / S / M / L / XL and survives relaunch; Glide, Mod and Slide Depth / Speed share one row, and every control responds.
 - [ ] v1.9.7: rotate Live both landscape directions: instruments use the width between the safe areas, all eight chord pads stay in one row, and the notch and home indicator cover no playing targets.
+- [ ] v1.9.9: with only chords playing (chord rhythm on, drums off), switch Melody on: it starts at once; switch Arp on: it sounds; Generate on Melody lands and plays within a bar or two.
