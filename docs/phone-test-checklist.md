@@ -204,3 +204,4 @@ Since 6.2:
 - [ ] Live bottom row: a long hold (about half a second) on Drums, Aux, Bass, Melody, Chords or Sampler opens that part's Studio page without switching the part; a quick tap still switches it.
 - [ ] Vary picker (Settings > Chords & timing, and the Chords page): with Vary on, a Vary through row appears; untick some voicings and tap one chord repeatedly in Live (and play a song) and only the ticked ones come round; the last one cannot be unticked; the choice survives saving and reloading a setup.
 - [ ] v1.9.9.4b: open Studio on Drums upright: the landscape pill shows once; tap Bass and it is gone at once; leave Studio and come back on Drums and it does not show again until the app is relaunched.
+- [ ] v1.9.9.5: Live bottom row has Arp and the arp rate chip again; start Bass or Melody from its own Studio page Play, then switch Drums, Melody or Bass on (bottom row or Active/Mute) and each one joins on the next bar at once.

@@ -8170,9 +8170,9 @@ body:not(.mode-basic) .studio-strip.ss-placed { display:grid; grid-template-colu
 .ac-more[aria-expanded="true"] { background:var(--surf2); }
 /* The bottom part row is the Live surface's. On Studio the strip above is the one selector, so the row is hidden there.
    It is hidden with visibility, not display: the transport bar sits on that row's space, and removing the space would
-   move the transport. On Live the Arp switch and its rate are left out (Arp is not one of the Live row's parts). */
+   move the transport. Live keeps the Arp switch and its rate on the row: they were left out once (Arp is not one of the
+   canonical PARTS) and the owner wanted the arp one tap away mid-performance. */
 body:not(.mode-basic) .perf-bar .ft-parts { visibility:hidden; pointer-events:none; }
-body.mode-basic .perf-bar .ft-pcol { display:none !important; }
 .ss-pull { display:none; grid-column:1/-1; justify-self:center; align-items:center; justify-content:center; gap:8px;
  min-width:140px; min-height:44px; padding:0 12px; border:1px solid var(--border2); border-radius:10px;
  background:var(--surf2); color:var(--text); font:600 14px 'Outfit',sans-serif; touch-action:manipulation; cursor:pointer; }
@@ -10001,7 +10001,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.4d</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.5</span></div>
  </div>
 </div>
 
@@ -11474,7 +11474,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.4d</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.5</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12670,7 +12670,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.4d';
+const MODRIFF_VERSION = '1.9.9.5';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -24074,7 +24074,7 @@ function setDrumsEnabled(on){
 }
 function ftDrumClick(){
  setDrumsEnabled(!drumsEnabled);
- if(drumsEnabled) starterHear(starterOnEnable('drums'));
+ if(drumsEnabled){ var _wrote = starterOnEnable('drums'); _joinBandClock(); starterHear(_wrote); }
  if(typeof track==='function') track('drums_toggled',{enabled:drumsEnabled});
 }
 // The aux layer's own on/off. It lives in the sequencer (sqLayers[1].on) rather
@@ -32639,7 +32639,19 @@ function _transportRunning(){
 }
 // Something is sounding on the clock: the transport above, or the chord rhythm alone. A layer switched on now joins it at once; the
 // transport test alone counted only drums, so Melody, Bass or Arp switched on over chords waited for a Play that was not coming.
-function _anythingPlaying(){ return _transportRunning() || crActive(); }
+// A part running alone counts too: Bass or Melody started from its own page's Play has no drum clock under it
+// (blPlaying/mlPlaying, sqPlaying false), and with only the two tests above, switching Drums, Melody or Bass on over it
+// waited for a Play that was not coming, because nothing said the band was running.
+function _anythingPlaying(){
+ return _transportRunning() || crActive() || (typeof songLoopActive!=='undefined' && !!songLoopActive)
+  || !!(typeof window._blPlaying==='function' && window._blPlaying())
+  || !!(typeof window._mlPlaying==='function' && window._mlPlaying());
+}
+// Drums and Aux are layers of the drum sequencer, and the sequencer is the master clock: switching one on while the band is
+// running but the sequencer is not (Bass or Melody playing alone) starts it. Drums switched on over silence still wait for Play.
+function _joinBandClock(){
+ if(_anythingPlaying() && !(typeof window._sqPlaying==='function' && window._sqPlaying())) document.dispatchEvent(new CustomEvent('sq-start-request'));
+}
 function _clockShouldRun(){
  return !!(rhythmOn || _arpSounding() || metronomeOn || crActive()
    || (typeof window._sqPlaying==='function' && window._sqPlaying())
@@ -61084,6 +61096,7 @@ function sqToggleLayer(i){
   // beat when it goes on over an empty kit (ftDrumClick); the dot did not, so it lit the kit over silence.
   if(i===0 && sqLayers[0].on && typeof starterOnEnable==='function') starterOnEnable('drums');
   if(i===1 && sqLayers[1].on && typeof starterOnEnable==='function') starterOnEnable('aux');
+  if(sqLayers[i].on && typeof _joinBandClock==='function') _joinBandClock();
 }
 function sqSetLayerOn(i, on){
   i = i ? 1 : 0;
