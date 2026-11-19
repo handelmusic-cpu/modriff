@@ -86,6 +86,10 @@ CONFIGS.push(
   vcfg('Neo-soul in C minor', { voicing: 'neosoul', mode: 'minor', root: 0 }),
   vcfg('Neo-soul in D dorian', { voicing: 'neosoul', mode: 'dorian', root: 2 }),
   vcfg('Vary on, from Close (a lap through all six types, then the next shape)', { vary: true }, { secs: 200 }),
+  vcfg('Vary on from Close, only Close + Drop 3 + Neo-soul ticked', { vary: true, varySet: ['close', 'drop3', 'neosoul'] }, { secs: 200 }),
+  vcfg('Vary on from Spread, Spread not ticked (starts at the next ticked, Drop 2)', { vary: true, voicing: 'open', varySet: ['drop2', 'rnb'] }, { secs: 200 }),
+  vcfg('Vary on from Neo-soul, only Neo-soul ticked (shapes of one type)', { vary: true, voicing: 'neosoul', varySet: ['neosoul'] }, { secs: 200 }),
+  vcfg('120 random chords, Vary on from Drop 3, Drop 2 + Drop 3 + Soul ticked', { vary: true, voicing: 'drop3', varySet: ['drop2', 'drop3', 'rnb'] }, { sections: randomSong(71, 120), secs: 250 }),
   vcfg('Vary on, from Drop 2, Length 1 beat at 100 BPM (the decay is a beat)', { vary: true, voicing: 'drop2', comp: 'bars', strum: false, chordBeats: 1, decay: 3 }, { bpm: 100, secs: 260 }),
   vcfg('VoiceLead off, Close', { autoInv: false }),
   vcfg('VoiceLead off, Soul', { autoInv: false, voicing: 'rnb' }),
@@ -224,7 +228,7 @@ CONFIGS.push(
       window._sqSetSwing8(!c.sw16);
       // how the chords are voiced and struck, and the memory the voicing leads from
       const V = c.voice || {};
-      voicing = V.voicing || 'close'; voiceVary = !!V.vary; autoInvOn = V.autoInv !== false; strumMode = !!V.strum; chordBeats = V.chordBeats || 0;
+      voicing = V.voicing || 'close'; voiceVary = !!V.vary; setVaryPicks(V.varySet || null); autoInvOn = V.autoInv !== false; strumMode = !!V.strum; chordBeats = V.chordBeats || 0;
       wetDry = V.wet != null ? V.wet : 0.5; chordsEnabled = !V.chordsOff; document.getElementById('decay').value = V.decay || 2;
       if (V.mode) { mode = V.mode; }
       if (V.root != null) root = V.root;

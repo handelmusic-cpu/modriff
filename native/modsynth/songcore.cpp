@@ -60,7 +60,7 @@ bool SongScore::fromDoubles(const double *d, size_t n, size_t *used) {
     if (!need(8)) return false;
     SongVoiceCfg &v = s.voice;
     v.on = true; v.kit = (int)d[k]; v.play = d[k + 1] != 0; v.pedal = d[k + 2] != 0;
-    v.vc.style = (int)d[k + 3]; v.vc.vary = d[k + 4] != 0; v.vc.autoInv = d[k + 5] != 0; v.vc.keyRoot = (int)d[k + 6];
+    v.vc.style = (int)d[k + 3]; v.vc.setVaryCode(d[k + 4]); v.vc.autoInv = d[k + 5] != 0; v.vc.keyRoot = (int)d[k + 6];
     const double nst = d[k + 7]; k += 8;
     if (v.vc.style < 0 || v.vc.style >= kVoicingStyles || !(nst >= 0 && nst <= 24) || !need((size_t)nst + 10)) return false;
     v.vc.modeSteps.clear();

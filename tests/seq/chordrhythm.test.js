@@ -26,6 +26,7 @@ function serve() {
 }
 const CONFIGS = [
   { name: 'native Vary and voice leading, slash chord', nativeVoice:true,vary:true,key:'strum',bpm:120,chord:[60,[0,4,7,-8]],swing:0,swing8:true,bars:12 },
+  { name: 'native Vary with a ticked subset, slash chord', nativeVoice:true,vary:true,varySet:['open','drop2','neosoul'],key:'strum',bpm:120,chord:[60,[0,4,7,-8]],swing:0,swing8:true,bars:12 },
   { name: 'the built-in strum rhythm, C major, 120 BPM', key: 'strum', bpm: 120, chord: [60, [0, 4, 7]], swing: 0, swing8: true, bars: 6 },
   { name: 'the same with the Feel swing at 40 on the eighths, 100 BPM', key: 'strum', bpm: 100, chord: [60, [0, 4, 7]], swing: 40, swing8: true, bars: 6 },
   { name: 'a drawn rhythm with soft, plain and accented hits, its own swing', def: { cells: { 0: { on: 1, acc: 1 }, 3: { on: 1, soft: 1 }, 6: { on: 1 }, 8: { on: 1, acc: 1 }, 11: { on: 1, soft: 1 }, 14: { on: 1 } }, swing: 30 }, bpm: 110, chord: [57, [0, 3, 7, 10]], swing: 0, swing8: true, bars: 6 },
@@ -61,7 +62,7 @@ const CONFIGS = [
     for (const c of configs) {
       document.getElementById('bpm').value = c.bpm; c.bpm = parseFloat(document.getElementById('bpm').value);
       window._sqSetSwing(c.swing); window._sqSetSwing8(c.swing8);
-      chordsEnabled = true; songLoopActive = false;voiceVary=!!c.vary;voicing='close';autoInvOn=true;root=0;mode='major';_prevVoices=[];_styledPrevTop=null;_jazzPrev=null;_vvCount={};_vvHist={};_vvLastId=null;CR.nativeTapMs=0;
+      chordsEnabled = true; songLoopActive = false;voiceVary=!!c.vary;setVaryPicks(c.varySet||null);voicing='close';autoInvOn=true;root=0;mode='major';_prevVoices=[];_styledPrevTop=null;_jazzPrev=null;_vvCount={};_vvHist={};_vvLastId=null;CR.nativeTapMs=0;
       CR.on = true; CR.preview = null; CR.chord = { root: c.chord[0], intvs: c.chord[1].slice() }; CR.tapT = -100;
       if (c.def) { const d = rhyBlank(c.def.steps || 16); Object.keys(c.def.cells).forEach(i => Object.assign(d.cells[i], c.def.cells[i])); d.swing = c.def.swing != null ? c.def.swing : null; d.name = 'test'; CR.key = 'u:' + 'test'; CR.def = rhyNorm(d); }
       else { CR.key = c.key; CR.def = null; }

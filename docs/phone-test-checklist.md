@@ -202,3 +202,4 @@ Since 6.2:
 - [ ] Studio > Bass and > Melody: the roll starts right under the header on SE, Pro and Pro Max; ··· opens timing, sound and saved patterns; Active/Mute in the header switches the part.
 - [ ] Live: Borrowed row is closed on first launch and opens on + Borrowed; the Solo keys show a pastel bar on every root; the landscape prompt is a frosted pill at mid-right that fades by itself and lets taps through.
 - [ ] Live bottom row: a long hold (about half a second) on Drums, Aux, Bass, Melody, Chords or Sampler opens that part's Studio page without switching the part; a quick tap still switches it.
+- [ ] Vary picker (Settings > Chords & timing, and the Chords page): with Vary on, a Vary through row appears; untick some voicings and tap one chord repeatedly in Live (and play a song) and only the ticked ones come round; the last one cannot be unticked; the choice survives saving and reloading a setup.
