@@ -9934,7 +9934,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.8</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9</span></div>
  </div>
 </div>
 
@@ -11405,7 +11405,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.8</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12601,7 +12601,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.8';
+const MODRIFF_VERSION = '1.9.9';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -23873,6 +23873,8 @@ let arpNotes=[], arpIdx=0, arpDir=1, arpGateIdx=0, arpRateIdx=ARP_RATE_DEFAULT;
 // once-a-second watchdog (ensureClockRunning) saw work to do a second after
 // every stop, re-armed the tick chain, and the arp played on forever.
 var arpSounding=false;
+// Set by Play while the arp is on, cleared by Stop. The transport test below does not count the arp, so a chord change with no drums, bass or melody running used to silence an arp that Play had just started.
+var _arpPlayRequested=false;
 let _arpBounceVel=1.0;
 let arpVelShape='flat';
 let chordBeats=0;
@@ -32542,6 +32544,9 @@ function _arpSounding(){ return !!(arpOn && arpSounding && arpNotes.length); }
 function _transportRunning(){
  return !!(rhythmOn || (typeof window._sqPlaying==='function' && window._sqPlaying()));
 }
+// Something is sounding on the clock: the transport above, or the chord rhythm alone. A layer switched on now joins it at once; the
+// transport test alone counted only drums, so Melody, Bass or Arp switched on over chords waited for a Play that was not coming.
+function _anythingPlaying(){ return _transportRunning() || crActive(); }
 function _clockShouldRun(){
  return !!(rhythmOn || _arpSounding() || metronomeOn || crActive()
    || (typeof window._sqPlaying==='function' && window._sqPlaying())
@@ -34468,7 +34473,7 @@ function _endingDropRhythm(at){
  try{ if(typeof window._sqPlaying==='function' && window._sqPlaying()) document.dispatchEvent(new CustomEvent('sq-stop-request')); }catch(e){}
  try{ if(typeof window._blPlaying==='function' && window._blPlaying() && typeof window._blPlayImpl==='function') window._blPlayImpl(); }catch(e){}
  try{ if(typeof window._mlPlaying==='function' && window._mlPlaying() && typeof window._mlPlayImpl==='function') window._mlPlayImpl(); }catch(e){}
- try{ arpSounding=false; arpIdx=0; arpDir=1; arpGateIdx=0; }catch(e){}
+ try{ arpSounding=false; _arpPlayRequested=false; arpIdx=0; arpDir=1; arpGateIdx=0; }catch(e){}
  try{ clearTimeout(clockTimer); }catch(e){}
  try{ if(typeof hardKillAll==='function') hardKillAll(at); }catch(e){}
  try{ if(typeof syncFixedTransport==='function') syncFixedTransport(); }catch(e){}
@@ -35288,7 +35293,7 @@ function setArpChord(rootM,intvs,func){
  // transport. Playing a chord by hand is a request to hear THE CHORD; the arp
  // is a transport layer like the bass and the drums, and starts when they do.
  // startEverything re-arms it from lastChordIntvs on the next Play.
- arpSounding=_transportRunning();
+ arpSounding=_anythingPlaying() || (arpOn && _arpPlayRequested);
  const txt=`<span class="arp-dot"></span>Loaded ${nn(rootM)} · ${arpNotes.length} notes`;
  ['arp-status','arp-status2'].forEach(id=>{ const e=document.getElementById(id); if(e) e.innerHTML=txt; });
  _arpPreview();
@@ -35334,7 +35339,7 @@ function toggleArp(){
   // stopped transport — the one layer in the app that would play without the
   // transport, which reads as the app having got stuck rather than as a
   // feature. It lights now and waits for Play, the way Bass, Mel and Drums do.
-  var masterRunning=_transportRunning();
+  var masterRunning=_anythingPlaying();
   arpSounding=masterRunning;
   if(masterRunning){
    const ctx=getCtx(); if(ctx){arpNextBeat=clockAlignTo(ctx,arpStepSec()); try{ tapWait('ft-arp-btn', arpNextBeat - ctx.currentTime); }catch(e){} }
@@ -53822,7 +53827,7 @@ function stopEverything(){
  // do and re-arm the tick chain a second later, so the arp went on playing
  // after Stop. It has to land after stopSongLoopIfActive() above, which
  // reloads the arp chord for the pad-press-during-a-song case.
- arpSounding=false;
+ arpSounding=false; _arpPlayRequested=false;
  arpIdx=0; arpDir=1; arpGateIdx=0;
  // The chord rhythm is a transport layer too: Stop ends it (it is armed still, and a chord tap starts it again).
  try{ crPreviewStop(); crStop(); }catch(e){}
@@ -53951,7 +53956,7 @@ function startEverything(){
  // what actually restarts it, with the last chord it was playing.
  if(arpOn){
   if(!arpNotes.length&&lastChordIntvs&&lastChordIntvs.length) setArpChord(lastChordRoot,lastChordIntvs,lastChordFunc);
-  arpSounding=!!arpNotes.length;
+  arpSounding=!!arpNotes.length; _arpPlayRequested=true;
   if(arpSounding&&_ctx){ arpNextBeat=CLOCK_EPOCH; arpIdx=0; arpDir=1; arpGateIdx=0; }
  }
  if(globalSongMode&&_hasSong&&!songLoopActive&&typeof startSongLoop==='function'){
@@ -56956,7 +56961,7 @@ function blPlay(){ if(window._blPlayImpl) window._blPlayImpl(); }
 function ftBassClick(){
   blEnabled=!blEnabled;
   var wrote = blEnabled ? starterOnEnable('bass') : false;   // before the part starts, so its first loop has the line
-  var masterPlaying=rhythmOn||(typeof window._sqPlaying==='function'&&window._sqPlaying());
+  var masterPlaying=_anythingPlaying();
   if(blEnabled&&masterPlaying){
     if(!(typeof window._blPlaying==='function'&&window._blPlaying())&&typeof window._blPlayImpl==='function') window._blPlayImpl();
   } else if(!blEnabled&&typeof window._blPlaying==='function'&&window._blPlaying()&&typeof window._blPlayImpl==='function'){
@@ -56994,7 +56999,7 @@ function mlGenerateAndArm(){
 function ftMelClick(){
   mlEnabled=!mlEnabled;
   var wrote = mlEnabled ? starterOnEnable('mel') : false;
-  var masterPlaying=rhythmOn||(typeof window._sqPlaying==='function'&&window._sqPlaying());
+  var masterPlaying=_anythingPlaying();
   if(mlEnabled&&masterPlaying){
     if(!(typeof window._mlPlaying==='function'&&window._mlPlaying())&&typeof window._mlPlayImpl==='function') window._mlPlayImpl();
   } else if(!mlEnabled&&typeof window._mlPlaying==='function'&&window._mlPlaying()&&typeof window._mlPlayImpl==='function'){
