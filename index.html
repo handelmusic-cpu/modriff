@@ -10001,7 +10001,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.8</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9</span></div>
  </div>
 </div>
 
@@ -11474,7 +11474,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.8</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12670,7 +12670,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.8';
+const MODRIFF_VERSION = '1.9.9.9';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -64389,7 +64389,16 @@ window._nsIntonation = {
 // Hand chords are changes, not another clock. The host ignores them unless a
 // native follower is running; the public page transport retains its scheduler.
 window._nsLiveChord = {
- last: null,
+ last: null, slot: null,
+ // A follower started after the chord was played (Bass, Melody or Arp switched on mid-run, or Play pressed over a chord tapped
+ // first) never heard it: the host drops a hand chord with "no native followers", so the part ran unfollowed (the melody not at
+ // all) until the next tap. The held chord is sent again once a follower runs. _blOnLiveChord reopens its window at now, which a
+ // live chord has to start on (the host rejects a window that began earlier), and sends it.
+ resend: function(){
+  var s = this.slot;
+  if(!s || s.isRest || (typeof songLoopActive !== 'undefined' && songLoopActive) || typeof window._blOnLiveChord !== 'function') return;
+  window._blOnLiveChord(s);
+ },
  send: function(slot, at){
   var P = (typeof modNativePlugin === 'function') ? modNativePlugin() : null;
   if(!MODGRAPH.on || !P || !P.seqLiveChord || (typeof songLoopActive !== 'undefined' && songLoopActive)) return Promise.resolve(null);
@@ -64990,6 +64999,7 @@ window._nativeTransport = {
   me.attempted=true;me.check(await P.seqTransportStart({options:_mgB64(Float64Array.from(options)),token:++me.token}));
   if(gen!==me.generation)return;
   me.state='native';window._nsEvents.outputBlocked=false;me.config=c;me.last={ok:true};
+  if(!c.song && (c.bass||c.mel||c.arp)) window._nsLiveChord.resend();
   if(c.song){window._nsSong.driving=true;window._songMirror.seen=0;window._songMirror.chorusSeen=0;window._songMirror.trainerBpm=0;window._nsSong.watch(true);}
   _bgSyncNative();me.timer=setInterval(function(){var generation=me.generation;me.poll().catch(function(e){me.fallback(generation,e);});},80);
   await me.poll();
@@ -65018,6 +65028,8 @@ window._nativeTransport = {
    if(c.chord && !(m.chord&&m.chord.running))me.check(await P.seqChordStart({bpm:c.bpm,align:true,leadMs:500,kit:window._nsKitCode('chord:'+_wp('chord.voice'))}));
    if(!c.chord && m.chord&&m.chord.running)await P.seqChordStop();
    if(!c.arp && m.arp.running)await P.seqArpStop();if(!c.mel && m.mel.running)await P.seqMelStop();
+   // A part switched on over the chord you are holding follows it from the start, not from your next tap.
+   if(!c.song && ((c.bass&&!m.bass.running) || (c.mel&&(!m.mel.running||m.mel.bySong)) || (c.arp&&(!m.arp.running||m.arp.bySong))))window._nsLiveChord.resend();
    me.config=c;
   }finally{me.updating=false;}
  },
@@ -66266,7 +66278,7 @@ window._blOnLiveChord = function(slot){
   window._blOnChord(slot, at, 3600, null, 0);
   // The same chord drives all native followers. A native song protects its
   // own windows too: a late bridge call from a tap cannot erase the chart.
-  if(window._nsLiveChord) window._nsLiveChord.send(slot, at);
+  if(window._nsLiveChord){ window._nsLiveChord.slot = slot; window._nsLiveChord.send(slot, at); }
 };
 window._blPeekLast = function(){ return _blChordWin[_blChordWin.length-1] || null; };
 // The committed windows themselves, for the melody generator's copy of the chart (window._mlNativeChords).

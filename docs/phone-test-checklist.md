@@ -208,3 +208,4 @@ Since 6.2:
 - [ ] v1.9.9.6: no Active/Mute button on any Studio page or on Live; the bottom row's keys still switch the parts.
 - [ ] v1.9.9.7: Studio pages (Chords, Melody, Sampler, mõdFX, Drums, Bass, Melody seq) show the bottom part keys; scrolling down folds them with the Studio strip, scrolling to the top or the pull tab brings both back; Song, Mix and Settings still show no part keys.
 - [ ] v1.9.9.8: Studio > Drums: Kit | Groove, then the step grid right under it, then one toolbar (Fill, Duplicate x2, Tuplets, Audition, CLR, Place | Edit, zoom) below the grid, as on Bass and Melody; the grid shows on the first screen.
+- [ ] v1.9.9.9: play chords with Play running, then switch Bass, Melody or Arp on: it sounds at once and follows the chord you are holding (before, it ran unfollowed until your next tap, and a melody could stay silent).
