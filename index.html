@@ -49403,6 +49403,44 @@ function ftPartTap(part){
  wire();
  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', wire);
 })();
+// A long hold on a bottom-row switch opens that part's Studio page; a tap still switches the part on or off. The hold
+// fires at HOLD_MS while the finger is still down, and the click that the same press ends with is swallowed, so a hold
+// does not also toggle the part. Moving off the button, or lifting early, cancels it.
+var PART_HOLD_MS = 500;
+var PART_HOLD_PART = {'ft-drum-btn':'drums','ft-aux-btn':'aux','ft-bas-btn':'bass','ft-mel-btn':'mel',
+                      'ft-arp-btn':'arp','ft-chd-btn':'chords','ft-smp-btn':'smp'};
+(function wirePartHold(){
+ var swallow = null;
+ // Capture on the document, so it runs before the button's own onclick and can stop it.
+ document.addEventListener('click', function(e){
+  if(swallow){ e.stopImmediatePropagation(); e.preventDefault(); swallow = null; }
+ }, true);
+ function wire(){
+  Object.keys(PART_HOLD_PART).forEach(function(id){
+   var b = document.getElementById(id);
+   if(!b || b._holdWired) return;
+   b._holdWired = true;
+   var t = null;
+   b.addEventListener('pointerdown', function(){
+    clearTimeout(t);
+    t = setTimeout(function(){
+     t = null;
+     swallow = id;
+     partOpen(PART_HOLD_PART[id]);
+    }, PART_HOLD_MS);
+   });
+   ['pointerup','pointerleave','pointercancel'].forEach(function(ev){
+    b.addEventListener(ev, function(){
+     clearTimeout(t); t = null;
+     // If the hold fired but no click follows (the finger left the button), drop the swallow so the next real tap is not eaten.
+     if(swallow === id) setTimeout(function(){ if(swallow === id) swallow = null; }, 400);
+    });
+   });
+  });
+ }
+ wire();
+ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', wire);
+})();
 // ── Heard, but not yet sounding (6.6) ──
 // Things in this app wait for the music before they start: Bass and Melody join on the drums' next bar line, the
 // Arp on its next step, the Sampler pattern on the next bar, a quantized pad on the grid. The control answered
