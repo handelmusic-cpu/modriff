@@ -197,11 +197,12 @@ Since 6.2:
 - [ ] v1.9.7: Solo three-dot sheet: Width cycles AUTO / S / M / L / XL and survives relaunch; Glide, Mod and Slide Depth / Speed share one row, and every control responds.
 - [ ] v1.9.7: rotate Live both landscape directions: instruments use the width between the safe areas, all eight chord pads stay in one row, and the notch and home indicator cover no playing targets.
 - [ ] v1.9.9: with only chords playing (chord rhythm on, drums off), switch Melody on: it starts at once; switch Arp on: it sounds; Generate on Melody lands and plays within a bar or two.
-- [ ] Studio strip (5 + 4): tap each of the nine pages on a phone; the solid, muted and on states read by eye, and Active/Mute beside the Voice picker turns the band's part on and off with the same wait as the bottom row.
+- [ ] Studio strip (5 + 4): tap each of the nine pages on a phone; the solid, muted and on states read by eye.
 - [ ] Mix > Voices: a long patch name wraps to two lines and every row's colour bar is the part's colour (not black).
-- [ ] Studio > Bass and > Melody: the roll starts right under the header on SE, Pro and Pro Max; ··· opens timing, sound and saved patterns; Active/Mute in the header switches the part.
+- [ ] Studio > Bass and > Melody: the roll starts right under the header on SE, Pro and Pro Max; ··· opens timing, sound and saved patterns.
 - [ ] Live: Borrowed row is closed on first launch and opens on + Borrowed; the Solo keys show a pastel bar on every root; the landscape prompt is a frosted pill at mid-right that fades by itself and lets taps through.
 - [ ] Live bottom row: a long hold (about half a second) on Drums, Aux, Bass, Melody, Chords or Sampler opens that part's Studio page without switching the part; a quick tap still switches it.
 - [ ] Vary picker (Settings > Chords & timing, and the Chords page): with Vary on, a Vary through row appears; untick some voicings and tap one chord repeatedly in Live (and play a song) and only the ticked ones come round; the last one cannot be unticked; the choice survives saving and reloading a setup.
 - [ ] v1.9.9.4b: open Studio on Drums upright: the landscape pill shows once; tap Bass and it is gone at once; leave Studio and come back on Drums and it does not show again until the app is relaunched.
 - [ ] v1.9.9.5: Live bottom row has Arp and the arp rate chip again; start Bass or Melody from its own Studio page Play, then switch Drums, Melody or Bass on (bottom row or Active/Mute) and each one joins on the next bar at once.
+- [ ] v1.9.9.6: no Active/Mute button on any Studio page or on Live; the bottom row's keys still switch the parts.
