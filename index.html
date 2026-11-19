@@ -8123,6 +8123,27 @@ body:not(.mode-basic) .studio-strip.ss-placed { display:grid; grid-template-colu
 .ss-active[aria-pressed="true"] { background:var(--pc,var(--accent)); color:#0B1020; }
 .ss-active[aria-pressed="false"] { border-color:color-mix(in srgb, var(--pc,var(--accent)) 35%, #0F172A); color:color-mix(in srgb, var(--text) 45%, transparent); }
 .ss-active[hidden] { display:none; }
+/* Studio > Bass and Studio > Melody: the instrument first. Header row (Voice, Style, Active/Mute, ···), then the roll
+   straight under it, then one toolbar row. Timing, Sound and Saved patterns sit behind ···. Built by _acRollFirst;
+   the rows keep their ids and handlers, so gating and every control behave as before. */
+#bm-bass-panel .bl-page-wrap > .pp-bar, #bm-melody-panel .bl-page-wrap > .pp-bar { order:-8; }
+#bm-bass-panel .bl-page-wrap > [data-acrow="roll"].st-fold-h, #bm-melody-panel .bl-page-wrap > [data-acrow="roll"].st-fold-h { display:none; }
+#bm-bass-panel .bl-page-wrap > .pr-host, #bm-melody-panel .bl-page-wrap > .pr-host { order:-7; margin:0 0 6px; }
+#bm-bass-panel .bl-page-wrap > .ac-toolbar, #bm-melody-panel .bl-page-wrap > .ac-toolbar { order:-6; display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center; width:100%; max-width:700px; margin:0 auto 6px; box-sizing:border-box; }
+.ac-toolbar > [data-acrow] { display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center; }
+.ac-toolbar .ac-mode-hint, .ac-toolbar .bl-pl.pf-info, #bm-bass-panel .tap-mode-l, #bm-melody-panel .tap-mode-l, #bm-bass-panel .pr-hint, #bm-melody-panel .pr-hint, #bm-bass-panel .ac-mode-hint, #bm-melody-panel .ac-mode-hint, #bm-bass-panel #bl-mode-hint, #bm-melody-panel #bl-mode-hint { display:none !important; }
+#bm-bass-panel .bl-page-wrap > :is([data-acrow="timing"], [data-acrow="tone"], [data-acrow="saved"], [data-acrow="voice"], [data-acrow="chips"], [data-acrow="write"]),
+#bm-melody-panel .bl-page-wrap > :is([data-acrow="timing"], [data-acrow="tone"], [data-acrow="saved"], [data-acrow="voice"], [data-acrow="chips"], [data-acrow="write"]) { order:6; }
+#bm-bass-panel .bl-page-wrap:not(.ac-more-open) > :is([data-acrow="timing"], [data-acrow="tone"], [data-acrow="saved"]),
+#bm-melody-panel .bl-page-wrap:not(.ac-more-open) > :is([data-acrow="timing"], [data-acrow="tone"], [data-acrow="saved"]) { display:none !important; }
+/* The header is one row: the two pickers share the width, and Active/Mute and ··· sit at the right, centred. */
+#bm-bass-panel .bl-page-wrap > .pp-bar, #bm-melody-panel .bl-page-wrap > .pp-bar { display:flex; align-items:stretch; gap:6px; }
+#bm-bass-panel .bl-page-wrap > .pp-bar > .pp-cell, #bm-melody-panel .bl-page-wrap > .pp-bar > .pp-cell { flex:1 1 0; min-width:0; }
+#bm-bass-panel .bl-page-wrap > .pp-bar > .ss-active, #bm-melody-panel .bl-page-wrap > .pp-bar > .ss-active,
+#bm-bass-panel .bl-page-wrap > .pp-bar > .ac-more, #bm-melody-panel .bl-page-wrap > .pp-bar > .ac-more { flex:none; align-self:center; margin:0; }
+.ac-more { display:none; min-height:36px; min-width:44px; padding:0 10px; border-radius:9px; border:1px solid var(--border2); background:#0F172A; color:var(--text); font:700 15px 'Outfit',sans-serif; cursor:pointer; touch-action:manipulation; }
+#bm-bass-panel .ac-more, #bm-melody-panel .ac-more { display:inline-flex; align-items:center; justify-content:center; }
+.ac-more[aria-expanded="true"] { background:var(--surf2); }
 /* The bottom part row is the Live surface's. On Studio the strip above is the one selector, so the row is hidden there.
    It is hidden with visibility, not display: the transport bar sits on that row's space, and removing the space would
    move the transport. On Live the Arp switch and its rate are left out (Arp is not one of the Live row's parts). */
@@ -48133,7 +48154,33 @@ function accPartTitle(m){
  var T = {drums:['Drums','#F59E0B'], bass:['Bass','#3B82F6'], melody:['Melody','#06B6D4'], arp:['Arp','#14B8A6']}[m] || ['Studio','#c9cff0'];
  if(m==='drums' && typeof window._sqFocusNow==='function' && window._sqFocusNow()===1){ var aux=PARTS.find(function(p){return p.id==='auxperc';}); T=['Aux',aux ? aux.color : 'var(--accent)']; }
  var h = document.getElementById('ac-part-title'); if(!h) return;
+ // Bass and Melody name the part in the 5+4 selector already, so the page does not repeat it.
+ h.style.display = (m==='bass' || m==='melody') ? 'none' : '';
  h.textContent = T[0]; h.style.color = T[1];
+}
+// Studio > Bass and > Melody, instrument first. Moves the toolbar's controls (Generate, Arrange, Play In, Follow, Feel,
+// Clear, the roll's zoom) into one row under the roll and gives the page its ··· button. Only moves nodes, so every id,
+// handler and gate stays where it was. Runs on each page change; the second and later runs find the row already built.
+function _acRollFirst(m){
+ var pid = m==='bass' ? 'bm-bass-panel' : (m==='melody' ? 'bm-melody-panel' : null);
+ if(!pid) return;
+ var wrap=document.querySelector('#'+pid+' .bl-page-wrap'); if(!wrap) return;
+ var tb=wrap.querySelector(':scope > .ac-toolbar');
+ if(!tb){
+  tb=document.createElement('div'); tb.className='ac-toolbar'; tb.setAttribute('data-acrow','toolbar');
+  var body=wrap.querySelector(':scope > .pr-host'); if(body) body.parentNode.insertBefore(tb, body.nextSibling); else wrap.appendChild(tb);
+ }
+ ['mode','gen','behave','tapmode'].forEach(function(k){
+  wrap.querySelectorAll(':scope > [data-acrow="'+k+'"]').forEach(function(el){ if(el.parentNode!==tb) tb.appendChild(el); });
+ });
+ var pp=wrap.querySelector(':scope > .pp-bar');
+ if(pp && !pp.querySelector('.ac-more')){
+  var more=document.createElement('button'); more.type='button'; more.className='ac-more'; more.textContent='\u00B7\u00B7\u00B7';
+  more.setAttribute('aria-label','More: timing, sound and saved patterns'); more.setAttribute('aria-expanded','false'); more.title='Timing, sound and saved patterns';
+  more.addEventListener('click', function(){ var open=!wrap.classList.contains('ac-more-open'); wrap.classList.toggle('ac-more-open', open); more.setAttribute('aria-expanded', open?'true':'false'); });
+  pp.appendChild(more);
+ }
+ if(typeof _studioActiveSync==='function') _studioActiveSync();
 }
 // Sync and Humanize are global, so they are a row in Settings (Playing) and not a strip across four pages. Moved, not
 // copied: the lock buttons and the slider keep their ids and handlers. Runs once the page is built.
@@ -48291,6 +48338,7 @@ function accPatternOpen(){ var a=ACC_PATTERNS[bassMelMode]; if(a) rhyBankOpen(a[
 window.accPatternSave = accPatternSave; window.accPatternOpen = accPatternOpen;
 function setAccompMode(m){
  bassMelMode = m; accompMode = m;
+ try{ _acRollFirst(m); }catch(e){}
  if(m==='bass') blFilterReadout();
  try{ partSelSync(); }catch(e){}
  try{ accPartTitle(m); }catch(e){}
@@ -49284,7 +49332,8 @@ function _studioActiveSync(){
  btn.title = (part ? part.label : d.label) + (on ? ' is playing with the band. Tap to mute it.' : ' is muted. Tap to bring it into the band.');
  btn.hidden=false;
  // Beside the Voice picker when the page has one; otherwise at the top of the page, under the strip.
- var host = document.querySelector('.tab-page.active [data-acrow="voice"]');
+ var host = (d.acc==='bass' || d.acc==='melody') && d.tab==='accomp' ? document.querySelector('#bm-'+d.acc+'-panel .bl-page-wrap > .pp-bar') : null;
+ if(!host) host = document.querySelector('.tab-page.active [data-acrow="voice"]');
  if(host){ if(btn.parentNode!==host) host.appendChild(btn); }
  else { var pg=document.querySelector('.tab-page.active'); if(pg && btn.parentNode!==pg) pg.insertBefore(btn, pg.children[1] || null); }
 }
