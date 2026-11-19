@@ -558,8 +558,7 @@ early-out would otherwise have skipped it), and is not run at all while flat.
 and checks flat is bit-identical to none. Not built: the sliders are mappable to a
 controller only while a panel is open.
 
-**iCloud sync: built, off in every build until the iCloud capability is on
-(4.9.9.9.9.8.9q).** CloudKit, the user's own private database: the developer has
+**iCloud sync: built (4.9.9.9.9.8.9q), on in the project since 1.9.9.3.** CloudKit, the user's own private database: the developer has
 no access to what is in it, and there is no server and no account of ours.
 
 *What syncs:* the setlist (`prism-sl`, not the demo song), saved setups
@@ -598,21 +597,22 @@ zone `modriff`, one record type `Doc` (`payload` as an asset so a long song is n
 stopped by the 1 MB record limit, `modified`, `v`); record names are hashed
 ASCII, because an item's id can be a patch name in any script.
 
-*Why it is off.* Everything in `ModCloud.swift` that touches CloudKit is inside
+*Why the flag exists.* Everything in `ModCloud.swift` that touches CloudKit is inside
 `#if MODRIFF_CLOUDKIT`. Asking CloudKit for a container in an app signed without
 the iCloud entitlement raises an exception and ends the app, and CloudKit is not
-available to a free (Personal Team) account. So no build has it until you do this,
-once, with a paid Developer Program membership:
+available to a free (Personal Team) account. Since 1.9.9.3 the App target sets the flag
+(Debug and Release) and signs with `App/App.entitlements` (iPhone) or `AppMac.entitlements`
+(Mac), both naming `iCloud.Handel.modRiff`; the flag and the entitlement move together. An
+unsigned build (`CODE_SIGNING_ALLOWED=NO`, as in CI-style checks) compiles but must not
+turn the switch on. What is left, needing the paid account:
 
-1. Xcode > the App target > Signing & Capabilities > + Capability > iCloud > tick
-   **CloudKit** and add the container `iCloud.Handel.modRiff`.
-2. Build Settings > Swift Compiler - Custom Flags > Active Compilation Conditions:
-   add `MODRIFF_CLOUDKIT` (Debug and Release).
-3. Run on two devices signed in to the same Apple ID, turn on Settings > General >
-   iCloud on both. CloudKit makes the record type and its fields in the
-   *Development* environment the first time a record is saved.
-4. **Before the App Store build:** CloudKit Dashboard > the container > Deploy
-   Schema Changes to Production. Without this the shipped app cannot save a record.
+1. Build once with `-allowProvisioningUpdates` (every build script does) so Xcode registers
+   the container and puts iCloud in the profiles.
+2. Run on two devices signed in to the same Apple ID, turn on Settings > iCloud & backup on
+   both. CloudKit makes the record type and its fields in the *Development* environment the
+   first time a record is saved.
+3. **Before the App Store build:** CloudKit Dashboard > the container > Deploy Schema
+   Changes to Production. Without this the shipped app cannot save a record.
 
 *Verified here:* `tests/sync/engine.test.js` runs the engine against a fake
 CloudKit that refuses a save made against an old version, with simulated devices:

@@ -189,8 +189,17 @@ claim it):
   no peers. If App Review tries it, it will look dead. Request it (`docs/link.md`, section 2) or tell Review in the
   note. Also unasked: whether Ableton's licence ("iOS applications") covers the Mac Catalyst build (one email to
   link-devs@ableton.com).
-- **iCloud.** The note says iCloud sync is not in this build, which matches the project today (no CloudKit
-  entitlement). If the capability is added before the build is uploaded, change that sentence.
+- **iCloud.** The entitlement and `MODRIFF_CLOUDKIT` are in the project (1.9.9.3), so the note says sync is
+  optional and off by default. Before uploading: CloudKit Dashboard > `iCloud.Handel.modRiff` > Deploy Schema
+  Changes to Production (without it the shipped app cannot save a record); `docs/v5-architecture.md`, "iCloud sync".
+- **Mac `network.server` message (automated, from App Store Connect).** The entitlement is used: Ableton Link
+  receives UDP from other apps on the local network (`AppMac.entitlements`). Reply to the message with the text
+  below and keep section 4 of the note as it is; do not remove the entitlement (Link on the Mac would go silent).
+  > mõdRïff's Mac build includes Ableton Link (Ableton's LinkKit, Settings > Ableton Link) for tempo sync with
+  > other music apps on the same network. Link discovers peers with multicast UDP and has to listen for their
+  > packets, which the App Sandbox allows only with com.apple.security.network.server. The app opens no web or FTP
+  > server and accepts no connections from the internet; it only listens on the local network, and only while Link
+  > is switched on (off by default). com.apple.security.network.client is there for the web view.
 - **Local Network permission.** It is asked the first time Link is switched on; the note says so.
 - **The recording** (item 1) is yours to make and upload; the shot list below is the script.
 - If anything is added to `samples/SOURCES.csv` or the Credits table before upload, reread item 6.
@@ -206,10 +215,10 @@ mõdRïff is a chord-based music maker for iPhone, iPad and Mac. You pick a key 
 3. HOW TO REACH THE MAIN FEATURES
 No account, sample file or setup needed; it works offline. Open the app, tap Start, press the green play button in the bottom bar. Tap the chord pads on the Live tab, or open Drums and tap steps in the grid.
 Paid features: the app is free; seven optional packs and a Full Studio bundle are one-time In-App Purchases. Tapping any locked control opens a sheet naming it with the pack and its price; Settings > About > Store lists every pack. In the sandbox: tap a locked drum kit (Digital 1 and Analog 1 are free), buy the Groove Pack, then tap another locked control: the sheet now offers "Complete Your Studio", an upgrade price for Full Studio shown only after a pack is owned. Restore Purchases is on that sheet, the store screen and Settings > About. Locked things can often be tried first: sampler pads and Sounds Pack voices play a quiet preview twice, and Hear it plays a short Groove Pack demo.
-Permissions, each asked only when used: Microphone, when you record in the Sampler. Camera, when you choose Camera to import a chord sheet from a photo (Songs > File > Import a chord sheet). Bluetooth, only via Settings > MIDI to pair a Bluetooth MIDI keyboard (not needed to review). Local Network, only when Ableton Link is switched on in Settings. iCloud sync is not part of this build. Background audio is enabled so a song keeps playing when the screen locks.
+Permissions, each asked only when used: Microphone, when you record in the Sampler. Camera, when you choose Camera to import a chord sheet from a photo (Songs > File > Import a chord sheet). Bluetooth, only via Settings > MIDI to pair a Bluetooth MIDI keyboard (not needed to review). Local Network, only when Ableton Link is switched on in Settings. iCloud sync (Settings > iCloud & backup) is optional and off by default; it needs an iCloud account and is not needed to review. Background audio is enabled so a song keeps playing when the screen locks.
 
 4. EXTERNAL SERVICES
-Apple's StoreKit 2 for the purchases, and Apple's on-device text recognition (Vision) to read chord-sheet photos; the picture is not stored or sent. Ableton Link (Ableton's SDK) for tempo sync with other apps on the local network. No server or backend, no analytics, no advertising and no AI service; no data leaves the device. Songs, patterns and recordings stay on it.
+Apple's StoreKit 2 for the purchases, and Apple's on-device text recognition (Vision) to read chord-sheet photos; the picture is not stored or sent. Ableton Link (Ableton's SDK) for tempo sync with other apps on the local network. No server or backend of ours, no analytics, no advertising and no AI service. Nothing leaves the device unless the person turns on iCloud sync (off by default): then songs, setups and patches go to their own private iCloud (CloudKit) database, which we cannot read; recordings never sync. On the Mac, Link listens for peers on the local network (the com.apple.security.network.server entitlement); the app runs no server.
 
 5. REGIONS
 It behaves the same in every region. Only the prices differ, as the App Store sets them per storefront. English only.
