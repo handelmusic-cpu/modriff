@@ -198,3 +198,5 @@ Since 6.2:
 - [ ] v1.9.9: with only chords playing (chord rhythm on, drums off), switch Melody on: it starts at once; switch Arp on: it sounds; Generate on Melody lands and plays within a bar or two.
 - [ ] Studio strip (5 + 4): tap each of the nine pages on a phone; the solid, muted and on states read by eye, and Active/Mute beside the Voice picker turns the band's part on and off with the same wait as the bottom row.
 - [ ] Mix > Voices: a long patch name wraps to two lines and every row's colour bar is the part's colour (not black).
+- [ ] Studio > Bass and > Melody: the roll starts right under the header on SE, Pro and Pro Max; ··· opens timing, sound and saved patterns; Active/Mute in the header switches the part.
+- [ ] Live: Borrowed row is closed on first launch and opens on + Borrowed; the Solo keys show a pastel bar on every root; the landscape prompt is a frosted pill at mid-right that fades by itself and lets taps through.
