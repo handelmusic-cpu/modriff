@@ -8001,6 +8001,18 @@ body.light-mode .fx-pgroup.smp .fx-pgroup-lbl { color:#b0600a; }
  box-shadow:0 0 0 1px var(--bg), 0 4px 14px rgba(0,0,0,.45);
 }
 .ci-rest { font-size:.5rem; color:var(--muted); text-align:center; padding:2px 0; }
+/* The quick card: beside the chord that was tapped, over the page. Under the modals (800) and over the transport (521). */
+.qc-card { position:fixed; z-index:700; box-sizing:border-box; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:6px;
+ padding:10px 12px; background:var(--surf2); border:1px solid var(--accent); border-radius:var(--r-md); box-shadow:0 10px 34px rgba(0,0,0,.6); }
+.qc-card .ci-head { padding-right:44px; }
+.qc-card .qc-x { position:absolute; top:4px; right:4px; width:44px; height:44px; border:0; background:none; color:var(--muted); font-size:1rem; cursor:pointer; touch-action:manipulation; }
+.qc-card .qc-morebtn { align-self:flex-start; min-height:44px; padding:0 14px; background:none; border:1px solid var(--border2); border-radius:var(--r-md); color:var(--text);
+ font:600 max(.52rem,11px) 'Outfit',sans-serif; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; touch-action:manipulation; }
+.qc-card .qc-more { display:none; flex-direction:column; gap:2px; border-top:1px solid var(--border2); padding-top:4px; }
+.qc-card.qc-open .qc-more { display:flex; }
+.qc-card .qc-more > * { margin-top:0; }
+.qc-card .qc-more .ci-headbtns { margin:6px 0 0; align-self:flex-end; }
+
 
 /* Audio interrupted while the app was in the background. iOS will not restart
    a context without a gesture, so this says which gesture. */
@@ -9989,7 +10001,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.1</span></div>
  </div>
 </div>
 
@@ -11460,7 +11472,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.1</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12656,7 +12668,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9';
+const MODRIFF_VERSION = '1.9.9.1';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -42449,6 +42461,7 @@ function renderChartSeq(){
  // through — this runs before the early return because the chips are on
  // another tab and do not depend on the sequence strip existing.
  if(typeof window.phraseRenderChips==='function') window.phraseRenderChips();
+ qcClose();
  const seq=document.getElementById('chart-sequence'); if(!seq) return;
  const slots=sections[curSection]?.slots||[];
  seq.classList.toggle('empty',slots.length===0); seq.innerHTML='';
@@ -42494,7 +42507,9 @@ function renderChartSeq(){
   // A drag ends in a click on the same element; without this the chord you
   // just moved would also be selected and re-sounded on the drop.
   if(performance.now() - _chartDragEndedAt < 350) return;
+  const _was=qcIsOpenOn(curSection,i);
   chartSeqIdx=i; if(!slot.isRest) playChartSlot(i); renderChartSeq();
+  qcAfterTap(curSection, i, _was);
  });
  btn.addEventListener('pointerdown',ev=>chartDragStart(ev,i,wrap));
  btn.setAttribute('title','Drag to move '+(slot.label||'this chord')+' — or tap to select it');
@@ -42707,7 +42722,8 @@ function _ciMoreBtn(label, fn){
 // showExtPicker, showDurationPicker, showBassPicker, withUndo — is the same
 // code the old per-chord controls used, so nothing here changes what an edit
 // actually does.
-function sbBuildChordEditor(ins, slot, i, slots, repaint){
+function sbBuildChordEditor(ins, slot, i, slots, repaint, opts){
+ var quick=!!(opts && opts.quick);
  var head=document.createElement('div'); head.className='ci-head';
  var nmp=_ciName(slot);
  var what=document.createElement('span'); what.className='ci-what';
@@ -42749,7 +42765,7 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint){
                if(chartSeqIdx>=slots.length) chartSeqIdx=slots.length-1;
                repaint(); });
  }));
- head.appendChild(tools);
+ if(!quick) head.appendChild(tools);
  ins.appendChild(head);
 
  var body=document.createElement('div'); body.className='ci-body';
@@ -43023,8 +43039,35 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint){
  rrow.appendChild(rseg);
  body.appendChild(rrow);
 
+ if(quick){ _qcLayout(ins, head, tools, body, opts); return; }
  ins.appendChild(body);
  _ciFoldWire(ins, tools, body);
+}
+// The quick card's layout (qcOpen): the rows you pick from (Length, Rhythm, Type, Voicing), then a More that opens the
+// rest (Chord name, Words, Bass, Plays, move and delete) in the same card. The card is shut by any edit
+// (the repaint it is given), so nothing here has to track that. A rest has no pick-one rows, so its More is open.
+function _qcLayout(ins, head, tools, body, opts){
+ var rowOf=function(name){
+  return [].slice.call(body.children).filter(function(r){
+   var lb=r.classList.contains('ci-row') && r.querySelector('.ci-lbl'); return lb && lb.textContent===name; })[0] || null;
+ };
+ var quickRows=['Length','Rhythm','Type','Voicing'].map(rowOf).filter(Boolean);
+ var rest=document.createElement('div'); rest.className='qc-more';
+ [].slice.call(body.children).forEach(function(r){ if(quickRows.indexOf(r)<0) rest.appendChild(r); });
+ rest.appendChild(tools);
+ var close=document.createElement('button'); close.type='button'; close.className='qc-x'; close.textContent='\u2715';
+ close.setAttribute('aria-label','Close'); close.addEventListener('click', function(){ qcClose(); });
+ head.appendChild(close);
+ var q=document.createElement('div'); q.className='ci-body';
+ quickRows.forEach(function(r){ q.appendChild(r); });
+ ins.appendChild(q);
+ if(quickRows.length){
+  var more=document.createElement('button'); more.type='button'; more.className='qc-morebtn';
+  var paint=function(){ var o=ins.classList.contains('qc-open'); more.textContent=o?'Less \u25b4':'More \u25be'; more.setAttribute('aria-expanded', o?'true':'false'); };
+  more.addEventListener('click', function(){ ins.classList.toggle('qc-open'); paint(); if(opts.onResize) opts.onResize(); });
+  ins.appendChild(more); paint();
+ } else ins.classList.add('qc-open');
+ ins.appendChild(rest);
 }
 // The chord editor is nine rows tall (Chord, Words, Type, Length, Rhythm, Voicing, Bass, Plays) and fills a phone, with the
 // progression above it scrolled out of sight; nobody changes all of it at once. A caret in the header shuts the whole
@@ -48599,6 +48642,96 @@ function tlPanelSync(){
    '<button type="button" class="tb" onclick="tlSplitChord()" title="Cut the selected chord in two">Split</button>'+
   '</div>';
 }
+// ── The quick card (Songs › Build) ──
+// A tap on a chord, in the timeline or in Tiles, opens a card beside that chord with its Length, Rhythm, Type and Voicing
+// (the rows you pick from) and a More for the rest. The one editor under the progression is the same code (sbBuildChordEditor);
+// on a long song it was a whole page of scrolling away from the chord you were looking at. Any edit shuts the card, because
+// every edit repaints and renderChartSeq starts by closing it; a tap away, Escape or the cross shut it too.
+// var, not let: renderChartSeq reads these from far above their declaration (CLAUDE.md, "Temporal dead zone").
+var _qcCard = null, _qcAnchor = null;
+function qcClose(){
+ var c=_qcCard; if(!c) return;
+ _qcCard=null; _qcAnchor=null;     // first, so the blur of a field being removed cannot re-enter
+ document.removeEventListener('pointerdown', _qcOutside, true);
+ document.removeEventListener('keydown', _qcKey, true);
+ window.removeEventListener('scroll', _qcPlace, true);
+ window.removeEventListener('resize', _qcPlace);
+ c.remove();
+}
+function _qcOutside(ev){
+ if(!_qcCard) return;
+ var t=ev.target;
+ if(!t || !t.closest) return;
+ if(_qcCard.contains(t)) return;
+ // Whatever the card opened (Exact length, all the rhythms, the bass note) is a full-screen layer above it, and a tap in it is
+ // not "away". They are not one class (the length picker is a bare fixed div at z-index 9999), so ask what the layer is.
+ var top=t; while(top.parentElement && top.parentElement!==document.body) top=top.parentElement;
+ var cs=window.getComputedStyle(top);
+ if(cs.position==='fixed' && (parseInt(cs.zIndex,10)||0)>700) return;
+ // Another chord's tap decides for itself (it moves the card there, or shuts it on the same chord).
+ if(t.closest('.tl-col, .chart-chord-btn')) return;
+ qcClose();
+}
+function _qcKey(ev){ if(ev.key==='Escape' && !document.querySelector('.modal-overlay.visible')){ ev.stopPropagation(); qcClose(); } }
+// Beside the chord: under it where there is room, else over it, kept clear of the transport at the top and the one at the
+// bottom, and inside the screen sideways. Whole card or nothing: when neither side has room, _qcFit first brings the chord up
+// under the top bar (the card is about 590 pt with its four rows, a third of the page more than a chord has below it); when
+// even that cannot be done, the card lies over the chord (its name is in the card's heading) and only a screen too short for
+// the card scrolls it inside itself.
+var _QC_CEIL = 64;
+function _qcFloor(){ var pb=document.getElementById('perf-bar'); return pb ? pb.getBoundingClientRect().top : window.innerHeight; }
+function _qcPlace(ev){
+ var c=_qcCard, a=_qcAnchor; if(!c) return;
+ if(ev && ev.target && ev.target.nodeType===1 && c.contains(ev.target)) return;
+ if(!a || !a.isConnected){ qcClose(); return; }
+ var r=a.getBoundingClientRect(), vw=window.innerWidth, floor=_qcFloor(), ceil=_QC_CEIL, gap=6;
+ var w=Math.min(380, vw-16);
+ c.style.width=w+'px'; c.style.maxHeight='';
+ var h=c.offsetHeight, below=floor-r.bottom-gap-4, above=r.top-ceil-gap, room=floor-ceil-8;
+ var top, mh=0;
+ if(h<=below) top=r.bottom+gap;
+ else if(h<=above) top=r.top-gap-h;
+ else if(h<=room) top=Math.max(ceil, Math.min(r.top, floor-4-h));
+ else { mh=room; top=ceil; }
+ if(mh) c.style.maxHeight=mh+'px';
+ c.style.top=Math.max(ceil, top)+'px';
+ c.style.left=Math.max(8, Math.min(r.left+r.width/2-w/2, vw-w-8))+'px';
+}
+function _qcFit(){
+ var c=_qcCard, a=_qcAnchor; if(!c || !a) return;
+ c.style.maxHeight='';
+ var r=a.getBoundingClientRect(), floor=_qcFloor(), h=c.offsetHeight;
+ if(h>floor-r.bottom-10 && h>r.top-_QC_CEIL-6 && h<=floor-_QC_CEIL-r.height-14){
+  a.style.scrollMarginTop=(_QC_CEIL+8)+'px';
+  try{ a.scrollIntoView({block:'start'}); }catch(e){}
+  a.style.scrollMarginTop='';
+ } else { try{ a.scrollIntoView({block:'nearest'}); }catch(e){} }
+ _qcPlace();
+}
+function qcOpen(si, ci, anchor){
+ qcClose();
+ var slots=sections[si] && sections[si].slots, slot=slots && slots[ci];
+ if(!slot || !anchor) return;
+ var c=document.createElement('div'); c.className='qc-card';
+ c.setAttribute('role','dialog'); c.setAttribute('aria-label','Edit '+(slot.label||'chord')); c.dataset.si=si; c.dataset.ci=ci;
+ _qcCard=c; _qcAnchor=anchor;
+ document.body.appendChild(c);
+ sbBuildChordEditor(c, slot, ci, slots, function(){ renderChartSeq(); buildSectionTabs(); renderPerfChartRow(); }, {quick:true, onResize:_qcFit});
+ _qcFit();
+ document.addEventListener('pointerdown', _qcOutside, true);
+ document.addEventListener('keydown', _qcKey, true);
+ window.addEventListener('scroll', _qcPlace, true);
+ window.addEventListener('resize', _qcPlace);
+}
+// A tap on chord `ci` of section `si` that has just selected it and repainted: open the card on it, or shut it when it was
+// already open on that chord. `wasOpen` is read before the repaint, which closes the card.
+function qcAfterTap(si, ci, wasOpen){
+ if(wasOpen) return;
+ var anchor = document.querySelector('.tl-col[data-si="'+si+'"][data-ci="'+ci+'"]');
+ if(!anchor || anchor.offsetParent===null) anchor = document.querySelector('.chart-slot.slot-selected .chart-chord-btn');
+ if(anchor && anchor.offsetParent!==null) qcOpen(si, ci, anchor);
+}
+function qcIsOpenOn(si, ci){ return !!(_qcCard && _qcCard.dataset.si===String(si) && _qcCard.dataset.ci===String(ci)); }
 // Timeline | Tiles in Build, for those who have the timeline. Timeline is the default, as the mock draws it
 // (6.0g); somebody who has chosen Tiles keeps Tiles (modo-build-view = 'strip').
 var _buildView = null;
@@ -48700,7 +48833,9 @@ function renderSongTimeline(chart, opts){
        // one set of controls under the progression.
        // Every section is on the page now, so a tap can land in one that is not the selected.
        if(si!==curSection){ curSection=si; buildSectionTabs(); }
+       var was = qcIsOpenOn(si, ci);
        chartSeqIdx = ci; if(!slot.isRest) playChartSlot(ci); renderChartSeq();
+       qcAfterTap(si, ci, was);
        return;
       }
       songChartTap(si, ci);
