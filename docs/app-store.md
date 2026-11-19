@@ -400,7 +400,9 @@ try-before-you-buy behaviour are in the one note under "App Review notes" above;
    **Free**, **Everything**, and a button per pack that toggles it, with no purchase, and
    remembers the choice across launches. A release build has no such row (the host defines
    `__modDebug` only under `#if DEBUG`, and the page ignores the override without it). The
-   same row shows on a page served from localhost, and never on a deployed one. Debug >
+   same row shows on a page served from localhost, and never on a deployed one. The
+   TestFlight **tester build** (`MODRIFF_TESTERS=1 ios/archive-ios-store.sh`) has it too, only
+   under a sandbox receipt; upload that one for testers and a plain run of the script for App Review. Debug >
    StoreKit > Manage Transactions lets you refund and Ask-to-Buy a test purchase.
 4. Then the same on a **sandbox account** against the real products, once they exist in App
    Store Connect.

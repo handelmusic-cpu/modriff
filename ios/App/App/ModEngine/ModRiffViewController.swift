@@ -58,6 +58,18 @@ class ModRiffViewController: CAPBridgeViewController {
         // Where takes are kept differs on a Mac (Downloads, not the Files app), so the page says so.
         boot += "window.__modMacApp=true;"
         #endif
+        // __modTesters — the TestFlight tester build: the "Test as" row in Settings,
+        // so testers can see Free and Everything without buying. Two locks, because
+        // the binary that goes to App Review is the one built WITHOUT this flag
+        // (ios/archive-ios-store.sh; the switch would read as an unlock bypass):
+        // the TESTERS compile flag, and a sandbox receipt, which TestFlight has and
+        // the App Store never does. The receipt file is named differently on a Mac,
+        // so there the flag alone is not enough and the row stays off.
+        #if TESTERS && !targetEnvironment(macCatalyst)
+        if Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" {
+            boot += "window.__modTesters=true;"
+        }
+        #endif
         #if DEBUG
         boot += "window.__modDebug=true;"
         // MODRIFF_BGTEST=1 in the scheme's environment turns the background-play test on
