@@ -190,3 +190,7 @@ Since 6.2:
 - [ ] v1.9.6: Live > Melody and Chords > controls — tap the sound name, choose a patch, then close the sheet; the menu stays visible and responds to touch.
 
 - [ ] v1.9.6a: Play Grand, Upright and Old on Chords and Melody with the synth Tone lowered, then reset it — the recorded piano stays clear; check deliberate Touch Mod, channel EQ and mõdFX still shape it. Not heard on device.
+
+- [ ] v1.9.7: Live and Studio Solo keys are the same shorter height (128 pt); slide up a held key and release it to check Touch Mod and note release by ear.
+- [ ] v1.9.7: Solo three-dot sheet: Width cycles AUTO / S / M / L / XL and survives relaunch; Glide, Mod and Slide Depth / Speed share one row, and every control responds.
+- [ ] v1.9.7: rotate Live both landscape directions: instruments use the width between the safe areas, all eight chord pads stay in one row, and the notch and home indicator cover no playing targets.
