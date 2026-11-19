@@ -10001,7 +10001,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.4b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.4c</span></div>
  </div>
 </div>
 
@@ -11474,7 +11474,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.4b</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.4c</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12670,7 +12670,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.4b';
+const MODRIFF_VERSION = '1.9.9.4c';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -50505,6 +50505,28 @@ window._capOnRelease = function(t){
  var ev = list && list[list.length-1];
  if(ev && ev.sus && ev.held==null && t>=ev.t) ev.held = t - ev.t;
 };
+// The numeral a captured chord is written into Song with, from what was played and not from the degree it sits on.
+// Both capture paths used to take the mode's own numeral for the root, so an Fm in C (the borrowed iv, and the pad said
+// iv) went into the chart as IV, and an A♭ (♭VI) went in with no numeral at all. The mode's spelling is kept when the
+// quality is the mode's own; otherwise the same degree is re-cased for the chord: major and augmented upper case,
+// minor and diminished lower, ° and + after it.
+function _capNumeral(rootM, triadQ){
+ try{
+  const md = MODES[mode]||MODES.major;
+  const pc = ((rootM - rootMidi())%12+12)%12;
+  const di = md.steps.indexOf(pc);
+  if(di>=0 && md.triadQ[di]===triadQ) return md.nums[di];
+  const base = di>=0 ? md.nums[di] : CP_DEG_ROMAN[pc];
+  const m = /^([♭♯#b]?)([ivIV]+)/.exec(String(base||''));
+  if(!m) return di>=0 ? md.nums[di] : '';
+  const acc = m[1]==='#' ? '♯' : m[1]==='b' ? '♭' : m[1];
+  const R = m[2].toUpperCase();
+  if(triadQ===1) return acc + R.toLowerCase();
+  if(triadQ===2) return acc + R.toLowerCase() + '°';
+  if(triadQ===3) return acc + R + '+';
+  return acc + R;
+ }catch(e){ return ''; }
+}
 function _chordRingPush(rootM, triadQ, type7, ext, func, bassOverride, sus){
  const ctx=getCtx(); if(!ctx) return;
  const md = MODES[mode]||MODES.major;
@@ -50512,7 +50534,7 @@ function _chordRingPush(rootM, triadQ, type7, ext, func, bassOverride, sus){
  const di = md.steps.indexOf(pc);
  _chordRing.push({
   label: _chordLabelFromData(rootM,triadQ,type7,ext,bassOverride),
-  numeral: di>=0 ? md.nums[di] : '',
+  numeral: _capNumeral(rootM, triadQ),
   rootM, triadQ, type7, func, ext,
   // Same octave compensation as the forward path — see _songRecCapture.
   bassNote: bassOverride!==null ? bassOverride+12 : null,
@@ -50596,7 +50618,7 @@ function _songRecCapture(rootM, triadQ, type7, ext, func, bassOverride, sus){
  const di = md.steps.indexOf(pc);
  songRecPending = {
  label: _chordLabelFromData(rootM,triadQ,type7,ext,bassOverride),
- numeral: di>=0 ? md.nums[di] : '',
+ numeral: _capNumeral(rootM, triadQ),
  rootM, triadQ, type7, func, ext,
  // Slot bassNote is stored the way playChartSlot2 expects it (it subtracts
  // 12 before playback), whereas bassOverride here is already the absolute
