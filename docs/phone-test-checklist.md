@@ -206,3 +206,4 @@ Since 6.2:
 - [ ] v1.9.9.4b: open Studio on Drums upright: the landscape pill shows once; tap Bass and it is gone at once; leave Studio and come back on Drums and it does not show again until the app is relaunched.
 - [ ] v1.9.9.5: Live bottom row has Arp and the arp rate chip again; start Bass or Melody from its own Studio page Play, then switch Drums, Melody or Bass on (bottom row or Active/Mute) and each one joins on the next bar at once.
 - [ ] v1.9.9.6: no Active/Mute button on any Studio page or on Live; the bottom row's keys still switch the parts.
+- [ ] v1.9.9.7: Studio pages (Chords, Melody, Sampler, mõdFX, Drums, Bass, Melody seq) show the bottom part keys; scrolling down folds them with the Studio strip, scrolling to the top or the pull tab brings both back; Song, Mix and Settings still show no part keys.
