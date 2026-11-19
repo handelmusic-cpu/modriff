@@ -10001,7 +10001,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9d</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9e</span></div>
  </div>
 </div>
 
@@ -11474,7 +11474,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9d</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9e</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11536,7 +11536,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
      <button class="tb" type="button" data-devmod="theory" onclick="devModToggle('theory')">Theory</button>
      <button class="tb" type="button" data-devmod="practice" onclick="devModToggle('practice')">Practice</button>
      <button class="tb" type="button" data-devmod="studio" onclick="devModToggle('studio')">Studio</button>
-     <span class="ss-note">debug builds and local pages only; nothing is bought</span></div>
+     <span class="ss-note">debug, tester and local builds only; nothing is bought</span></div>
     <div class="row about-row" id="pro-row" style="display:none">Packs <b id="pro-state">Free</b>
      <button class="tb" type="button" id="pro-upgrade" onclick="proSheet('')">Store</button>
      <button class="tb" type="button" onclick="proRestore()">Restore Purchases</button></div>
@@ -12670,7 +12670,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9d';
+const MODRIFF_VERSION = '1.9.9.9e';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -76337,10 +76337,11 @@ function freeAllowsArpRate(label){
  }
  window.modBilling = {
   provider: 'ios',
-  // The debug switch exists only where the host defined __modDebug, which is a
-  // debug build. A release build never has it, so nothing here to find.
+  // The override exists only where the host defined __modDebug (a debug build)
+  // or __modTesters (the TestFlight tester build, see ios/archive-ios-store.sh).
+  // The build sent to App Review defines neither, so nothing here to find.
   _dev: null,
-  owned: function(){ return (this._dev!=null && window.__modDebug===true) ? this._dev : st.owned; },
+  owned: function(){ return (this._dev!=null && (window.__modDebug===true || window.__modTesters===true)) ? this._dev : st.owned; },
   products: function(){ return st.products; },
   refresh: function(){
    return Promise.resolve(P.status()).then(function(r){ apply(r); return st.owned; }, function(){ return st.owned; });
@@ -76443,7 +76444,7 @@ window.modBillingChanged = function(){
 // override rather than writing anything anybody could forge. The web provider
 // always takes it; the iOS one only in a debug build.
 function setModOwned(keys){
-  try{ if((window.modBilling.provider==='web' && window.__modFreeWeb!==true) || window.__modDebug===true) window.modBilling._dev = Array.isArray(keys) ? keys.slice() : null; }catch(e){}
+  try{ if((window.modBilling.provider==='web' && window.__modFreeWeb!==true) || window.__modDebug===true || window.__modTesters===true) window.modBilling._dev = Array.isArray(keys) ? keys.slice() : null; }catch(e){}
   _applyTier();
 }
 function setModTier(t){ setModOwned(t==='free' ? [] : ['fullstudio']); }
@@ -77270,14 +77271,17 @@ function proRestore(){
  }).catch(function(){ showToast('Could not reach the App Store'); return false; });
 }
 // The test switch in Settings > About: Free, every module, or any mix, without
-// buying. It exists in exactly two places. A debug build of the iPhone app,
+// buying. It exists in exactly three places. A debug build of the iPhone app,
 // where the host defines window.__modDebug (a release build never does, so there
-// is no switch, and the iOS provider ignores the override too); and a page
+// is no switch, and the iOS provider ignores the override too); the TestFlight
+// tester build, where the host defines window.__modTesters (only when the archive
+// was made with MODRIFF_TESTERS=1 and the receipt is a sandbox one, so the build
+// sent to App Review and the App Store never has it); and a page
 // served from this machine, for working in a browser. A page on any other host
 // — the deployed site — never shows it. `host` is a parameter only so the rule
 // can be tested.
 function devTierAvailable(host){
- if(window.__modDebug===true) return true;
+ if(window.__modDebug===true || window.__modTesters===true) return true;
  return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(host===undefined ? location.hostname : host);
 }
 function devTierSet(t){

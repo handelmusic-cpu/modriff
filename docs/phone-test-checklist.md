@@ -212,3 +212,4 @@ Since 6.2:
 - [ ] v1.9.9.9a/b: a fresh session opens with the 4/4 Basic drum pattern already on the Drums grid (Drums stays off until switched on); switch Drums on while chords play and the beat comes in; this holds even with Starter patterns off in Settings.
 - [ ] v1.9.9.9c: Starter patterns was saved OFF on the phone, so Bass, Melody and Drums switched on over an empty part stayed silent; it is back ON once. Press Play, play chords, then switch Drums, Bass, Melody and Arp on one after another: each sounds within a bar.
 - [ ] v1.9.9.9d: with Song on and playing, switch Melody and then Arp on: each starts at once and follows the song's chords (before, they only started if they were lit when the song began).
+- [ ] v1.9.9.9e: archive with `MODRIFF_TESTERS=1 ios/archive-ios-store.sh`, upload that build to TestFlight: Settings > About > Packs shows the Test as row (Free, Everything, each pack) and it works; an App Store or plain-script build has no row.

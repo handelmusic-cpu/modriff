@@ -6,6 +6,12 @@
 #   ios/archive-ios-store.sh upload     also sends it to App Store Connect from Xcode's
 #                                       signed-in account (needs that session to be fresh;
 #                                       if it says "Credentials Error", use Transporter)
+#   MODRIFF_TESTERS=1 ios/archive-ios-store.sh
+#                                       the TESTER build: Settings > About gets a "Test as"
+#                                       row (Free / Everything / each pack) that works only
+#                                       under TestFlight. Upload it for testers and NEVER
+#                                       submit it for App Review: run this script again
+#                                       without the variable for the build you submit.
 #
 # Output goes to $OUT (default ~/Desktop/modRiff-ios-testflight); nothing is committed.
 # The build number is the date and time (YYMMDD.HHMM, or MODRIFF_BUILD), passed on the
@@ -26,6 +32,10 @@ DD="${MODRIFF_DERIVED_DATA:-${TMPDIR:-/tmp}/modriff-dd-ios-rel}"
 TEAM="${MODRIFF_TEAM:-6985K934BS}"
 MODE="${1:-export}"
 BUILD="${MODRIFF_BUILD:-$(date +%y%m%d.%H%M)}"
+# -D, not SWIFT_ACTIVE_COMPILATION_CONDITIONS: the project sets that for Release
+# (MODRIFF_CLOUDKIT) and a command-line value would replace it.
+EXTRA_FLAGS=()
+if [ "${MODRIFF_TESTERS:-}" = 1 ]; then EXTRA_FLAGS=('OTHER_SWIFT_FLAGS=$(inherited) -DTESTERS'); fi
 PKG="$ROOT/ios/App/capacitor-swift-pm"
 export PATH="/opt/homebrew/bin:$HOME/.local/node/bin:$PATH"
 
@@ -74,7 +84,7 @@ mkdir -p "$OUT"
 rm -rf "$OUT/modRiff.xcarchive" "$OUT/export"
 xcodebuild archive -project ios/App/App.xcodeproj -scheme App -configuration Release \
   -destination 'generic/platform=iOS' -archivePath "$OUT/modRiff.xcarchive" -derivedDataPath "$DD" \
-  CURRENT_PROJECT_VERSION="$BUILD" -allowProvisioningUpdates >"$OUT/archive.log" 2>&1 \
+  CURRENT_PROJECT_VERSION="$BUILD" ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"} -allowProvisioningUpdates >"$OUT/archive.log" 2>&1 \
   || { grep error: "$OUT/archive.log" | head; exit 1; }
 # Xcode also writes a .signature file for unsigned SDKs, with signed=false.
 # Check its contents and code hashes rather than treating existence as proof.
@@ -106,4 +116,5 @@ if [ "$MODE" = upload ]; then
     || { grep -E "error:|Error" "$OUT/upload.log" | head; exit 1; }
 fi
 echo "done: $OUT/export ($MODE), version 1.0 build $BUILD"
+if [ "${MODRIFF_TESTERS:-}" = 1 ]; then echo "TESTER BUILD (has the Test as row): for TestFlight testers only, never submit it for review."; fi
 ls -la "$OUT/export"
