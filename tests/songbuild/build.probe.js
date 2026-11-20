@@ -152,6 +152,50 @@ const overflowing = (page, root) => page.evaluate(r => [...document.querySelecto
       R.check(live !== null && !/inset/.test(live), 'Live: a suggested chord is drawn as before (no Build underline)', String(live));
       await ctx.close();
     }
+
+    // ── Task 6: a chord can change on any eighth (dragging a join on the timeline snaps to an eighth) ──
+    {
+      const { page, ctx, errs } = await openBuild(h, 'p430');
+      const eighths = () => page.evaluate(() => sections[curSection].slots.map(x => _slotE(x)));
+      const toast = () => page.evaluate(() => (document.getElementById('_toast') || {}).textContent || '');
+      const beatPx = () => page.evaluate(() => { const r = document.querySelector('#chart-timeline .tl-card .tl-row').getBoundingClientRect();
+        const n = sections[curSection].slots.reduce((a, x) => a + _slotBeats(x), 0); return r.width / n; });
+      const dragJoin = async (ci, dx) => {
+        const b = await page.evaluate(i => { const e = document.querySelector('#chart-timeline .tl-join[data-ci="' + i + '"]'); e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, ci);
+        await page.mouse.move(b.x, b.y); await page.mouse.down();
+        for (let i = 1; i <= 8; i++) await page.mouse.move(b.x + dx * i / 8, b.y);
+        const mid = await page.evaluate(() => (document.getElementById('tl-where') || {}).textContent || '');
+        await page.mouse.up(); await page.waitForTimeout(150); return mid;
+      };
+      await page.evaluate(() => { sections[curSection].slots.forEach(x => { x.bars = 1; x.beats = 0; x.eighths = 0; }); tlRefresh(); });
+      await page.waitForTimeout(300);
+      let e0 = await eighths(), px = await beatPx();
+      R.check(JSON.stringify(e0) === '[8,8,8]', 'three one-bar chords to start', JSON.stringify(e0));
+      let mid = await dragJoin(0, px * 0.3);
+      let e1 = await eighths();
+      R.check(JSON.stringify(e1) === '[9,7,8]', 'dragging a join 0.3 of a beat snaps to one eighth: the first chord an eighth longer, the second an eighth shorter', JSON.stringify(e1));
+      R.check(/starts on bar 2, beat 1 and a half/.test(mid), 'while dragging, the panel says an eighth landing is "beat 1 and a half"', JSON.stringify(mid));
+      await page.evaluate(() => { sections[curSection].slots.forEach(x => { x.bars = 1; x.beats = 0; x.eighths = 0; }); tlRefresh(); }); await page.waitForTimeout(200);
+      await dragJoin(0, px * 1);
+      e1 = await eighths();
+      R.check(JSON.stringify(e1) === '[10,6,8]', 'dragging a join a whole beat moves two eighths', JSON.stringify(e1));
+      await page.evaluate(() => { sections[curSection].slots.forEach(x => { x.bars = 1; x.beats = 0; x.eighths = 0; }); tlRefresh(); }); await page.waitForTimeout(200);
+      const t0 = await toast();
+      await dragJoin(0, px * 0.2);
+      R.check(JSON.stringify(await eighths()) === '[8,8,8]' && await toast() === t0, 'a drag short of the next eighth changes nothing and makes no toast', JSON.stringify([await eighths(), await toast()]));
+      await dragJoin(0, -px * 20);
+      e1 = await eighths();
+      R.check(e1[0] === 1 && e1[0] + e1[1] === 16, 'dragged all the way left the first chord keeps one eighth and the pair keeps its sum', JSON.stringify(e1));
+      // Review focus 5: two chords of an eighth each cannot be dragged to nothing.
+      await page.evaluate(() => { const sl = sections[curSection].slots; sl.forEach((x, i) => { x.bars = 0; x.beats = 0; x.eighths = i < 2 ? 1 : 8; }); sl[2].bars = 0; sl[2].eighths = 0; sl[2].beats = 4; tlRefresh(); });
+      await page.waitForTimeout(250);
+      px = await beatPx(); const before = await eighths();
+      await dragJoin(0, px * 3);
+      const after = await eighths();
+      R.check(after[0] >= 1 && after[1] >= 1 && after[0] + after[1] === before[0] + before[1], 'a pair that is one beat in all keeps at least an eighth each', JSON.stringify([before, after]));
+      R.check(errs.length === 0, 'no page errors while dragging', errs.join('|'));
+      await ctx.close();
+    }
   } finally { await h.close(); }
   R.done();
 })().catch(e => { console.error(e); process.exitCode = 1; });

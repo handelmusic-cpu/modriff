@@ -49054,7 +49054,7 @@ function _timelineBars(beats, per){
 // The same cards, in Build, for the section being edited. Tap a column to select the chord
 // (the controls under the progression are the strip's own, so words, length, rhythm and
 // the rest are all there); drag the JOIN between two chords to move where the second one
-// starts: it snaps to a beat, the two chords keep their sum, and the panel says where it
+// starts: it snaps to an eighth, the two chords keep their sum, and the panel says where it
 // landed. A line's chords can be shared out evenly, a line can be made 1, 2 or 4 bars, and
 // a chord can be split in two. Every edit is one Undo.
 var _tlDragEndedAt = 0;
@@ -49068,7 +49068,7 @@ function _tlLineAt(si, ci){
 // "bar 2, beat 3" for a position in beats from the start of the section.
 function _tlWhere(beatsFromStart){
  var per = _songBarSteps()/4, b = Math.floor(beatsFromStart / per) + 1, n = Math.floor(beatsFromStart % per) + 1;
- return 'bar '+b+', beat '+n;
+ return 'bar '+b+', beat '+n+((beatsFromStart % 1) >= 0.5 ? ' and a half' : '');
 }
 function _tlSecBefore(si, ci){ var t=0; for(var i=0; i<ci; i++) t+=_slotBeats(sections[si].slots[i]); return t; }
 function tlRefresh(){
@@ -49092,7 +49092,8 @@ function tlJoinDown(ev, si, ci, row){
  var a0 = _slotBeats(A), b0 = _slotBeats(B), sum = a0 + b0;
  var before = _tlSecBefore(si, ci);                         // beats from the section's start to A
  var px = row.getBoundingClientRect().width / line.beats;   // pixels a beat on this card
- var unit = sum >= 2 ? 1 : 0.5;                              // a beat, or a half where there is no more room
+ var unit = 0.5;                                            // an eighth: a chord can change on any eighth in the song (it was a beat,
+                                                             // so a change on the "and" meant Exact and the 8ths stepper)
  var colA = row.querySelector('.tl-col[data-ci="'+ci+'"]'), colB = row.querySelector('.tl-col[data-ci="'+(ci+1)+'"]');
  var jn = ev.currentTarget, x0 = ev.clientX, a1 = a0, moved = false;
  try{ jn.setPointerCapture(ev.pointerId); }catch(e){}
@@ -49100,7 +49101,7 @@ function tlJoinDown(ev, si, ci, row){
  var info = document.getElementById('tl-where');
  var move = function(e){
   var dx = e.clientX - x0; if(Math.abs(dx) > 3) moved = true;
-  // Where the join would be, in beats after the start of A, snapped to a beat and kept
+  // Where the join would be, in beats after the start of A, snapped to an eighth and kept
   // clear of both ends so neither chord goes to nothing.
   a1 = Math.max(unit, Math.min(sum - unit, Math.round((a0 + dx/px) / unit) * unit));
   if(colA) colA.style.flexGrow = a1;
