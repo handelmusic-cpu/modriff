@@ -75,7 +75,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
      chosen with Add / reorder widgets (`liveLayout`, a Studio Pack feature, not
      changed here). A Studio part page is that widget's real element at full size,
      moved and not copied, as the Live widgets are moved in from Accomp today.
-3. **Studio has one part selector: two rows on top, with 15 pt labels and 44 pt targets.** Drums, Aux, Bass, Melody and Mel Seq are the first row; Arp, Chords, Sampler and mõdFX are the second. Drums and Aux open the existing drum editor on their own layers; its duplicate Kit/Aux row is removed. The selector folds while scrolling, with the same stay-folded rule as Live’s transport. Return to the top, tap Studio parts or pull down from its handle to restore it. The bottom row only switches parts on and off. A second tap on Studio steps through all nine entries.
+3. **Studio has one part selector: two rows on top, with 15 pt labels and 44 pt targets.** Drums, Aux, Bass, Melody and Mel Seq are the first row; Arp, Chords, Sampler and mõdFX are the second. Drums and Aux open the existing drum editor on their own layers; its duplicate Kit/Aux row is removed. The selector sits at the top of the page in normal flow: it scrolls away with the content and reserves no bar (1.9.9.9i; it was sticky and folded into a handle). The bottom row only switches parts on and off. A second tap on Studio steps through all nine entries.
 4. **A song carries its sounds by default.** Saving a song saves its chart, its
    words and the sounds it was written with. A per-song switch ("Recalls sounds" /
    "Keeps my sounds") decides whether loading it changes what you hear. Setups
