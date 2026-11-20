@@ -213,3 +213,4 @@ Since 6.2:
 - [ ] v1.9.9.9c: Starter patterns was saved OFF on the phone, so Bass, Melody and Drums switched on over an empty part stayed silent; it is back ON once. Press Play, play chords, then switch Drums, Bass, Melody and Arp on one after another: each sounds within a bar.
 - [ ] v1.9.9.9d: with Song on and playing, switch Melody and then Arp on: each starts at once and follows the song's chords (before, they only started if they were lit when the song began).
 - [ ] v1.9.9.9e: archive with `MODRIFF_TESTERS=1 ios/archive-ios-store.sh`, upload that build to TestFlight: Settings > About > Packs shows the Test as row (Free, Everything, each pack) and it works; an App Store or plain-script build has no row.
+- [ ] v1.9.9.9f: Solo's Width control is a bordered 44 pt button now (it read as a heading); tap it in Studio and it steps Auto, S, M, L, XL and the keys resize.
