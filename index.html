@@ -8131,6 +8131,24 @@ html:is(.mac-app, .desktop-web) #_pro-sheet .pro-box { max-width:480px; max-heig
 .ci-nudge > button:hover { border-color:var(--accent); color:var(--accent); }
 .ci-nudge-read { flex:1; min-width:0; font-size:.62rem; color:var(--text); }
 .ci-row.ci-rshut .ci-nudge { display:none; }
+/* Type is one line at the width of a small phone. */
+.ci-row.ci-onerow .ci-seg { flex-wrap:nowrap; }
+.ci-row.ci-onerow .ci-seg > button { flex:1 1 0; padding:11px 1px; font-size:.58rem; }
+.ci-row.ci-onerow .ci-seg .ci-more { flex:0 0 auto; padding:8px 6px !important; }
+.ci-head { min-width:0; }
+.ci-pos { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1; }
+/* Less red: the links to the rest of a row (More, Exact, All chords) are grey until pressed; red stays for what is selected. */
+.ci-body .ci-more, .ci-body .ci-fine { color:var(--muted) !important; }
+.ci-body .ci-more:hover, .ci-body .ci-fine:hover { color:var(--accent) !important; }
+/* Second-step rows: a darker inset with grey selection. Words, Rhythm, Voicing, Bass and Plays are visible but they are the
+   second thing you do to a chord, not the first. */
+.ci-body > .ci-row.ci-quiet { background:color-mix(in srgb, var(--bg) 55%, var(--surf2)); padding:4px 4px; margin-top:0 !important; }
+.ci-body > .ci-row.ci-quiet-first { margin-top:8px !important; border-top-left-radius:var(--r-md); border-top-right-radius:var(--r-md); }
+.ci-body > .ci-row.ci-quiet:last-child { border-bottom-left-radius:var(--r-md); border-bottom-right-radius:var(--r-md); }
+.ci-row.ci-quiet .ci-lbl { opacity:.55; }
+.ci-row.ci-quiet .ci-sum { color:var(--muted); }
+.ci-row.ci-quiet .ci-seg button { font-size:.53rem; padding:8px 1px; letter-spacing:0; }
+.ci-row.ci-quiet .ci-seg button.on, .ci-row.ci-quiet .ci-seg.ci-compact button.on { background:var(--border2); color:var(--text); border-color:var(--border2); }
 /* The quick card: beside the chord that was tapped, over the page. Under the modals (800) and over the transport (521). */
 .qc-card { position:fixed; z-index:700; box-sizing:border-box; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:6px;
  padding:10px 12px; background:var(--surf2); border:1px solid var(--accent); border-radius:var(--r-md); box-shadow:0 10px 34px rgba(0,0,0,.6); }
@@ -43182,7 +43200,8 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint, opts){
  var pos=document.createElement('span'); pos.className='ci-pos';
  var bits=[];
  if(slot.numeral) bits.push(slot.numeral);
- if(SB_FUNC_WORD[slot.func]) bits.push(SB_FUNC_WORD[slot.func]);
+ // The function word ("dominant") is dropped on a narrow phone, where it ran into the move and delete buttons and was cut off.
+ if(SB_FUNC_WORD[slot.func] && window.innerWidth>=420) bits.push(SB_FUNC_WORD[slot.func]);
  bits.push((i+1)+' of '+slots.length);
  pos.textContent=bits.join(' · ');
  head.appendChild(pos);
@@ -43495,6 +43514,18 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint, opts){
  rrow.appendChild(rseg);
  body.appendChild(rrow);
 
+ if(!quick){
+  // Chord, Length and Type first: those are the choices made on every chord. Words, Rhythm, Voicing, Bass and Plays follow in
+  // a quieter band (CSS .ci-quiet), shut on a first launch (_ciFoldGet). The quick card keeps its own order (_qcLayout picks
+  // its rows by label), so it is left alone.
+  var rowBy=function(n){ return [].slice.call(body.children).filter(function(r){
+   var l=r.classList.contains('ci-row') && r.querySelector('.ci-lbl'); return l && l.textContent===n; })[0] || null; };
+  ['Chord','Length','Type','Words','Rhythm','Voicing','Bass','Plays'].forEach(function(n){ var r=rowBy(n); if(r) body.appendChild(r); });
+  var typeRow=rowBy('Type'); if(typeRow) typeRow.classList.add('ci-onerow');
+  var qFirst=true;
+  ['Words','Rhythm','Voicing','Bass','Plays'].forEach(function(n){
+   var r=rowBy(n); if(!r) return; r.classList.add('ci-quiet'); if(qFirst){ r.classList.add('ci-quiet-first'); qFirst=false; } });
+ }
  if(quick){ _qcLayout(ins, head, tools, body, opts); return; }
  ins.appendChild(body);
  _ciFoldWire(ins, tools, body);
@@ -43536,6 +43567,10 @@ function _ciFoldGet(){
   var v=null; try{ v=JSON.parse(modStore.getItem('modo-ci-fold')||'null'); }catch(e){}
   _ciFold=(v && typeof v==='object') ? v : {};
   if(!_ciFold.rows || typeof _ciFold.rows!=='object') _ciFold.rows={};
+  // First launch: the second-step rows start shut, one line each with what they are set to, so the editor is Chord, Length and
+  // Type and the page is not a wall of buttons. Someone who has opened or shut a row keeps what they chose: this only runs when
+  // nothing readable is stored.
+  if(!v) ['Words','Rhythm','Voicing','Bass','Plays'].forEach(function(k){ _ciFold.rows[k]=1; });
  }
  return _ciFold;
 }
@@ -43566,8 +43601,8 @@ function _ciFoldWire(ins, tools, body){
    lb.setAttribute('aria-expanded', shut?'false':'true');
    lb.title=(shut?'Show ':'Hide ')+key.toLowerCase();
    if(shut){
-    var on=row.querySelector('.ci-seg .on'), inp=row.querySelector('input');
-    sum.textContent = on ? on.textContent : (inp ? inp.value : '');
+    var on=row.querySelector('.ci-seg .on') || (key==='Bass' ? row.querySelector('.ci-seg button') : null), inp=row.querySelector('input');
+    sum.textContent = on ? on.textContent : (inp ? (inp.value || 'none') : '');
    }
   };
   var flip=function(){ if(F.rows[key]) delete F.rows[key]; else F.rows[key]=1; _ciFoldSave(); paintRow(); };

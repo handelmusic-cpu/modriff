@@ -45,6 +45,57 @@ const overflowing = (page, root) => page.evaluate(r => [...document.querySelecto
       R.check(errs.length === 0, vp + ': no page errors', errs.join('|'));
       await ctx.close();
     }
+
+    // ── Task 3: the editor's order, the quiet band, shut by default ───────────
+    const labels = page => page.evaluate(() => [...document.querySelectorAll('#chart-inspector .ci-body > .ci-row > .ci-lbl')].map(l => l.textContent));
+    const sums = page => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#chart-inspector .ci-body > .ci-row.ci-rshut')]
+      .map(r => [r.querySelector('.ci-lbl').textContent, r.querySelector('.ci-sum').textContent])));
+    const shutRows = page => page.evaluate(() => [...document.querySelectorAll('#chart-inspector .ci-body > .ci-row.ci-rshut > .ci-lbl')].map(l => l.textContent));
+    const ORDER = ['Chord', 'Length', 'Type', 'Words', 'Rhythm', 'Voicing', 'Bass', 'Plays'];
+    const QUIET = ['Words', 'Rhythm', 'Voicing', 'Bass', 'Plays'];
+    for (const vp of ['se375', 'p390', 'p430']) {
+      const { page, ctx, errs } = await openBuild(h, vp);
+      R.check(JSON.stringify(await labels(page)) === JSON.stringify(ORDER), vp + ': rows run Chord, Length, Type, then the quiet band', (await labels(page)).join(','));
+      R.check(JSON.stringify(await shutRows(page)) === JSON.stringify(QUIET), vp + ': on first launch the five quiet rows start shut', (await shutRows(page)).join(','));
+      const sm = await sums(page);
+      R.check(sm.Words === 'none' && sm.Rhythm === 'Once a bar' && sm.Voicing === 'Default' && sm.Bass === 'Root \u25be' && sm.Plays === 'Chord', vp + ': a shut row says what it is set to', JSON.stringify(sm));
+      const h1 = await page.evaluate(() => Math.round(document.getElementById('chart-inspector').getBoundingClientRect().height));
+      R.check(h1 < 520, vp + ': the editor is under 520 pt tall with the quiet rows shut', h1);
+      const typeTops = await page.evaluate(() => [...document.querySelectorAll('#chart-inspector .ci-row.ci-onerow .ci-seg > button')].filter(b => !b.classList.contains('ci-more')).map(b => Math.round(b.getBoundingClientRect().top)));
+      R.check(typeTops.length === 6 && new Set(typeTops).size === 1, vp + ': Type is one line', typeTops.join(','));
+      let ov = await overflowing(page);
+      R.check(ov.length === 0, vp + ': nothing on the Build page overflows its button', ov.join(' | '));
+      // Open Rhythm by its label; the choice is remembered and Words stays shut.
+      await page.evaluate(() => [...document.querySelectorAll('#chart-inspector .ci-lbl')].filter(l => l.textContent === 'Rhythm')[0].click());
+      const rows = await page.evaluate(() => JSON.parse(localStorage.getItem('modo-ci-fold')).rows);
+      R.check(rows.Rhythm === undefined && rows.Words === 1, vp + ': opening Rhythm is remembered, Words stays shut', JSON.stringify(rows));
+      // Open every quiet row: still no overflow.
+      await page.evaluate(() => [...document.querySelectorAll('#chart-inspector .ci-row.ci-rshut > .ci-lbl')].forEach(l => l.click()));
+      ov = await overflowing(page, '#chart-inspector');
+      R.check(ov.length === 0, vp + ': with every row open nothing in the editor overflows', ov.join(' | '));
+      R.check(errs.length === 0, vp + ': no page errors', errs.join('|'));
+      await ctx.close();
+    }
+    {
+      // Review focus 4: a returning user keeps their rows; unreadable storage is a first launch.
+      let { page, ctx } = await openBuild(h, 'se375', () => localStorage.setItem('modo-ci-fold', '{"rows":{"Voicing":1}}'));
+      R.check(JSON.stringify(await shutRows(page)) === '["Voicing"]', 'a stored fold is kept as it was, not widened to the five', (await shutRows(page)).join(','));
+      await ctx.close();
+      ({ page, ctx } = await openBuild(h, 'se375', () => localStorage.setItem('modo-ci-fold', 'not json')));
+      R.check(JSON.stringify(await shutRows(page)) === JSON.stringify(QUIET), 'unreadable stored fold is treated as a first launch', (await shutRows(page)).join(','));
+      await ctx.close();
+      // Review focus 6: a rest has no Length row and does not throw; the quick card keeps its own order.
+      let r = await openBuild(h, 'se375');
+      await r.page.evaluate(() => { sections[curSection].slots[chartSeqIdx].isRest = true; renderChartSeq(); });
+      await r.page.waitForTimeout(300);
+      const rl = await labels(r.page);
+      R.check(!rl.includes('Length') && rl.includes('Plays') && r.errs.length === 0, 'a rest chord: no Length row, Plays is there, no page errors', rl.join(',') + ' | ' + r.errs.join('|'));
+      await r.ctx.close();
+      r = await openBuild(h, 'se375');
+      const q = await r.page.evaluate(() => { qcOpen(curSection, 0, document.getElementById('chart-timeline')); return [...document.querySelectorAll('.qc-card .ci-body > .ci-row > .ci-lbl')].map(l => l.textContent); });
+      R.check(JSON.stringify(q) === '["Length","Rhythm","Type","Voicing"]' && r.errs.length === 0, 'the quick card keeps Length, Rhythm, Type, Voicing', q.join(',') + ' | ' + r.errs.join('|'));
+      await r.ctx.close();
+    }
   } finally { await h.close(); }
   R.done();
 })().catch(e => { console.error(e); process.exitCode = 1; });
