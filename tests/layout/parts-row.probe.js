@@ -16,4 +16,10 @@ const L=require('./lib.js');
   }
   R.check(errs.length===0,vp+': no page errors',errs.join('|'));await ctx.close();
  }
+ // Studio > Bass and Melody: the Generate / Clear row is above the Generate | Arrange | Play in switch (1.9.9.9j).
+ {const {page,ctx}=await L.boot(h,'p390','studio');
+  for(const n of ['Bass','Mel Seq']){await L.goStudio(page,n);
+   const t=await page.evaluate(()=>{const q=s=>{const e=[...document.querySelectorAll('.tab-page.active '+s)].find(x=>x.getBoundingClientRect().height>0);return e?Math.round(e.getBoundingClientRect().top):null};return {gen:q('[data-acrow="gen"]'),mode:q('[data-acrow="mode"]')}});
+   R.check(t.gen!==null&&t.mode!==null&&t.gen<t.mode,n+': Generate / Clear row is above the Generate | Arrange | Play in switch',JSON.stringify(t));}
+  await ctx.close();}
 }finally{await h.close()}R.done();})().catch(e=>{console.error(e);process.exitCode=1});
