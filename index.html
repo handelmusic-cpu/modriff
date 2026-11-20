@@ -2346,6 +2346,12 @@ body.light-mode .arp-knob .ak-val { color:#14162a; }
  transition:border-color .3s, box-shadow .3s;
 }
 .bl-page-wrap > .pp-bar { margin-bottom:12px; }
+/* Chords and Solo have a sound and no pattern, so their card is the one half, the width of the other pages' pair. It is the
+   picker the old Studio hero was; the hero goes (the Live slots keep the small one) so a page does not carry the same voice twice. */
+.pp-bar.pp-one { grid-template-columns:1fr; width:100%; max-width:700px; margin:2px auto 10px; }
+body:not(.mode-basic) .pf-voice-hero { display:none; }
+/* Solo's panel is allowed 1060 pt on a wide screen for its keys (#pf-melody-panel > *); the card above it stays the pair's width. */
+#pf-melody-panel > .pp-bar.pp-one { max-width:700px !important; }
 .pp-cell { min-width:0; }
 .pp-cell + .pp-cell { border-left:1.5px solid color-mix(in srgb, var(--wc) 55%, transparent); }
 .pp-btn {
@@ -10103,7 +10109,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9n</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9o</span></div>
  </div>
 </div>
 
@@ -10433,6 +10439,11 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
       full controls (wave, level) are under the Studio panel's Edit sound. -->
  <div class="pf-surface-lbl" id="pf-chords-lbl">Chords <button class="pf-sub-chip" id="pf-sub-chip" type="button" onclick="toggleChordSub()" aria-pressed="false" aria-label="Chord sub">Sub</button><button class="pf-sub-chip pf-more-chip" id="pf-more-chip" type="button" onclick="cycleChordMore()" aria-label="More chords: off, modal, dominants or mine"><span class="mc-plus">+ </span>Modal</button><span class="pf-voice-slot" id="pf-slot-chords"></span></div>
  <div id="pf-chords-panel">
+ <!-- Studio only: the chord voice at the head of the page, the way Arp, Bass and Melody open with theirs (the one picker
+      list, the Voices select as its owner). On Live this panel is mounted in a widget slot, where .advanced-only hides it. -->
+ <div class="pp-bar pp-one advanced-only" id="pp-bar-chords" data-acrow="pick">
+  <div class="pp-cell" id="pp-cell-chords-patch"></div>
+ </div>
  <!-- The mõdFX readout used to be the first thing on this page — a mostly
       empty status bar sitting where the chords should be. It is a way in to a
       panel, not something you read, so it goes under the grid it applies to.
@@ -10712,6 +10723,9 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
  <!-- MELODY SUB-PAGE -->
  <div class="pf-surface-lbl" id="pf-mel-lbl">Solo <span class="pf-voice-slot" id="pf-slot-melody"></span></div>
  <div id="pf-melody-panel" style="display:none">
+ <div class="pp-bar pp-one advanced-only" id="pp-bar-solo" data-acrow="pick">
+  <div class="pp-cell" id="pp-cell-solo-patch"></div>
+ </div>
  <!-- mõdFX readout is at the bottom of this panel, under the strip — see the
       note on the chords page. -->
 
@@ -11576,7 +11590,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9n</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9o</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12773,7 +12787,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9n';
+const MODRIFF_VERSION = '1.9.9.9o';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -39603,6 +39617,18 @@ function _ppDefine(){
    try{ where = pbWhere('chord'); }catch(e){}
    return { name: o ? o.textContent.replace(/\s*[\u25c6\u25c8]$/, '') : '\u2014', note: where };
   } };
+ // The Studio Chords and Solo pages (1.9.9.9o): the same Voice card the Arp, Bass and Melody pages open with, on the same
+ // browser and the same Voices selects as the Live rows and Mix › Voices, so there is one voice state and three ways in.
+ [['chords-patch','pp-cell-chords-patch','chord'],['solo-patch','pp-cell-solo-patch','mel']].forEach(function(x){
+  var k = x[2];
+  PP_SPECS[x[0]] = { cell:x[1], cap:'Voice', color:function(){ return _ppPartColor(k); }, browse:k,
+   host:'voices-grid-mix .voice-row[data-part="' + k + '"]',
+   current:function(){
+    var sel = document.getElementById('vsel-' + k), o = sel && sel.options[sel.selectedIndex], where = '';
+    try{ where = pbWhere(k); }catch(e){}
+    return { name: o ? o.textContent.replace(/\s*[\u25c6\u25c8]$/, '') : '\u2014', note: where };
+   } };
+ });
  // The Live Styles rows (6.9.9.9.3): the main kit and the Aux kit, each its own list whatever layer the drum page is on
  // (the Kit box above follows the focused layer; a row on Live does not get to). Floating: no box of their own, opened
  // by the row's button through ppOpenAt.
