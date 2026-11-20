@@ -4252,6 +4252,8 @@ body.mode-basic .part-dice:not(.lv-adv .part-dice) { display:none !important; }
 .sq-kit-legend span { display:inline-flex; align-items:center; gap:5px; }
 .sq-kit-legend i { font-style:normal; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:4px; border:1px solid var(--border2); font-size:max(.42rem,10.5px); }
 .sq-shape { display:flex; flex-direction:column; gap:14px; padding:6px 4px 14px; }
+.sq-shape-note { font-size:.74rem; line-height:1.35; padding:8px 10px; margin:0 0 8px; border-radius:8px; background:color-mix(in srgb, var(--accent, #7aa2ff) 14%, transparent); }
+.sq-shape-see { font:inherit; font-weight:600; color:var(--accent, #7aa2ff); background:none; border:0; padding:0 0 0 2px; text-decoration:underline; cursor:pointer; }
 .sq-shape-pv { display:block; width:100%; height:84px; border-radius:var(--r-sm); background:var(--surf); border:1px solid var(--border); }
 .sq-shape-row { display:grid; grid-template-columns:64px 1fr 74px; align-items:center; gap:10px; }
 .sq-shape-l { font-size:.6rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
@@ -10174,7 +10176,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9u</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9v</span></div>
  </div>
 </div>
 
@@ -11655,7 +11657,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9u</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9v</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12852,7 +12854,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9u';
+const MODRIFF_VERSION = '1.9.9.9v';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -61324,7 +61326,8 @@ function sqLaneSheet(ti){
   act('Sample', clip ? 'Playing '+clip.name+' instead of the kit’s drum — change, trim or remove it' : 'The kit’s own drum. Load a sample, or record one with the microphone',
     function(){ if(typeof window.smpOpenDrum==='function') window.smpOpenDrum(mk,ti); });
   if(M.shape){
-    act('Shape', _sqShapeOf(tr) ? 'Shaped away from the kit — level, tune, decay, tone, drive, pan' : 'Level, tune, decay, tone, drive and pan for this drum',
+    act('Shape', modHas('synth') ? (_sqShapeOf(tr) ? 'Shaped away from the kit — level, tune, decay, tone, drive, pan' : 'Level, tune, decay, tone, drive and pan for this drum')
+                                 : 'Hear decay, tone, drive and pan on this drum. Keeping a shape is part of the mõdSynth Engine',
       function(){ sqShapeSheet(ti); });
   }
   sec('Row');
@@ -61343,7 +61346,7 @@ window.sqLaneSheet = sqLaneSheet;
 function sqRowMenu(ti, anchor){
   var tr=(SQM[sqMach]||{tracks:[]}).tracks[ti]; if(!tr) return;
   gridClipMenu(anchor, tr.n||tr.s, sqRowItems(ti)
-    .concat((SQM[sqMach]||{}).shape ? [{label:'Shape…', title:'Tune, decay, tone, drive and pan for this drum', fn:function(){ sqShapeSheet(ti); }}] : []));
+    .concat((SQM[sqMach]||{}).shape ? [{label:modHas('synth') ? 'Shape…' : 'Shape… (hear only)', title:modHas('synth') ? 'Tune, decay, tone, drive and pan for this drum' : 'Hear decay, tone, drive and pan on this drum. Keeping a shape is part of the mõdSynth Engine', fn:function(){ sqShapeSheet(ti); }}] : []));
 }
 // A drum drawn, for the Shape sheet: the lane's voice built into an offline
 // context with the lane's current Shape and rendered, so the picture is the
@@ -61414,6 +61417,10 @@ function sqShapeSheet(ti){
  var put=function(k,v){ var m=sqShapes[key]||(sqShapes[key]={}); var sh=cur(); sh[k]=v; m[ti]=sh; };
  var hear=function(){ try{ sqInitFX(); sqEnsureNoise(); var c=sqCtx(); sqHitTrack(tr, c?c.currentTime+0.02:0, sqGv(key,ti), false, sqGp(key,ti), sqFocus===1 ? 'auxperc' : undefined); }catch(e){} };
  var box=_sbSheet(tr.n+' · shape');
+ // Free hears every setting but keeps none: what the lane had when the sheet opened (nothing, or a shape that arrived with a
+ // song) is put back on close. Said at the top, before any of the work, and at the door (the lane sheet and the row menu).
+ var hearOnly = !modHas('synth');
+ var snap = (sqShapes[key] && sqShapes[key][ti]) ? Object.assign({}, sqShapes[key][ti]) : null;
  var rows=[
   // Level and Pitch are the lane's own (the volume and PCH controls on the
   // grid), shown here so every way to change the drum is in one place.
@@ -61437,6 +61444,14 @@ function sqShapeSheet(ti){
  var getV=function(k){ return k==='p' ? sqGp(key,ti) : k==='v' ? sqGv(key,ti) : cur()[k]; };
  var setV=function(k,v){ if(k==='p') sqSp(key,ti,v); else if(k==='v') sqSv(key,ti,v); else put(k,v); };
  var wrap=document.createElement('div'); wrap.className='sq-shape';
+ if(hearOnly){
+  var nt=document.createElement('div'); nt.className='sq-shape-note'; nt.setAttribute('data-shape-note','1');
+  nt.appendChild(document.createTextNode('You can hear every setting. Keeping a shape is part of the mõdSynth Engine, so the drum goes back to the kit’s when you close this. '));
+  var nb=document.createElement('button'); nb.type='button'; nb.className='sq-shape-see'; nb.textContent='See pack';
+  nb.addEventListener('click', function(){ proSheet('Drum shaping','synth'); });
+  nt.appendChild(nb);
+  wrap.appendChild(nt);
+ }
  // The drum, drawn. Redrawn a beat after the last slider movement, not on
  // every input event: each one is an offline render.
  var pv=document.createElement('canvas'); pv.className='sq-shape-pv'; pv.setAttribute('aria-hidden','true');
@@ -61480,7 +61495,10 @@ function sqShapeSheet(ti){
  box.body.appendChild(wrap); box.body.appendChild(act);
  box.addCancel('Done');
  // The lane's PCH knob and its Shape button both show what was changed here.
- box.onClose=function(){ try{ sqRenderGrid(); }catch(e){} };
+ box.onClose=function(){
+  if(hearOnly){ var m=sqShapes[key]; if(snap){ (m||(sqShapes[key]={}))[ti]=snap; } else if(m) delete m[ti]; }
+  try{ sqRenderGrid(); }catch(e){}
+ };
 }
 window.sqShapeSheet = sqShapeSheet;
 function sqColMenu(step, anchor){
@@ -76406,7 +76424,7 @@ const MODULE_COPY = {
  sampler:  { name:'Sampler Engine', line:'Pro sampler: your samples, kits, loop slicing',
   bullets:['Play the pads: every bank, all 16','Sampled melodic instruments','Every sample kit','Load your own samples onto the pads','Slice a loop across the pads'] },
  synth:    { name:'mõdSynth Engine', line:'Wavetable power synth + the full mõdFX rack',
-  bullets:['All mõdSynth sound sets','The full mõdFX library on the XY pad'] },
+  bullets:['All mõdSynth sound sets','The full mõdFX library on the XY pad','Drum shaping: decay, sweep, body, tone, drive and pan for every drum, kept'] },
  groove:   { name:'Groove Pack', line:'World grooves, odd meters, extra kits, aux',
   bullets:['More grooves, including Latin and world rhythms','Extra drum kits and the aux channel','More bass and melody styles',
            'Odd meters','More than 16 steps','Separate step length per generator','Every tempo, 1 bpm nudges and tap tempo (free has six tempos)'] },
@@ -76491,6 +76509,10 @@ const FREE_LIMITS = {
   // link, Keep fitting the band to what you played, the practice trainer, Ableton Link) is never moved: only a hand is.
   tempoStops:   [70,88,100,110,128,150],
   tapTempo:     false,
+  // The drum Shape sheet's six (decay, sweep, body, tone, drive, pan) are the mõdSynth Engine's to KEEP. A free install can open the
+  // sheet and hear every setting, then the lane goes back to the kit's drum when the sheet closes. A shape that ARRIVES (a song,
+  // a setup, a shared link) keeps sounding, as a saved EQ does. Level and Tune are the lane's own controls and stay free.
+  drumShape:    false,
   // None: the whole sampler is the Sampler Engine's (6.9.9.9.5). Free sees the
   // grid, the first FREE_NUMBERS.padCount pads of the preset bank on show, drawn
   // locked, and a tap plays that pad's sample softly twice (psPreviewTap); it is
@@ -76500,7 +76522,7 @@ const FREE_LIMITS = {
 // Which module owns each row above. Every row has exactly one; the test fails
 // on a row with none, which would be a lock nothing could ever open.
 const FEATURE_MODULE = {
-  modfx:'synth', fxPatches:'synth', modsynth:'synth',
+  modfx:'synth', fxPatches:'synth', modsynth:'synth', drumShape:'synth',
   freeModes:'theory', chordExtensions:'theory', outsideChords:'theory', voicings:'theory', keyColours:'theory', pureTuning:'theory', chordHold:'theory',
   samples:'sampler', sampler:'sampler', padBanks:'sampler',
   stemExport:'studio', fullMidiExport:'studio', liveLayout:'studio', liveMixer:'studio',
