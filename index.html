@@ -8119,6 +8119,18 @@ html:is(.mac-app, .desktop-web) #_pro-sheet .pro-box { max-width:480px; max-heig
  box-shadow:0 0 0 1px var(--bg), 0 4px 14px rgba(0,0,0,.45);
 }
 .ci-rest { font-size:.5rem; color:var(--muted); text-align:center; padding:2px 0; }
+/* Length is the biggest row: six whole-width buttons on one line, the eighth nudge and the links under them. */
+.ci-row.ci-len { flex-wrap:wrap; }
+.ci-row.ci-len .ci-seg { flex-wrap:nowrap; }
+.ci-row.ci-len .ci-seg > button { flex:1 1 0; padding:11px 1px; font-size:.56rem; }
+.ci-row.ci-len .ci-seg > button:nth-child(3) { border-right:1px solid var(--border2); border-radius:0; margin-right:2px; }
+.ci-nudge { flex:1 1 100%; display:flex; align-items:center; gap:6px; margin-top:2px; }
+.ci-nudge .ci-extras { margin-left:auto; }
+.ci-nudge > button { flex:0 0 auto; min-width:44px; min-height:36px; padding:0 8px; cursor:pointer; touch-action:manipulation;
+ border:1px solid var(--border2); border-radius:var(--r-sm); background:var(--bg); color:var(--text); font:600 .66rem 'Outfit',sans-serif; }
+.ci-nudge > button:hover { border-color:var(--accent); color:var(--accent); }
+.ci-nudge-read { flex:1; min-width:0; font-size:.62rem; color:var(--text); }
+.ci-row.ci-rshut .ci-nudge { display:none; }
 /* The quick card: beside the chord that was tapped, over the page. Under the modals (800) and over the transport (521). */
 .qc-card { position:fixed; z-index:700; box-sizing:border-box; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:6px;
  padding:10px 12px; background:var(--surf2); border:1px solid var(--accent); border-radius:var(--r-md); box-shadow:0 10px 34px rgba(0,0,0,.6); }
@@ -43387,11 +43399,27 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint, opts){
   var allLen=_ciMoreBtn('All chords\u2026', function(){ sbLengthAll(repaint); });
   allLen.title='Set the length of every chord in the song at once';
   lx.appendChild(allLen);
-  body.appendChild(_ciSeg('Length', lenOpts,
+  var lenRow=_ciSeg('Length', lenOpts,
    function(idx){ return _durMatchesPreset(slot, SB_LEN_ROW[idx]); },
    function(idx){ var p=SB_LEN_ROW[idx];
-                  slot.bars=p.bars; slot.beats=p.beats; slot.eighths=p.eighths; repaint(); },
-   lx));
+                  slot.bars=p.bars; slot.beats=p.beats; slot.eighths=p.eighths; repaint(); });
+  lenRow.classList.add('ci-len');
+  // The eighth-note step. A chord can change on any eighth in the song; this is the one tap for it, with the length said in
+  // words beside it so "2½ beats" is something you read, not work out. Exact and All chords moved down here from the end
+  // of the Length row, which left six whole-width buttons that fit one line at 375 pt.
+  var nd=document.createElement('div'); nd.className='ci-nudge';
+  var ndBtn=function(txt, label, step){
+   var b=document.createElement('button'); b.type='button'; b.textContent=txt; b.title=label; b.setAttribute('aria-label',label);
+   b.addEventListener('click', function(){ _setSlotE(slot, Math.max(1, _slotE(slot)+step)); repaint(); });
+   return b;
+  };
+  nd.appendChild(ndBtn('\u2212\u215b','One eighth shorter',-1));
+  nd.appendChild(ndBtn('+\u215b','One eighth longer',1));
+  var ndRead=document.createElement('span'); ndRead.className='ci-nudge-read'; ndRead.textContent=_slotDurLabel(slot);
+  nd.appendChild(ndRead);
+  nd.appendChild(lx);
+  lenRow.appendChild(nd);
+  body.appendChild(lenRow);
 
   // RHYTHM. How this chord re-strikes while it is held.
   // More holds the rest of the patterns; All sets one rhythm on every chord in
