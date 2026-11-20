@@ -69,6 +69,7 @@ const wavSeconds = (buf) => {
     // Sections: a song of one takes one more, then says no. The roll may have made several; start from one.
     await page.evaluate(() => { sections = [{ name: 'Section 1', slots: [], plays: 0, follow: 'repeat' }]; curSection = 0; buildSectionTabs(); });
     const sec = await page.evaluate(() => {
+      _freeToastAt = 0;   // freeBlocked says one thing per 2.5 s; whatever the page said at start must not eat this test's
       const said = [], orig = window.majorToast;
       window.majorToast = function (m) { said.push(String(m)); return orig.apply(this, arguments); };
       const out = [];

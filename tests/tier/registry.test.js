@@ -57,6 +57,8 @@ eq(T.slCanAdd(songs(5).concat([{ id: 'd', isDemo: true }])), false, 'the demo so
 eq(T.slCanAdd(songs(4).concat([{ id: 'd', isDemo: true }])), true, 'demo plus four still has room');
 eq([T.FREE_NUMBERS.sections, T.FREE_NUMBERS.bounceSeconds], [2, 30], 'free: two sections, a 30 second take');
 eq([T.NUMBER_MODULE.sections, T.NUMBER_MODULE.bounceSeconds], ['studio', 'studio'], 'both caps are the Studio Pack\'s');
+eq(T.FREE_LIMITS.tempoStops, [70, 88, 100, 110, 128, 150], 'the six free tempos');
+eq([T.FEATURE_MODULE.tempoStops, T.FEATURE_MODULE.tapTempo, T.FREE_LIMITS.tapTempo], ['groove', 'groove', false], 'tempo and tap tempo are the Groove Pack\'s');
 eq(T.FREE_NUMBERS.midiExportBars, 4, 'MIDI export bars');
 eq(T.FREE_NUMBERS.padCount, 9, 'sampler pads');
 eq(T.EMBED_LIMITS, { sampleSeconds: 12, sampleBytes: 2 * 1024 * 1024, fileBytes: 15 * 1024 * 1024 }, 'embed caps');

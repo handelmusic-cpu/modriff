@@ -4899,6 +4899,8 @@ body.light-mode .ft-btn.tp-rec  { color:#c81e3a; }
 .ft-bpm-pop { flex-direction:column; align-items:stretch; gap:6px; }
 .ft-bpm-pop { max-width:calc(100vw - 16px); }
 .ft-bpm-pop input[type=range] { width:min(46vw,160px); }
+.ft-bpm-note { font-size:.62rem; line-height:1.3; color:var(--sq-txt, var(--dim, #999)); max-width:min(70vw,220px); padding:0 2px; }
+.ft-bpm-note[hidden] { display:none; }
 .ft-pop-row { display:flex; align-items:center; gap:7px; }
 .ft-pop-sep { height:1px; background:var(--border2); margin:1px 0; }
 .ft-pop-lbl {
@@ -9939,9 +9941,10 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
   <div class="ft-pop-row">
    <button class="ft-bpm-nudge" onclick="nudgeBpm(-1)" aria-label="Slower" title="1 bpm slower">−</button>
    <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
-          oninput="onBpmInput(this.value)" aria-label="Tempo">
+          oninput="bpmByHand(this.value)" aria-label="Tempo">
    <button class="ft-bpm-nudge" onclick="nudgeBpm(1)" aria-label="Faster" title="1 bpm faster">+</button>
   </div>
+  <div class="ft-bpm-note" id="ft-bpm-note" hidden></div>
   <!-- Feel lives with tempo because they are the same decision — how the beat
        is laid out — and because it used to be reachable only from the Drums
        tab, with nothing anywhere else saying it was on or that it governed
@@ -10171,7 +10174,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9t</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9u</span></div>
  </div>
 </div>
 
@@ -11652,7 +11655,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9t</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9u</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12849,7 +12852,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9t';
+const MODRIFF_VERSION = '1.9.9.9u';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -25284,7 +25287,7 @@ var _link = window._link = {
   if(!st) return;
   this.seen=true;
   var on=!!st.enabled;
-  if(on!==this.on){ this.on=on; this.synced=false; this.pendN=0; }
+  if(on!==this.on){ this.on=on; this.synced=false; this.pendN=0; try{ freeTempoSync(); }catch(e){} }
   this.peers=st.peers|0; this.tempo=+st.tempo||0;
   this.paint();
   if(on && !this.timer){ var me=this; this.timer=setInterval(function(){ me.poll(); }, 500); }
@@ -39109,6 +39112,7 @@ function randomizeSettings(opts){
   // Tempo comes from the archetype too — a Cathedral patch at 148bpm isn't
   // a cathedral. Never the slider's full 40–220; most of that rolls unusable.
   s.bpm  = Math.round(_rndBand(A.bpm||[70,150],0));
+  if(freeTempoLocked()) s.bpm = freeTempoNearest(s.bpm);   // a roll lands on a tempo a free install can set itself
  }
  // Feel and shape roll on every press, playing or not — these change the
  // groove without touching anything the user authored (the step grids,
@@ -55274,7 +55278,7 @@ function onBpmInput(v){
 // slider and the drag all stay in sync with each other for free.
 const BPM_MIN=40, BPM_MAX=220;
 function _clampBpm(v){ return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(v))); }
-function nudgeBpm(d){ onBpmInput(_clampBpm(_bpmNow()+d)); }
+function nudgeBpm(d){ bpmByHand(_bpmNow()+d, d>0?1:-1); }
 function _bpmPopOpen(on){
  const pop=document.getElementById('ft-bpm-pop'); if(!pop) return;
  pop.classList.toggle('open', !!on);
@@ -55318,7 +55322,7 @@ function _bpmPopIsOpen(){ return !!document.getElementById('ft-bpm-pop')?.classL
   const v=_clampBpm(v0+(dx+dy)/2.5);
   // Only push a real change — onBpmInput restarts the clock, and doing that
   // on every pointermove that rounds to the same bpm stutters the transport.
-  if(v!==_bpmNow()) onBpmInput(v);
+  if(v!==_bpmNow()) bpmByHand(v);
  });
  const end=e=>{
   if(!drag) return;
@@ -57593,8 +57597,13 @@ function tapTempo(){
  const avg=intervals.reduce((a,b)=>a+b,0)/intervals.length;
  const bpm=Math.round(60000/avg);
  const clamped=Math.max(40,Math.min(220,bpm));
- onBpmInput(clamped);
- const sl=document.getElementById('bpm'); if(sl) sl.value=clamped;
+ // Tap tempo is the Groove Pack's. The taps are counted, and the fourth says so (rather than the first, so a tap
+ // that only meant to open the slider never does); the tempo stays where it was.
+ if(freeTempoLocked()){ _tapTimes=[]; freeBlocked('Tap tempo','groove'); }
+ else {
+  onBpmInput(clamped);
+  const sl=document.getElementById('bpm'); if(sl) sl.value=clamped;
+ }
  }
  // Flash the readout itself so each registered tap gives feedback, even
  // the first few before there's enough of a window to set a tempo yet.
@@ -58780,7 +58789,7 @@ mhApply(0);
 
 
 // Wire sliders
-document.getElementById('ft-bpm-sl').addEventListener('input',e=>onBpmInput(e.target.value));
+document.getElementById('ft-bpm-sl').addEventListener('input',e=>bpmByHand(e.target.value));
 // Ensure songs perform setlist initialised
 renderSetlistPerform();
 // Build arp gate-pattern buttons (strip is open by default)
@@ -76400,7 +76409,7 @@ const MODULE_COPY = {
   bullets:['All mõdSynth sound sets','The full mõdFX library on the XY pad'] },
  groove:   { name:'Groove Pack', line:'World grooves, odd meters, extra kits, aux',
   bullets:['More grooves, including Latin and world rhythms','Extra drum kits and the aux channel','More bass and melody styles',
-           'Odd meters','More than 16 steps','Separate step length per generator'] },
+           'Odd meters','More than 16 steps','Separate step length per generator','Every tempo, 1 bpm nudges and tap tempo (free has six tempos)'] },
  theory:   { name:'Theory Pack', line:'Every mode, chord and voicing, neo-soul ready',
   bullets:['All modes, harmonic and melodic minor, and exotic scales','Every chord type','Drop 2, Drop 3, Soul and Neo-soul voicings',
            'Circle-of-fifths key colours','Pure tuning for chords, bass, melody and arp'] },
@@ -76477,6 +76486,11 @@ const FREE_LIMITS = {
   // Three meters, and the step counts are derived from them: a whole number of
   // bars of any of these, up to FREE_NUMBERS.stepMax. See freeAllowsSteps.
   meters:       ['4/4','3/4','12/8'],
+  // Tempo, by hand: the six stops. The slider, the nudges and a drag land on the nearest (or next) one; the whole
+  // 40-220 dial, 1 bpm nudges and tap tempo are the Groove Pack's. A tempo that ARRIVES (a load, the demo, a shared
+  // link, Keep fitting the band to what you played, the practice trainer, Ableton Link) is never moved: only a hand is.
+  tempoStops:   [70,88,100,110,128,150],
+  tapTempo:     false,
   // None: the whole sampler is the Sampler Engine's (6.9.9.9.5). Free sees the
   // grid, the first FREE_NUMBERS.padCount pads of the preset bank on show, drawn
   // locked, and a tap plays that pad's sample softly twice (psPreviewTap); it is
@@ -76492,7 +76506,7 @@ const FEATURE_MODULE = {
   stemExport:'studio', fullMidiExport:'studio', liveLayout:'studio', liveMixer:'studio',
   liveRolls:'groove', liveSynth:'synth',
   arrange:'studio', playIn:'studio', soundShaping:'studio', eq:'studio', stepsUnlinked:'groove', auxLayer:'groove', drumKits:'groove', drumGrooves:'groove',
-  bassStyles:'groove', melodyStyles:'groove', arpRates:'groove', meters:'groove',
+  bassStyles:'groove', melodyStyles:'groove', arpRates:'groove', meters:'groove', tempoStops:'groove', tapTempo:'groove',
   iRealBatch:'practice', practiceTrainer:'practice', timeline:'practice', stage:'practice'
 };
 // The voices the Sounds Pack holds: the electric piano, organ and pad, the
@@ -76726,6 +76740,44 @@ function freeAllowsVoice(w){
  if(_modOwned===undefined) return true;      // voiceModule reads consts declared above this line in file order only
  const m=voiceModule(w);
  return !m || modHas(m);
+}
+// ── Tempo by hand ───────────────────────────────────────────────────────────
+// Ableton Link is never sold (its licence: free for everyone, outside every pack), so while it is on the tempo is
+// unrestricted, including the user's own moves, which then go out to the session.
+function freeTempoLocked(){ return !modHas('groove') && !(window._link && window._link.on); }
+function freeTempoNearest(v){
+ var st=FREE_LIMITS.tempoStops, best=st[0];
+ st.forEach(function(x){ if(Math.abs(x-v)<Math.abs(best-v)) best=x; });
+ return best;
+}
+// dir +1 / -1: the next stop above or below where the tempo is now (a nudge); stays put at the end of the list.
+function freeTempoStep(dir){
+ var st=FREE_LIMITS.tempoStops, cur=_bpmNow(), i;
+ if(dir>0){ for(i=0;i<st.length;i++) if(st[i]>cur) return st[i]; return st[st.length-1]; }
+ for(i=st.length-1;i>=0;i--) if(st[i]<cur) return st[i];
+ return st[0];
+}
+var _tempoToldFree=false;
+// Every tempo a person sets goes through here: the slider, the nudges, the arrow keys, a drag, a MIDI knob.
+// `dir` is given by a nudge (a step is a step, not a distance). Free is told once, on the first move that lands
+// somewhere other than where it was asked to; the note in the tempo popover says it before anyone tries.
+function bpmByHand(v, dir){
+ v=_clampBpm(v);
+ if(freeTempoLocked()){
+  var t = dir ? freeTempoStep(dir) : freeTempoNearest(v);
+  if(!_tempoToldFree && t!==v){
+   _tempoToldFree=true;
+   majorToast('Free sets the tempo from six stops. The Groove Pack opens the whole dial.', {actionLabel:'See pack', onAction:function(){ proSheet('Every tempo', 'groove'); }});
+  }
+  v=t;
+ }
+ if(v!==_bpmNow() || String(document.getElementById('ft-bpm-sl') && document.getElementById('ft-bpm-sl').value)!==String(v)) onBpmInput(v);
+}
+function freeTempoSync(){
+ var n=document.getElementById('ft-bpm-note'); if(!n) return;
+ var lock=freeTempoLocked();
+ n.hidden=!lock;
+ if(lock) n.textContent='Free: '+FREE_LIMITS.tempoStops.join(', ')+'. The Groove Pack opens every tempo and tap tempo.';
 }
 function freeAllowsArpRate(label){
  if(modHas('groove')) return true;
@@ -77925,6 +77977,7 @@ function freeApplyLimits(){
   // The meter steps through the three free ones itself (see meterNudge), so
   // the base buttons, which can only make others, are locked.
   document.querySelectorAll('.ft-meter-base').forEach(b=>modLockEl(b, !modHas('groove'), 'groove'));
+  try{ freeTempoSync(); }catch(e){}
   // Bass and melody generator styles.
   document.querySelectorAll('[data-blstyle]').forEach(b=>{
    modLockEl(b, !freeAllowsStyle(b.dataset.blstyle), 'groove');

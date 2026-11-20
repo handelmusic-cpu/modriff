@@ -21,7 +21,7 @@ Latest official release is `LinkKit-4.1.3` (2026-10-19, deployment target iOS 15
 **What the licence asks** (by using LinkKit you agree to it; there is no sign-up, form or approval by Ableton):
 - No redistribution of the SDK. This repo is public, so **the xcframework is never committed**: a fetch script
   pinned to a tag and a checksum, like `npm run ios:frameworks`.
-- **Link may not be sold as an In-App Purchase.** It is free for everyone, outside every pack.
+- **Link may not be sold as an In-App Purchase.** It is free for everyone, outside every pack. That reaches the tempo limit too: free sets tempo from six stops (Groove Pack), and while Link is on the stops do not apply, including the user's own moves.
 - The UI guidelines are binding (breaking them breaks the licence). Only Ableton's own assets for anything that
   shows their identity.
 - Ableton may revoke on breach (14 days to cure). German law, Berlin.
