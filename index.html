@@ -10009,7 +10009,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9f</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9g</span></div>
  </div>
 </div>
 
@@ -11482,7 +11482,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9f</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9g</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11535,6 +11535,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-packs-body">
     <div class="row about-row" id="dev-tier-row" style="display:none">Test as
+     <button class="tb" type="button" data-devtier="real" onclick="devTierSet('real')">Purchases</button>
      <button class="tb" type="button" data-devtier="free" onclick="devTierSet('free')">Free</button>
      <button class="tb" type="button" data-devtier="pro" onclick="devTierSet('pro')">Everything</button>
      <button class="tb" type="button" data-devmod="sounds" onclick="devModToggle('sounds')">Sounds</button>
@@ -12678,7 +12679,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9f';
+const MODRIFF_VERSION = '1.9.9.9g';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -76898,6 +76899,7 @@ function proSheet(what, module, hint){
  function buy(key){
   if(busy) return; busy=true; lock(true);
   Promise.resolve().then(function(){ return window.modBilling.purchase(key); }).then(function(ok){
+   if(ok) devTierClear();
    return window.modBillingChanged().then(function(){
     busy=false;
     if(ok){ showToast(modNameOf(key)+' is unlocked. Thank you.'); if(cur.view==='feature') close(); else render(); }
@@ -77272,6 +77274,7 @@ function creditsToggle(){
 // sheet and in Settings > About.
 function proRestore(){
  return Promise.resolve().then(function(){ return window.modBilling.restore(); }).then(function(ok){
+  if(ok && window.modBilling.provider==='ios') devTierClear();
   return modBillingChanged().then(function(){
    showToast(ok ? 'Purchases restored' : 'No earlier purchases found for this Apple ID');
    return !!ok;
@@ -77292,8 +77295,18 @@ function devTierAvailable(host){
  if(window.__modDebug===true || window.__modTesters===true) return true;
  return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(host===undefined ? location.hostname : host);
 }
+// Drops the Test as choice so owned() is what the store says again. The override REPLACES the store's answer, and it
+// is remembered across launches: a tester who had tapped Free or a pack once bought something for real and saw it stay
+// locked (the override still won), and a pack toggled on there showed as Owned, so no sheet offered it to buy. A real
+// purchase or restore is proof of what they own, so it ends the override; the Purchases button ends it by hand.
+function devTierClear(){
+ try{ modStore.removeItem('modo-dev-tier'); }catch(e){}
+ try{ if(window.modBilling) window.modBilling._dev=null; }catch(e){}
+ _applyTier();
+}
 function devTierSet(t){
  if(!devTierAvailable()) return;
+ if(t==='real'){ devTierClear(); return; }
  try{ modStore.setItem('modo-dev-tier', t==='free' ? 'free' : 'pro'); }catch(e){}
  setModTier(t);
 }
@@ -77320,9 +77333,10 @@ function proSyncRow(){
   if(on){
    const none=!MODULE_ORDER.some(modHas), all=modHasAll();
    dev.querySelectorAll('[data-devtier]').forEach(function(b){
-    b.classList.toggle('active', b.getAttribute('data-devtier')==='free' ? none : all);
+    const t=b.getAttribute('data-devtier');
+    b.classList.toggle('active', t==='real' ? (window.modBilling._dev==null) : t==='free' ? (window.modBilling._dev!=null && none) : (window.modBilling._dev!=null && all));
    });
-   dev.querySelectorAll('[data-devmod]').forEach(function(b){ b.classList.toggle('active', modHas(b.getAttribute('data-devmod'))); });
+   dev.querySelectorAll('[data-devmod]').forEach(function(b){ b.classList.toggle('active', window.modBilling._dev!=null && modHas(b.getAttribute('data-devmod'))); });
   }
  }
  const row=document.getElementById('pro-row'); if(!row) return;
