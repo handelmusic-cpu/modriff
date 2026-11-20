@@ -10171,7 +10171,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9s</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9t</span></div>
  </div>
 </div>
 
@@ -11652,7 +11652,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9s</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9t</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12849,7 +12849,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9s';
+const MODRIFF_VERSION = '1.9.9.9t';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -43373,18 +43373,12 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint, opts){
   // LENGTH. The same five presets the duration modal offered, on the page.
   // Fine-tune still opens that modal, for the odd bar counts and eighth-note
   // pushes the presets deliberately do not cover.
-  var lenOpts=DUR_PRESETS.map(function(p,idx){
-   // "2 beats" -> "2♪", "1 bar" -> "1", "4 bars" -> "4". The row is labelled
-   // Length; repeating "bars" on every option only costs the row the width
-   // that its type needs.
-   var lbl=String(p.lbl||'');
-   var short = /beat/i.test(lbl) ? (p.val+'\u266a') : String(p.val);
-   return [idx, short, p.val+' '+lbl];
-  });
+  // Every option names its unit. The row used to read "2\u266a | 1 | 2 | 4 | 8": the note meant two BEATS here and two
+  // eighths everywhere else, the bars had no unit, and a one-beat chord had no button at all.
+  var lenOpts=SB_LEN_ROW.map(function(p,idx){ return [idx, p.short, p.title]; });
   var fine=document.createElement('button');
   fine.type='button'; fine.className='ci-fine';
-  var custom=!DUR_PRESETS.some(function(p){ return _durMatchesPreset(slot,p); });
-  fine.textContent = custom ? (_slotDurLabel(slot)+' \u25b8') : 'Exact \u25b8';
+  fine.textContent = 'Exact \u25b8';
   fine.addEventListener('click', function(){ showDurationPicker(slot, repaint); });
   // A song imported from a sheet has every chord the same length by guess, so the
   // fix is one setting for all of them, not one chord at a time.
@@ -43394,8 +43388,8 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint, opts){
   allLen.title='Set the length of every chord in the song at once';
   lx.appendChild(allLen);
   body.appendChild(_ciSeg('Length', lenOpts,
-   function(idx){ return _durMatchesPreset(slot, DUR_PRESETS[idx]); },
-   function(idx){ var p=DUR_PRESETS[idx];
+   function(idx){ return _durMatchesPreset(slot, SB_LEN_ROW[idx]); },
+   function(idx){ var p=SB_LEN_ROW[idx];
                   slot.bars=p.bars; slot.beats=p.beats; slot.eighths=p.eighths; repaint(); },
    lx));
 
@@ -52964,14 +52958,28 @@ function slotTotalMs(slot){
  return total > 0 ? total : barMs;
 }
 
+// The length in words, from the total, so every place that shows it says the same thing. It used to print the stored
+// parts ("2♪" for two eighths, "1bar" with no space) while the Length row's own "2♪" meant two BEATS.
 function _slotDurLabel(slot){
- const b=slot.bars||0, bt=slot.beats||0, e=slot.eighths||0;
- const parts=[];
- if(b) parts.push(b+(b===1?'bar':'bars'));
- if(bt) parts.push(bt+(bt===1?'beat':'beats'));
- if(e) parts.push(e+'♪');
- return parts.length ? parts.join('+') : '1bar';
+ const e=Math.round(_slotBeats(slot)*2), barE=Math.max(2, Math.round(_songBarSteps()/2));
+ const bars=Math.floor(e/barE), rem=e-bars*barE, parts=[];
+ if(bars) parts.push(bars+(bars===1?' bar':' bars'));
+ if(rem){
+  const b=rem/2, whole=Math.floor(b);
+  parts.push((whole?String(whole):'')+(b!==whole?'\u00bd':'')+(b<=1?' beat':' beats'));
+ }
+ return parts.length ? parts.join(' + ') : '1 bar';
 }
+// The Length row of the chord editor: the changes that happen on a beat, then whole bars. Eighths are the nudge under
+// it; anything else (8 bars, odd counts) is Exact. var, not const: read from the editor, far from here (CLAUDE.md, TDZ).
+var SB_LEN_ROW=[
+ {short:'\u00bd',  title:'Half a beat (one eighth)', bars:0, beats:0, eighths:1},
+ {short:'1 beat',  title:'One beat',                 bars:0, beats:1, eighths:0},
+ {short:'2 beats', title:'Two beats',                bars:0, beats:2, eighths:0},
+ {short:'1 bar',   title:'One bar',                  bars:1, beats:0, eighths:0},
+ {short:'2 bars',  title:'Two bars',                 bars:2, beats:0, eighths:0},
+ {short:'4 bars',  title:'Four bars',                bars:4, beats:0, eighths:0}
+];
 
 // Jazz-friendly duration presets — cover the phrase lengths that show up in
 // real charts (quick change, 1-bar, 2-bar, 4-bar, 8-bar) so picking a duration
