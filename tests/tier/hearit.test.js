@@ -82,12 +82,12 @@ const openFromKit = (page, kit) => page.evaluate(k => document.querySelector('#s
   check(!!(await sheetBtn(page, 'Hear it')), 'the button is Hear it when it has run out');
   check((await page.evaluate(() => window.__state())) === before, 'after it ends the song is as it was');
   // Opened from a locked groove: that groove first.
-  await press(page, 'Not now');
+  await press(page, 'Done');
   await page.evaluate(() => document.querySelector('#sq-groove-presets > [data-groove="Samba"]').click());
   await press(page, 'Hear it'); await page.waitForTimeout(800);
   const g = await page.evaluate(() => _packDemoLog.slice());
   check(g[0] && g[0].groove === 'Samba', 'from a locked groove, that groove plays first', JSON.stringify(g[0]));
-  await press(page, 'Not now');
+  await press(page, 'Done');
   const gone = await page.evaluate(() => ({ running: !!_packDemo }));
   check(!gone.running, 'closing the sheet stops it');
   check((await page.evaluate(() => window.__state())) === before, 'and the song is as it was');
@@ -102,7 +102,7 @@ const openFromKit = (page, kit) => page.evaluate(k => document.querySelector('#s
   await press(page, 'Stop'); await page.waitForTimeout(800);
   const playAfter = await page.evaluate(() => ({ playing: isAnythingPlaying(), bpm: document.getElementById('bpm').value, kit: window._sqDrumKit(), groove: sqCurGroove }));
   check(JSON.stringify(playAfter) === JSON.stringify(playBefore), 'and it is running again with the same tempo, kit and groove', JSON.stringify(playAfter));
-  await press(page, 'Not now'); await page.evaluate(() => ftPlayStop());
+  await press(page, 'Done'); await page.evaluate(() => ftPlayStop());
 
   console.log('\n== a take');
   await page.evaluate(() => {
@@ -125,7 +125,7 @@ const openFromKit = (page, kit) => page.evaluate(k => document.querySelector('#s
   await press(page, 'Hear it'); await page.waitForTimeout(1500);
   const h1 = await page.evaluate(() => window.__hits.length);
   check(h1 === h0, 'pressing it sends no hits', h1 - h0);
-  await press(page, 'Not now');
+  await press(page, 'Done');
   await page.waitForTimeout(500);
   await page.evaluate(() => toggleRecording());
   for (let i = 0; i < 30 && !(await page.evaluate(() => window.__peaks)); i++) await page.waitForTimeout(300);
@@ -140,7 +140,7 @@ const openFromKit = (page, kit) => page.evaluate(k => document.querySelector('#s
   await page.waitForTimeout(1500);
   check((await page.evaluate(() => window.__hits.length)) === h2, 'and it sends nothing more', '');
   await page.evaluate(() => { toggleRecording(); });
-  await press(page, 'Not now');
+  await press(page, 'Done');
   await page.waitForTimeout(1500);
   check(page.__errs.length === 0, 'no page errors', page.__errs.join(' | '));
   await page.close();
