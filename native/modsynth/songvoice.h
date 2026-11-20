@@ -76,7 +76,7 @@ class SongVoicer {
     VoicingConfig vc = cfg.vc;
     vc.keyRoot = ((cfg.vc.keyRoot + capo) % 12 + 12) % 12;
     slot_ = SongSlot();
-    const std::vector<int> ivs = lead_.chordVoicing(root, sc.landing.ivs, cfg.vc.style, vc);
+    const std::vector<int> ivs = lead_.chordVoicing(root, sc.landing.ivs, cfg.vc.style, vc, root - 12);
     if (!cfg.play) { a.stop = true; return a; }
     const VoicedChord vch = engineChord(root, ivs, root - 12);
     ChordEvent &e = a.e;
@@ -124,7 +124,7 @@ class SongVoicer {
     VoicingConfig vc = cfg.vc;
     vc.keyRoot = ((cfg.vc.keyRoot + capo) % 12 + 12) % 12;      // the page's `root` moves with the key change
     const int style = slot_.voicing >= 0 ? slot_.voicing : cfg.vc.style;
-    const std::vector<int> ivs = lead_.chordVoicing(playRoot, voiced, style, vc);
+    const std::vector<int> ivs = lead_.chordVoicing(playRoot, voiced, style, vc, slash >= 0 ? slash : INT_MIN);
     if (!cfg.play) { a.stop = true; return; }
     const VoicedChord vch = engineChord(playRoot, ivs, slash);
     ChordEvent &e = a.e;
