@@ -95,7 +95,7 @@ PLAYS WELL WITH OTHERS
 - Map its knobs and pads to anything on the screen
 
 FREE TO START, PACKS WHEN YOU WANT MORE
-mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits, five saved songs and full-length audio export are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack listed here, and every update to them. No subscriptions.
+mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits, five saved songs, two sections per song and 30-second audio export are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack listed here, and every update to them. No subscriptions.
 
 PRIVATE BY DESIGN
 No account. No ads. No tracking. No third-party analytics. Works offline. Your songs, patterns and recordings stay on your device. Apple provides aggregate store statistics and, if you opt in to sharing, app usage and diagnostics.

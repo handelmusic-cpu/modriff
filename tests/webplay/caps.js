@@ -1,6 +1,7 @@
-/* The two limits only the free web page has (WEB_LIMITS in index.html), measured on the
-   built pages: a Bounce stops itself and saves a .wav of that length, and a song
-   holds WEB_LIMITS.sections sections. The app build (dist/) must have neither.
+/* The Studio Pack's two caps (FREE_NUMBERS.sections and bounceSeconds), measured on the built
+   pages: a free Bounce stops itself and saves a .wav of that length, and a song takes
+   FREE_NUMBERS.sections sections. The web page holds no pack, so it is always capped; the app
+   build (dist/) is capped as a free install and uncapped once the Studio Pack is held.
 
    Run:
      npm run build:web && npm run build
@@ -62,7 +63,7 @@ const wavSeconds = (buf) => {
   // ── The web page
   {
     const { page, st, ctx } = await open(WEB);
-    const k = await page.evaluate(() => ({ capped: webCapped(), lim: WEB_LIMITS }));
+    const k = await page.evaluate(() => ({ capped: !modHas('studio'), lim: FREE_NUMBERS }));
     check(k.capped && k.lim.bounceSeconds === 30 && k.lim.sections === 2, 'web: capped, 30 seconds and 2 sections', JSON.stringify(k));
 
     // Sections: a song of one takes one more, then says no. The roll may have made several; start from one.
@@ -76,14 +77,14 @@ const wavSeconds = (buf) => {
       return { out, toast: said.join(' | ') };
     });
     check(sec.out.join() === '2,2,2,2', 'web: + Section stops at two and stays there', sec.out.join());
-    check(/web version holds 2 sections/.test(sec.toast), 'web: the toast says why', sec.toast.slice(0, 90));
+    check(/More than 2 sections are part of the Studio Pack/.test(sec.toast), 'web: the toast says why', sec.toast.slice(0, 90));
     // The other doors: record into a section and capture-back are refused too, and add nothing.
     const doors = await page.evaluate(() => { const n = sections.length; try { startSongRecord(); } catch (e) {} try { captureBack(); } catch (e) {} return [n, sections.length, songRecActive === true]; });
     check(doors[0] === 2 && doors[1] === 2 && !doors[2], 'web: Song record and capture-back add no third section', JSON.stringify(doors));
     // A load is never refused: a setup with five sections arrives whole and plays.
     const loaded = await page.evaluate(() => {
       sections = [1, 2, 3, 4, 5].map(i => ({ name: 'S' + i, slots: [], plays: 0, follow: 'repeat' })); buildSectionTabs();
-      const room = webSectionRoom(); sectionAdd();
+      const room = freeSectionRoom(); sectionAdd();
       return [sections.length, room];
     });
     check(loaded[0] === 5 && loaded[1] === 0, 'web: a song that arrives with five keeps five, and adds none', JSON.stringify(loaded));
@@ -98,7 +99,7 @@ const wavSeconds = (buf) => {
     check(lib.ok === true && lib.n === 2, 'web: library Add of three sections into one adds exactly one', JSON.stringify(lib));
 
     // Bounce: shorten the cap to 4 s so the run is quick; the cap's path is the same.
-    await page.evaluate(() => { WEB_LIMITS.bounceSeconds = 4; if (!isAnythingPlaying()) ftPlayStop(); });
+    await page.evaluate(() => { FREE_NUMBERS.bounceSeconds = 4; if (!isAnythingPlaying()) ftPlayStop(); });
     await page.waitForTimeout(1500);
     const t0 = Date.now();
     await page.evaluate(() => toggleRecording());
@@ -119,12 +120,12 @@ const wavSeconds = (buf) => {
 
     // A take stopped by hand must not leave a timer that cuts the next one short.
     st.wavs.length = 0;
-    await page.evaluate(() => { WEB_LIMITS.bounceSeconds = 3; toggleRecording(); });
+    await page.evaluate(() => { FREE_NUMBERS.bounceSeconds = 3; toggleRecording(); });
     await page.waitForTimeout(1200);
     await page.evaluate(() => toggleRecording());              // stopped by hand at ~1 s
     await page.waitForFunction(() => !_isRecording && !_recFinishing, null, { timeout: 20000 }).catch(() => {});
     await page.waitForTimeout(500);
-    await page.evaluate(() => { WEB_LIMITS.bounceSeconds = 30; toggleRecording(); });   // second take, long cap
+    await page.evaluate(() => { FREE_NUMBERS.bounceSeconds = 30; toggleRecording(); });   // second take, long cap
     await page.waitForTimeout(4500);                           // past the first take's 3 s mark
     const still = await page.evaluate(() => _isRecording);
     check(still === true, 'web: a hand-stopped take leaves no timer that ends the next one', String(still));
@@ -134,23 +135,37 @@ const wavSeconds = (buf) => {
     await ctx.close();
   }
 
-  // ── The app build: neither limit
+  // ── The app build: a free install is capped exactly like the web page; the Studio Pack lifts both
   {
     const { page, st, ctx } = await open(APP);
-    const r = await page.evaluate(() => {
+    const free = await page.evaluate(() => {
+      setModOwned([]);
       sections = [{ name: 'Section 1', slots: [], plays: 0, follow: 'repeat' }]; curSection = 0; buildSectionTabs();
       for (let i = 0; i < 5; i++) sectionAdd();
-      return { capped: webCapped(), room: webSectionRoom(), n: sections.length };
+      return { studio: modHas('studio'), n: sections.length, cap: freeBounceCap() };
     });
-    check(!r.capped && r.room === Infinity && r.n === 6, 'app: not capped, six sections after five adds', JSON.stringify(r));
+    check(!free.studio && free.n === 2 && free.cap === 30, 'app, free: two sections after five adds, a 30 s cap', JSON.stringify(free));
+    const owned = await page.evaluate(() => {
+      setModOwned(['studio']);
+      for (let i = 0; i < 5; i++) sectionAdd();
+      return { studio: modHas('studio'), n: sections.length, cap: freeBounceCap(), room: freeSectionRoom() };
+    });
+    check(owned.studio && owned.n === 7 && owned.cap === 0 && owned.room === Infinity, 'app, Studio Pack held: seven sections, no cap', JSON.stringify(owned));
     await page.evaluate(() => { if (!isAnythingPlaying()) ftPlayStop(); });
     await page.waitForTimeout(1200);
-    await page.evaluate(() => { WEB_LIMITS.bounceSeconds = 2; toggleRecording(); });
+    await page.evaluate(() => { FREE_NUMBERS.bounceSeconds = 2; toggleRecording(); });
     await page.waitForTimeout(4500);
-    const rec = await page.evaluate(() => _isRecording);
-    check(rec === true, 'app: Bounce keeps recording past what the web cap would be (2 s here)');
+    const rec = await page.evaluate(() => _isRecording && !_recFinishing);
+    check(rec === true, 'app, Studio Pack held: Bounce keeps recording past the free cap (2 s here)');
     await page.evaluate(() => toggleRecording());
     await page.waitForTimeout(1200);
+    // And free again: the same 2 s cap now ends the take.
+    await page.waitForFunction(() => !_isRecording && !_recFinishing, null, { timeout: 20000 }).catch(() => {});
+    await page.evaluate(() => { setModOwned([]); toggleRecording(); });
+    await page.waitForTimeout(4500);
+    const fin = await page.evaluate(() => _recFinishing);
+    check(fin === true, 'app, free: the same take stops itself at the cap');
+    await page.waitForFunction(() => !_isRecording && !_recFinishing, null, { timeout: 20000 }).catch(() => {});
     check(st.errs.length === 0, 'app: nothing thrown', st.errs.join(' | '));
     await ctx.close();
   }
