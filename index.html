@@ -10175,7 +10175,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9s</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9t</span></div>
  </div>
 </div>
 
@@ -11656,7 +11656,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9s</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9t</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12853,7 +12853,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9s';
+const MODRIFF_VERSION = '1.9.9.9t';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -35298,47 +35298,116 @@ function updateChartPlaying(){
  const el=host.querySelector('[data-cc="'+songCurrentSection+'-'+songCurrentSlot+'"]');
  if(el){ el.classList.add('playing'); el.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'}); }
 }
-function printChordChart(){
- if(!sections.some(x=>x.slots&&x.slots.length)){ showToast('No chords to print'); return; }
- const title=(document.getElementById('chart-title')?.value||'Untitled');
- const keyTxt=nn(root)+' '+((MODES[mode]||MODES.major).label);
- let body='';
- sections.forEach(sec=>{
-  if(!sec.slots||!sec.slots.length) return;
-  body+='<div class="sec"><h2>'+sec.name+'</h2><div class="row">';
-  sec.slots.forEach(slot=>{
-   const e=_chartEntry(slot);
-   if(e.rest){ body+='<div class="card"><div class="nm">Rest</div>'+(slot.lyr&&slot.lyr.trim()?'<div class="lyr">'+_chartEsc(slot.lyr.trim())+'</div>':'')+'</div>'; return; }
-   body+='<div class="card"><div class="num">'+e.numeral+'</div><div class="nm">'+e.name+'</div>'+
-         (slot.lyr&&slot.lyr.trim()?'<div class="lyr">'+_chartEsc(slot.lyr.trim())+'</div>':'')+
-         (e.piano?_svgPianoPrint(e.piano.pcs, e.piano.rootPc, e.piano.bassPc)
-          :e.res?_svgFretboard(chartInst,e.res.shape.frets):'')+
-         (e.res&&e.res.sub?'<div class="sub">simplified</div>':'')+
-         '<div class="dur">'+e.dur+'</div></div>';
-  });
-  body+='</div></div>';
+// Print / Save PDF. This used to open a new window and call print() on it, which the iPhone app's
+// web view refuses (no pop-ups), so the button did nothing there. The chart is now drawn onto
+// page-sized canvases and wrapped in a PDF, which goes through modPlatform.saveFile like every other
+// export: a download on the web, the share sheet in the app (Print and Save to Files are both on it).
+// One builder for both entry points (the Chart view and the File menu); they had drifted apart, the
+// menu's always drew piano diagrams whatever instrument the chart was set to.
+function _chartSvgImage(svg, scale){
+ // The on-screen SVGs size themselves from the page's CSS (width 100%, var(--pg), currentColor), none of
+ // which exists inside an <img>, so give them a size and plain ink.
+ const vb=/viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg);
+ const w=vb?+vb[1]:100, h=vb?+vb[2]:60;
+ let t=svg.replace(/<svg [^>]*>/, '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+w+' '+h+'" width="'+(w*4)+'" height="'+(h*4)+'">')
+          .replace(/var\(--pg\)/g,'#1f8a52').replace(/currentColor/g,'#000');
+ return new Promise((res,rej)=>{
+  const im=new Image(); im.onload=()=>res({im, w:w*scale, h:h*scale}); im.onerror=rej;
+  im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(t);
  });
- const w=window.open('','_blank');
- if(!w){ showToast('Allow pop-ups to print'); return; }
- // Printed black-on-white: the on-screen palette is unreadable on paper, and
- // currentColor in the SVGs picks up whatever we set here.
- w.document.write('<html><head><title>'+title+' — Chord Chart</title><style>'+
-  'body{font-family:system-ui,-apple-system,sans-serif;color:#000;background:#fff;padding:22px;}'+
-  'h1{font-size:20px;margin:0 0 2px;} .key{font-size:12px;color:#555;margin-bottom:16px;}'+
-  'h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#444;'+
-  'border-bottom:1px solid #ccc;padding-bottom:3px;margin:16px 0 8px;}'+
-  '.row{display:flex;flex-wrap:wrap;gap:12px;}'+
-  // At least 96px, not exactly: a two-octave keyboard is twice that, and a
-  // fixed width laid each piano over the next card.
-  '.card{min-width:96px;text-align:center;color:#000;page-break-inside:avoid;break-inside:avoid;}'+
-  '.card svg{color:#000;}'+
-  '.num{font-size:10.5px;color:#777;height:11px;} .nm{font-size:14px;font-weight:700;margin-bottom:2px;}'+
-  '.lyr{font-size:11px;font-style:italic;color:#222;margin-bottom:3px;}'+
-  '.sub{font-size:10.5px;color:#a15;} .dur{font-size:10.5px;color:#777;margin-top:2px;}'+
-  '@media print{@page{margin:12mm;}}'+
-  '</style></head><body><h1>'+title+'</h1><div class="key">'+keyTxt+' · '+chartInst+'</div>'+body+'</body></html>');
- w.document.close();
- setTimeout(()=>{ try{ w.print(); }catch(e){} },260);
+}
+// JPEG pages in, PDF bytes out. Hand-written because it is a dozen objects and an image per page.
+function _pdfFromJpegs(pages, pw, ph){
+ const enc=new TextEncoder(), parts=[], offs=[]; let len=0;
+ const push=x=>{ const b=typeof x==='string'?enc.encode(x):x; parts.push(b); len+=b.length; };
+ const obj=(n,fn)=>{ offs[n]=len; push(n+' 0 obj\n'); fn(); push('\nendobj\n'); };
+ push('%PDF-1.4\n');
+ obj(1,()=>push('<< /Type /Catalog /Pages 2 0 R >>'));
+ obj(2,()=>push('<< /Type /Pages /Count '+pages.length+' /Kids ['+pages.map((_,i)=>(3+3*i)+' 0 R').join(' ')+'] >>'));
+ pages.forEach((pg,i)=>{
+  const P=3+3*i, C=P+1, I=P+2, content='q '+pw+' 0 0 '+ph+' 0 0 cm /Im0 Do Q';
+  obj(P,()=>push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+pw+' '+ph+'] /Resources << /XObject << /Im0 '+I+' 0 R >> >> /Contents '+C+' 0 R >>'));
+  obj(C,()=>push('<< /Length '+content.length+' >>\nstream\n'+content+'\nendstream'));
+  obj(I,()=>{ push('<< /Type /XObject /Subtype /Image /Width '+pg.w+' /Height '+pg.h+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+pg.bytes.length+' >>\nstream\n'); push(pg.bytes); push('\nendstream'); });
+ });
+ const n=3+3*pages.length, xref=len;
+ push('xref\n0 '+n+'\n0000000000 65535 f \n');
+ for(let i=1;i<n;i++) push(String(offs[i]).padStart(10,'0')+' 00000 n \n');
+ push('trailer\n<< /Size '+n+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n');
+ const out=new Uint8Array(len); let o=0; parts.forEach(b=>{ out.set(b,o); o+=b.length; });
+ return out;
+}
+async function _chartPdfBytes(){
+ const PW=612, PH=792, M=40, K=200/72;        // US Letter in points, drawn at 200 dpi
+ const title=(document.getElementById('chart-title')?.value||'Untitled');
+ const keyTxt=nn(root)+' '+((MODES[mode]||MODES.major).label)+' · '+chartInst;
+ const fretted=chartInst!=='piano', CW=fretted?100:128, GAP=8, FSC=fretted?0.62:0.7;
+ const FONT='system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif';
+ const pages=[]; let cv, cx, y;
+ const newPage=()=>{
+  cv=document.createElement('canvas'); cv.width=Math.round(PW*K); cv.height=Math.round(PH*K);
+  cx=cv.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,cv.width,cv.height); cx.scale(K,K);
+  cx.textBaseline='alphabetic'; pages.push(cv); y=M;
+ };
+ const wrap=(txt,maxW)=>{
+  const out=[]; let line='';
+  String(txt).split(/\s+/).forEach(w=>{ const t=line?line+' '+w:w; if(cx.measureText(t).width>maxW&&line){ out.push(line); line=w; } else line=t; });
+  if(line) out.push(line); return out;
+ };
+ newPage();
+ cx.fillStyle='#000'; cx.font='700 20px '+FONT; cx.textAlign='left'; cx.fillText(title,M,y+16); y+=26;
+ cx.fillStyle='#555'; cx.font='11px '+FONT; cx.fillText(keyTxt,M,y+8); y+=24;
+ for(const sec of sections){
+  if(!sec.slots||!sec.slots.length) continue;
+  // Cards first, so a section heading is never left alone at the foot of a page.
+  const cards=[];
+  for(const slot of sec.slots){
+   const e=_chartEntry(slot);
+   const card={e, lyr:(slot.lyr&&slot.lyr.trim())||''};
+   if(!e.rest){
+    const svg=e.piano?_svgPianoPrint(e.piano.pcs,e.piano.rootPc,e.piano.bassPc):(e.res?_svgFretboard(chartInst,e.res.shape.frets):'');
+    if(svg) card.img=await _chartSvgImage(svg, FSC);
+   }
+   cards.push(card);
+  }
+  cx.font='italic 9.5px '+FONT;
+  cards.forEach(c=>{ c.lyrLines=c.lyr?wrap(c.lyr,CW-6):[]; });
+  const heightOf=c=>12+17+c.lyrLines.length*11+(c.img?c.img.h+4:0)+(c.e.res&&c.e.res.sub?10:0)+11;
+  if(y+16+heightOf(cards[0])>PH-M) newPage();
+  cx.fillStyle='#444'; cx.font='700 10px '+FONT; cx.textAlign='left';
+  cx.fillText(String(sec.name).toUpperCase().split('').join(' '),M,y+10);
+  cx.strokeStyle='#ccc'; cx.lineWidth=.6; cx.beginPath(); cx.moveTo(M,y+15); cx.lineTo(PW-M,y+15); cx.stroke(); y+=24;
+  const perRow=Math.max(1,Math.floor((PW-2*M+GAP)/(CW+GAP)));
+  for(let r=0;r<cards.length;r+=perRow){
+   const row=cards.slice(r,r+perRow), rh=Math.max(...row.map(heightOf));
+   if(y+rh>PH-M) newPage();
+   row.forEach((c,i)=>{
+    const x0=M+i*(CW+GAP), mid=x0+CW/2; let yy=y; cx.textAlign='center';
+    cx.fillStyle='#777'; cx.font='9px '+FONT; cx.fillText(c.e.numeral||'',mid,yy+9); yy+=12;
+    cx.fillStyle='#000'; cx.font='700 14px '+FONT; cx.fillText(c.e.rest?'Rest':c.e.name,mid,yy+13); yy+=17;
+    cx.fillStyle='#222'; cx.font='italic 9.5px '+FONT; c.lyrLines.forEach(l=>{ cx.fillText(l,mid,yy+8); yy+=11; });
+    if(c.img){ cx.drawImage(c.img.im, mid-c.img.w/2, yy, c.img.w, c.img.h); yy+=c.img.h+4; }
+    if(c.e.res&&c.e.res.sub){ cx.fillStyle='#a15'; cx.font='8px '+FONT; cx.fillText('simplified',mid,yy+7); yy+=10; }
+    if(c.e.dur){ cx.fillStyle='#777'; cx.font='8px '+FONT; cx.fillText(c.e.dur,mid,yy+7); }
+   });
+   y+=rh+6;
+  }
+  y+=6;
+ }
+ const jpgs=[];
+ for(const c of pages){
+  const blob=await new Promise(res=>c.toBlob(res,'image/jpeg',0.92));
+  jpgs.push({bytes:new Uint8Array(await blob.arrayBuffer()), w:c.width, h:c.height});
+ }
+ return _pdfFromJpegs(jpgs, PW, PH);
+}
+async function printChordChart(){
+ if(!sections.some(x=>x.slots&&x.slots.length)){ showToast('No chords to print'); return; }
+ try{
+  const bytes=await _chartPdfBytes();
+  const name=(document.getElementById('chart-title')?.value||'').trim()||'modriff';
+  await modPlatform.saveFile(_dlName(name+' - chart.pdf'), new Blob([bytes],{type:'application/pdf'}));
+ }catch(e){ console.warn('[chart pdf]', e); showToast('Could not make the PDF'); }
 }
 
 // ═══════════════════════════════════════
@@ -46004,42 +46073,8 @@ function _svgPianoPrint(pcs, rootPc, bassPc){
  }
  return s+'</svg>';
 }
-function printChart(){
- const title=document.getElementById('chart-title').value||'Untitled';
- const win=window.open('','_blank');
- const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
- let html='<html><head><title>'+esc(title)+'</title><style>'
-  +'body{font-family:sans-serif;padding:20px;color:#000;background:#fff;}'
-  +'.sec{margin-bottom:22px;break-inside:avoid;}'
-  +'.sec-name{font-size:14px;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px;border-bottom:1px solid #ccc;padding-bottom:4px;}'
-  +'.chords{display:flex;flex-wrap:wrap;gap:10px;}'
-  +'.chord{padding:8px 10px 6px;border:1px solid #ccc;border-radius:6px;text-align:center;break-inside:avoid;}'
-  +'.cname{font-size:18px;font-weight:bold;margin-bottom:6px;}'
-  +'.cdur{font-size:10px;color:#666;margin-top:3px;}'
-  +'@media print{ .chord{border-color:#999;} }'
-  +'</style></head><body><h1>'+esc(title)+'</h1><h3>'+nn(root)+' '+(MODES[mode]||MODES.major).label+'</h3>';
- sections.forEach(sec=>{
-  if(!sec.slots||!sec.slots.length) return;
-  html+='<div class="sec"><div class="sec-name">'+esc(sec.name)+'</div><div class="chords">';
-  sec.slots.forEach(slot=>{
-   if(!slot || slot.isRest){ html+='<div class="chord"><div class="cname">Rest</div></div>'; return; }
-   const rootPc=((slot.rootM%12)+12)%12;
-   const intvs=slotIvs(slot);
-   const pcs=[...new Set(intvs.map(i=>(((rootPc+i)%12)+12)%12))];
-   const bassPc=slot.bassNote!=null?((slot.bassNote%12)+12)%12:null;
-   // The Chart tab's name for it (G7, Dm7/C), not the slot's short label,
-   // which drops the seventh — the shape underneath showed four notes under
-   // a name that promised three.
-   const name=esc((typeof _chartEntry==='function' && _chartEntry(slot).name) || slot.label);
-   const dur=(typeof _slotDurLabel==='function')?_slotDurLabel(slot):'';
-   html+='<div class="chord"><div class="cname">'+name+'</div>'+_svgPianoPrint(pcs, rootPc, bassPc)
-     +(dur?'<div class="cdur">'+esc(dur)+'</div>':'')+'</div>';
-  });
-  html+='</div></div>';
- });
- html+='</body></html>';
- win.document.write(html); win.document.close(); win.print();
-}
+// The File menu's print is the Chart view's: one builder (printChordChart), so the two cannot differ.
+function printChart(){ return printChordChart(); }
 
 
 // ─── HELP CONTENT ────────────────────────────────────────────
