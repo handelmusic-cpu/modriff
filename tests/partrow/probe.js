@@ -85,14 +85,16 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
   // 4. The strip picks the page; its dots follow the switches.
   const strip = await page.evaluate(() => { const el = document.getElementById('studio-strip'); return el ? [].slice.call(el.querySelectorAll('.ss-chip')).map(b => b.dataset.page) : null; });
-  check(strip && strip.join(',') === 'Drums,Bass,Melody,Mel Seq,Arp,Chords,Sampler,mõdFX', 'the strip lists the eight pages in order', JSON.stringify(strip));
-  const want = { 'Drums': ['accomp', 'drums'], 'Bass': ['accomp', 'bass'], 'Melody': ['perform', 'melody'], 'Mel Seq': ['accomp', 'melseq'], 'Arp': ['accomp', 'arp'], 'Chords': ['perform', 'chords'], 'Sampler': ['perform', 'smp'], 'mõdFX': ['perform', 'fx'] };
+  check(strip && strip.join(',') === 'Drums,Aux,Bass,Melody,Arp,Chords,Solo,Sampler,mõdFX', 'the picker lists the nine modules in order', JSON.stringify(strip));
+  const want = { 'Drums': ['accomp', 'drums'], 'Aux': ['accomp', 'aux'], 'Bass': ['accomp', 'bass'], 'Melody': ['accomp', 'melseq'], 'Arp': ['accomp', 'arp'], 'Chords': ['perform', 'chords'], 'Solo': ['perform', 'melody'], 'Sampler': ['perform', 'smp'], 'mõdFX': ['perform', 'fx'] };
   for (const name of Object.keys(want)) {
     const k = await page.evaluate(n => [].slice.call(document.querySelectorAll('#studio-strip .ss-chip')).filter(b => b.dataset.page === n)[0].dataset.k, name);
+    // The picker is closed until the module's name is tapped.
+    const h = await centre('ss-cur'); await touch('touchStart', [h]); await touch('touchEnd', []); await page.waitForTimeout(250);
     const c = await centre('ss-' + k); await touch('touchStart', [c]); await touch('touchEnd', []); await page.waitForTimeout(350);
     s = await state();
     const on = await page.evaluate(() => [].slice.call(document.querySelectorAll('#studio-strip .ss-chip.on')).map(b => b.dataset.page).join());
-    check(s.page === want[name][0] && s.sel === want[name][1] && on === name, 'strip: ' + name + ' opens its page and is the one marked', JSON.stringify({ page: s.page, sel: s.sel, on }));
+    check(s.page === want[name][0] && s.sel === want[name][1] && on === name, 'picker: ' + name + ' opens its page and is the one marked', JSON.stringify({ page: s.page, sel: s.sel, on }));
   }
   await page.evaluate(() => studioShow('bass')); await page.waitForTimeout(250);
   let dot = await page.evaluate(() => document.getElementById('ss-bass').classList.contains('part-on'));
@@ -104,7 +106,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const mel = await page.evaluate(() => ({ melody: document.getElementById('ss-melody').classList.contains('part-on'), fx: document.getElementById('ss-fx').classList.contains('part-on') }));
   check(!mel.melody && !mel.fx, 'Melody and mõdFX are not switched in the band, so their chips never carry a dot', JSON.stringify(mel));
   const cyc = await page.evaluate(() => { studioShow('chords'); const r = []; for (let i = 0; i < 8; i++) { tabTap('studio'); r.push(studioSel()); } return r.join('>'); });
-  check(cyc === 'smp>fx>drums>bass>melody>melseq>arp>chords' || cyc === 'smp>drums>bass>melody>melseq>arp>chords>smp', 'a second tap on the Studio tab steps the strip, and wraps', cyc);
+  check(cyc === 'melody>smp>arp>fx>drums>aux>bass>melseq', 'a second tap on the Studio tab steps to the next module, and wraps', cyc);
 
   // 5. Live: a tap switches, a hold is a slow tap, and no strip is drawn.
   await page.evaluate(() => setViewMode('basic')); await page.waitForTimeout(400);

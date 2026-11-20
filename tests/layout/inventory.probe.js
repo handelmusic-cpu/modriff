@@ -25,6 +25,12 @@ async function sweep(h) {
   for (const name of L.STUDIO) {
     await L.goStudio(page, name);
     out[name] = (await page.evaluate(L.SCAN)).map(c => c.key);
+    // Bass, Melody and Solo show one tab at a time (the header's tabs): a control on another tab is still on its page.
+    const tabs = await page.evaluate(() => [...document.querySelectorAll('#ss-tabs.has .ss-tab')].map(b => b.id));
+    for (const t of tabs) {
+      await page.evaluate(id => document.getElementById(id).click(), t); await page.waitForTimeout(250);
+      out[name] = out[name].concat((await page.evaluate(L.SCAN)).map(c => c.key));
+    }
   }
   for (const name of L.MIX) {
     await L.goMix(page, name);
