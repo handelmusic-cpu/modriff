@@ -124,6 +124,34 @@ const overflowing = (page, root) => page.evaluate(r => [...document.querySelecto
       R.check(errs.length === 0, vp + ': no page errors', errs.join('|'));
       await ctx.close();
     }
+
+    // ── Task 5: three levels of weight, tokens only, Build only ───────────────
+    const resolved = (page, css) => page.evaluate(c => { const d = document.createElement('div'); d.style.cssText = 'position:fixed;left:-99px;top:0;width:1px;height:1px;background:' + c; document.body.appendChild(d);
+      const v = getComputedStyle(d).backgroundColor; d.remove(); return v; }, css);
+    for (const mode of ['dark', 'light']) {
+      const { page, ctx, errs } = await openBuild(h, 'p430', mode === 'light' ? () => document.body.classList.add('light-mode') : null);
+      if (mode === 'light') await page.evaluate(() => document.body.classList.add('light-mode'));
+      const t = mode + ': ';
+      const card = await page.evaluate(() => getComputedStyle(document.querySelector('.sb-seccard')).backgroundColor);
+      R.check(card === await resolved(page, 'var(--play-surf)'), t + 'the progression and picker card is the bright surface (--play-surf)', card);
+      const glow = await page.evaluate(() => { const tile = document.querySelector('#chart-chord-picker .cpick-split'); tile.classList.add('logic-suggest');
+        const c = getComputedStyle(tile); return { shadow: c.boxShadow, filter: c.filter }; });
+      R.check(/inset/.test(glow.shadow) && !/\b14px\b/.test(glow.shadow) && glow.filter === 'none', t + 'a suggested chord is an underline, not a glow', JSON.stringify(glow));
+      const tab = await page.evaluate(() => { const e = document.querySelector('.sec-tab.active'); return e ? getComputedStyle(e).backgroundColor : null; });
+      R.check(tab !== null && tab !== await resolved(page, 'var(--py)'), t + 'the selected section tab is tinted, not a solid yellow slab', tab);
+      await page.evaluate(() => [...document.querySelectorAll('#chart-inspector .ci-lbl')].filter(l => l.textContent === 'Rhythm')[0].click());
+      const sel = await page.evaluate(() => getComputedStyle(document.querySelector('#chart-inspector .ci-row.ci-quiet .ci-seg button.on')).backgroundColor);
+      R.check(sel === await resolved(page, 'var(--border2)') && sel !== await resolved(page, 'var(--accent)'), t + 'a selected second-step option is grey, not the accent', sel);
+      R.check(errs.length === 0, t + 'no page errors', errs.join('|'));
+      await ctx.close();
+    }
+    {
+      // Live shares .logic-suggest and is not to change.
+      const { page, ctx } = await L.boot(h, 'p430', 'live');
+      const live = await page.evaluate(() => { const e = document.querySelector('#lv-slots .chord-split, #lv-slots .chord-out'); if (!e) return null; e.classList.add('logic-suggest'); return getComputedStyle(e).boxShadow; });
+      R.check(live !== null && !/inset/.test(live), 'Live: a suggested chord is drawn as before (no Build underline)', String(live));
+      await ctx.close();
+    }
   } finally { await h.close(); }
   R.done();
 })().catch(e => { console.error(e); process.exitCode = 1; });
