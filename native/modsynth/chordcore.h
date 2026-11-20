@@ -105,7 +105,7 @@ class ChordSequencer {
           if(e.onsetExact>tapFrame_-.01*sr_ && e.onsetExact<tapFrame_+.06*sr_) continue;
           if(score_.liveVoice) {
             const auto rel=score_.vc.autoInv?lead_.smartVoiceLead(score_.root,score_.intervals,score_.slash):score_.intervals;
-            const auto ivs=lead_.chordVoicing(score_.root,rel,score_.vc.style,score_.vc);
+            const auto ivs=lead_.chordVoicing(score_.root,rel,score_.vc.style,score_.vc,score_.slash>=0?score_.slash:INT_MIN);
             const auto v=engineChord(score_.root,ivs,score_.slash);
             e.notes=v.notes;if(v.bass>=0)e.notes.insert(e.notes.begin(),v.bass);
             e.rootNote=v.root;e.subNote=v.bass>=0?v.bass:v.root;

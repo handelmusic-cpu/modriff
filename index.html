@@ -10171,7 +10171,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9r</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9s</span></div>
  </div>
 </div>
 
@@ -11652,7 +11652,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9r</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9s</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12849,7 +12849,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9r';
+const MODRIFF_VERSION = '1.9.9.9s';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -29496,7 +29496,7 @@ function _varyCode(){
  var m = 0; VOICING_CYCLE.forEach(function(k, i){ if(_varyList().indexOf(k) >= 0) m |= 1 << i; });
  return 64 + m;
 }
-function chordVoicing(rootM, relIntvs){
+function chordVoicing(rootM, relIntvs, floor){
  var style = voicing, vk = 0;
  if(voiceVary){
   var step = _vvStep(rootM, relIntvs);
@@ -29511,7 +29511,22 @@ function chordVoicing(rootM, relIntvs){
   if(g) return g;
  }
  if(styled) return styled;
- return voiceIntervals(relIntvs, style);
+ return spreadFit(rootM, relIntvs, voiceIntervals(relIntvs, style), floor);
+}
+// Spread raises voices an octave on top of a chord smartVoiceLead has already
+// seated in C3-G5, so the two stacked: measured over every diatonic triad,
+// seventh and ninth in all twelve keys, Spread's mean top voice was MIDI 78.7
+// (the other voicings 70-72) and 23 of 252 chords had a note above C6, up to
+// D#6. The whole chord comes down an octave while its top is over G5, as far as
+// C3 (smartVoiceLead's own floor) and, for a slash chord, never to or under its
+// bass note: `floor` is that bass. Mirrored in native/modsynth/voicing.h.
+var SPREAD_CEIL = 79, SPREAD_LOW = 48;
+function spreadFit(rootM, rel, out, bass){
+ if(out===rel) return out;
+ var low = (bass!=null && isFinite(bass)) ? Math.max(SPREAD_LOW, bass + 1) : SPREAD_LOW;
+ var lo = rootM + Math.min.apply(null, out), top = rootM + Math.max.apply(null, out), sh = 0;
+ while(top + sh > SPREAD_CEIL && lo + sh - 12 >= low) sh -= 12;
+ return sh ? out.map(function(x){ return x + sh; }) : out;
 }
 
 // ── Glide ────────────────────────────────────────────────────────────────
@@ -29861,7 +29876,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass,vel
  // No atTime is a live tap — always a new chord for Vary. Scheduled calls
  // (comp re-strikes) are not; playChartSlot2 raises the flag itself.
  if(atTime==null) _vvFresh = true;
- const intvs=chordVoicing(rootM, relIntvs);
+ const intvs=chordVoicing(rootM, relIntvs, (slashBass!=null && isFinite(slashBass)) ? slashBass : null);
  // A slash chord is a voicing: the named bass note becomes the chord's lowest
  // tone, in the chord's own sound, directly under the rest of the voicing.
  // See playSlashChord for why it is no longer a separate oscillator.
@@ -52113,7 +52128,7 @@ function _crNativeScore(voiced, nativeVoicing){
   var uppers = chord.intvs.filter(function(d){ return d >= 0; }), lows = chord.intvs.filter(function(d){ return d < 0; });
   var bass = lows.length ? chord.root + Math.min.apply(null, lows) : null;
   var vo = !nativeVoicing && autoInvOn ? smartVoiceLead(chord.root, uppers, bass) : uppers;
-  var ivs = nativeVoicing ? vo : chordVoicing(chord.root, vo);
+  var ivs = nativeVoicing ? vo : chordVoicing(chord.root, vo, bass);
   var m = chordEngineEvent({root: chord.root, ivs: ivs, bass: bass != null ? bass : null}, chord.root, {part: 'chord', ivs: ivs, vel: 1, at: 0, dur: 1});
   v = {notes: (m.bass != null ? [m.bass] : []).concat(m.notes), root: m.root, bass: m.bass};
  }
