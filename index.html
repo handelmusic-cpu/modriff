@@ -4252,6 +4252,7 @@ body.mode-basic .part-dice:not(.lv-adv .part-dice) { display:none !important; }
 .sq-kit-legend span { display:inline-flex; align-items:center; gap:5px; }
 .sq-kit-legend i { font-style:normal; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:4px; border:1px solid var(--border2); font-size:max(.42rem,10.5px); }
 .sq-shape { display:flex; flex-direction:column; gap:14px; padding:6px 4px 14px; }
+.fx-prev-note { font-size:.72rem; line-height:1.35; padding:7px 10px; margin:0 0 8px; border-radius:8px; background:color-mix(in srgb, var(--accent, #7aa2ff) 14%, transparent); }
 .sq-shape-note { font-size:.74rem; line-height:1.35; padding:8px 10px; margin:0 0 8px; border-radius:8px; background:color-mix(in srgb, var(--accent, #7aa2ff) 14%, transparent); }
 .sq-shape-see { font:inherit; font-weight:600; color:var(--accent, #7aa2ff); background:none; border:0; padding:0 0 0 2px; text-decoration:underline; cursor:pointer; }
 .sq-shape-pv { display:block; width:100%; height:84px; border-radius:var(--r-sm); background:var(--surf); border:1px solid var(--border); }
@@ -10176,7 +10177,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9v</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9w</span></div>
  </div>
 </div>
 
@@ -11657,7 +11658,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9v</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9w</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12854,7 +12855,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9v';
+const MODRIFF_VERSION = '1.9.9.9w';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -50398,7 +50399,7 @@ In the ${window.__modMacApp?'Mac':'iPhone'} app a bounce is written to disk <em>
  },
  'modfx': {
   title: 'mõdFX — the performance pad',
-  body: `<span class="tip-pro">mõdSynth Engine</span> The pad is free with three patches — Filter Sweep, Tape Stop and Dub Delay. The mõdSynth Engine adds the X and Y menus, every other patch, saving your own, and playing a sample through the pad.<br><br>
+  body: `<span class="tip-pro">mõdSynth Engine</span> The pad is free with three patches — Filter Sweep, Tape Stop and Dub Delay. Tap any other patch to hear it for 20 seconds, twice each; the mõdSynth Engine keeps it, and adds the X and Y menus, saving your own, and playing a sample through the pad.<br><br>
 Two effects at once under one finger. Pick what each axis does with the <strong>X</strong> and <strong>Y</strong> menus — cutoff, high-pass, resonance, drive, and the buffer effects below — then hold the pad and move.<br><br>
 <strong>It overrides the sends while you hold it.</strong> Each channel's REV / DLY / DRV encoders on the Mix strips are where the effect sits at rest; the pad takes over for as long as your finger is down and hands it back when you lift. <strong>Hold</strong> latches the last position instead, which is the difference between a stab and a setting. <strong>Clear</strong> puts everything back to the sends.<br><br>
 <strong>Which channels it reaches</strong> is the row of channel chips here, in Studio. Everything is swept until you narrow it. <strong>How much</strong> of each channel goes through it is its <strong>Mix</strong> — the sliders under the pad, the row under each part's mõdFX bar, or the <strong>MIX</strong> knob on its mixer strip. 0% leaves a part untouched.<br><br>
@@ -55908,6 +55909,8 @@ function _startRecording(){
   if(_recFinishing) return;
   // The pack sheet's demo plays through the drum engine the take listens to.
   try{ if(typeof packDemoStop==='function') packDemoStop(); }catch(e){}
+  // A mõdFX patch that is only being heard never reaches a take.
+  try{ _fxPreviewEnd(false); }catch(e){}
   var ctx=getCtx();if(!ctx)return;
   _withAudio(ctx);
   buildReverb();
@@ -75283,7 +75286,8 @@ function _fxIsSamplePatch(p){
 // says what is missing, with the way to fix it one tap away.
 function fxPickPreset(i){
  const p=fxAllPresets()[i]; if(!p) return;
- if(_fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)','synth'); return; }
+ if(_fxFreeLocked(p)){ if(!fxPreviewTap(i)) freeBlocked(p.name+' (mõdFX)','synth'); return; }
+ _fxPreviewEnd(false);
  fxApplyPreset(i);
  if(_fxIsSamplePatch(p) && !(typeof fxSmpLoaded==='function' && fxSmpLoaded())){
   showToast(p.name+' needs a clip on the pad', {
@@ -75292,9 +75296,44 @@ function fxPickPreset(i){
  }
 }
 window.fxPickPreset=fxPickPreset;
-function fxApplyPreset(i){
+// ── Hearing a locked patch ──────────────────────────────────────────────────
+// A patch is a gesture on a pad, so it is heard by wearing it: a locked patch loads for FX_PREVIEW_SEC, twice per
+// patch (the same two as a pad or a voice, counted in modo-previews), and the pad goes back to the patch it was on,
+// axes and targets, when the time is up, when a free patch is picked, or when a take starts. It is never saved:
+// the pack is for keeping one. var: read from far away (CLAUDE.md).
+var FX_PREVIEW_SEC = 20;
+var _fxPrev = null;
+function _fxPreviewEnd(announce){
+ if(!_fxPrev) return;
+ var o=_fxPrev; _fxPrev=null; clearTimeout(o.timer);
+ if(modHas('synth')) return;                       // bought while it was on: it stays
+ fxPadX=o.x; fxPadY=o.y; fxTargets=o.t.slice();
+ try{ modParamsFlush(); fxSyncUI(); }catch(e){}
+ if(announce) showToast('Back to '+o.name+'. Keeping a mõdFX patch is part of the mõdSynth Engine.');
+}
+function fxPreviewTap(i){
+ var p=fxAllPresets()[i];
+ if(!p || p.user || !_fxFreeLocked(p)) return false;
+ if(typeof _isRecording!=='undefined' && _isRecording) return false;
+ var seen=_prevLoad(), k='fx:'+p.name;
+ if((seen[k]||0) >= FREE_NUMBERS.previewsPerItem) return false;   // heard twice: the sheet
+ // A patch with nothing playing under it is not heard, so it is not counted either.
+ if(!isAnythingPlaying()){ showToast('Start the band, then tap a patch to hear it'); return true; }
+ seen[k]=(seen[k]||0)+1;
+ try{ modStore.setItem('modo-previews', JSON.stringify(seen)); }catch(e){}
+ if(!_fxPrev){
+  var all=fxAllPresets(), cur=all.find(function(x){ return x.x===fxPadX && x.y===fxPadY; });
+  _fxPrev={ x:fxPadX, y:fxPadY, t:fxTargets.slice(), name: cur ? cur.name : (FX_PARAMS[fxPadX].label+' × '+FX_PARAMS[fxPadY].label), timer:null };
+ }
+ clearTimeout(_fxPrev.timer);
+ _fxPrev.timer=setTimeout(function(){ _fxPreviewEnd(true); }, FX_PREVIEW_SEC*1000);
+ fxApplyPreset(i, true);
+ majorToast(p.name+' (mõdFX): hear it for '+FX_PREVIEW_SEC+' seconds. Keeping it is part of the mõdSynth Engine.', {actionLabel:'See pack', onAction:function(){ proSheet(p.name+' (mõdFX)','synth'); }});
+ return true;
+}
+function fxApplyPreset(i, preview){
  const p=fxAllPresets()[i]; if(!p) return;
- if(_fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)','synth'); return; }
+ if(!preview && _fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)','synth'); return; }
  if(FX_PARAMS[p.x]) fxPadX=p.x;
  if(FX_PARAMS[p.y]) fxPadY=p.y;
  // In ADVANCED this deliberately does NOT touch fxTargets. A patch is a pair
@@ -76118,7 +76157,7 @@ function fxSyncUI(){
    const smp=_fxIsSamplePatch(x);
    return '<button class="fx-preset'+(i===cur?' on':'')+(_fxFreeLocked(x)?' tier-locked':'')+(x.user?' user':'')+(smp?' smp':'')+(smp&&!hasClip?' noclip':'')+'"'
     +' data-mod="synth" onclick="fxPickPreset('+i+')"'
-    +' title="'+FX_PARAMS[x.x].label+' × '+FX_PARAMS[x.y].label+(smp&&!hasClip?' — needs a clip on the pad':'')+'"'
+    +' title="'+FX_PARAMS[x.x].label+' × '+FX_PARAMS[x.y].label+(smp&&!hasClip?' — needs a clip on the pad':'')+(_fxFreeLocked(x)&&!x.user?' — hear it for '+FX_PREVIEW_SEC+' seconds; keeping it is part of the mõdSynth Engine':'')+'"'
     +' aria-label="Preset '+x.name+': '+FX_PARAMS[x.x].label+' on X, '+FX_PARAMS[x.y].label+' on Y">'
     +(smp?'<span class="fx-smp-mark" aria-hidden="true">◈</span>':'')+x.name
     +(x.user?'<span class="fx-preset-x" onclick="event.stopPropagation();fxDeleteUserPreset('+i+')" '
@@ -76131,7 +76170,8 @@ function fxSyncUI(){
   const lbl=document.getElementById('fx-patch-cur');
   if(lbl) lbl.textContent = cur>=0 ? all[cur].name : (FX_PARAMS[fxPadX].label+' × '+FX_PARAMS[fxPadY].label);
   pr.innerHTML=
-    '<div class="fx-pgroup"><div class="fx-pgroup-lbl">Effects<span>shape the parts that are playing</span></div>'
+    (!modHas('synth') ? '<div class="fx-prev-note">Tap a locked patch to hear it for '+FX_PREVIEW_SEC+' seconds, twice each. Keeping a patch is part of the mõdSynth Engine.</div>' : '')
+   +'<div class="fx-pgroup"><div class="fx-pgroup-lbl">Effects<span>shape the parts that are playing</span></div>'
    +'<div class="fx-pgroup-row">'+fx.map(i=>chip(all[i],i)).join('')+'</div></div>'
    +'<div class="fx-pgroup smp"><div class="fx-pgroup-lbl">◈ Sample pad<span>'
    +(hasClip ? 'play the clip loaded on the pad' : 'play a clip — load one with ◈ Sample')+'</span></div>'
@@ -77956,6 +77996,8 @@ function proSyncRow(){
   // A Sounds Pack voice button plays the chord instead (two per voice).
   const vw=el.dataset.wave||el.dataset.arpwave||el.dataset.melwave||el.dataset.mlwave||((/setBlWave\('([^']+)'\)/.exec(el.getAttribute('onclick')||''))||[])[1];
   if(vw && voiceHearable(vw)){ voiceHearTap(vw, nameOf(el)); return; }
+  // A locked mõdFX patch is worn for a few seconds first (fxPreviewTap), twice; then this opens the sheet.
+  if(el.classList.contains('fx-preset')){ const fm=/fxPickPreset\((\d+)\)/.exec(el.getAttribute('onclick')||''); if(fm && fxPreviewTap(+fm[1])) return; }
   proSheet(nameOf(el), el.getAttribute('data-mod')||'', { kit:(el.dataset.mach||'').trim()||null, groove:el.dataset.groove||null });
  }, true);
 })();
