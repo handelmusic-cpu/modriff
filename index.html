@@ -10171,7 +10171,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9r</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9s</span></div>
  </div>
 </div>
 
@@ -11652,7 +11652,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9r</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9s</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12849,7 +12849,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9r';
+const MODRIFF_VERSION = '1.9.9.9s';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -42563,6 +42563,7 @@ function sectionDelete(){
 
 // Add a section after the selected one. The chip row's "+ Section" and Build's own both call this.
 function sectionAdd(){
+  if(webSectionRoom()<1){ webSectionsFull(); return; }
   // Inserted after the selected section rather than always appended, so a
   // section can be put where it belongs instead of only ever at the end and
   // then walked back with the arrows.
@@ -44320,6 +44321,13 @@ function sbLoadItem(item, keepKey, how){
   // song around it is not a thing this chart model can express, so "Keep"
   // here means "keep the pitches", which is what the transposition above
   // already decided.
+  // The web page's section cap: take what fits, say how many were left out.
+  var room=webSectionRoom();
+  if(secs.length>room){
+   if(room<1){ webSectionsFull(); return; }
+   showToast('Added '+room+' of '+secs.length+' sections. The web version holds '+WEB_LIMITS.sections+'.');
+   secs=secs.slice(0,room);
+  }
   var at=Math.min(sections.length, curSection+1);
   secs.forEach(function(s,i){
    var nm=s.name||item.name;
@@ -50694,6 +50702,7 @@ function toggleSongRecord(){
 
 function startSongRecord(){
  if(songRecActive) return;
+ if(webSectionRoom()<1){ webSectionsFull(); return; }
  stopSongLoopIfActive();
  const base='Recording';
  let n=1; while(sections.some(s=>s.name===base+' '+n)) n++;
@@ -51013,6 +51022,7 @@ function captureBack(){
  const ctx=getCtx();
  const run=_chordRingRun();
  if(!ctx || !run.length){ showToast('Play some chords first'); return; }
+ if(webSectionRoom()<1){ webSectionsFull(); return; }
 
  const cyc=_capOneCycle(run);
  const fit=_capFit(cyc.evs, {endT:cyc.endT, liberal:true, adapt:!_capClock()});
@@ -55949,11 +55959,24 @@ function _startRecording(){
   }
   _recT0=Date.now();
   _isRecording=true;_updateRecBtn();
+  // The free web page records WEB_LIMITS.bounceSeconds and stops itself: the take
+  // is saved like any other, then says why it ended. Cleared in _stopRecording, so
+  // a take stopped by hand never leaves a timer that cuts the next one short.
+  if(webCapped()){
+    clearTimeout(_recCapTimer);
+    _recCapTimer=setTimeout(function(){
+      _recCapTimer=null;
+      if(!_isRecording || _recFinishing) return;
+      _stopRecording();
+      setTimeout(function(){ webCapBlocked('The web version records '+WEB_LIMITS.bounceSeconds+' seconds. The app records the whole take.'); }, 1200);
+    }, WEB_LIMITS.bounceSeconds*1000);
+  }
   // Native-engine parts are not in the bus the recorder taps. When the host's
   // capture is running they come in through that; when it is not, say so.
   var nat=_nativeUncaptured();
   var msg = stemsFailed ? 'Recording the mix — stems could not start'
           : (exportStems ? 'Recording — mix + stems…' : 'Recording…');
+  if(webCapped()) msg = 'Recording — the web version stops at '+WEB_LIMITS.bounceSeconds+' seconds…';
   if(nat.length) msg += ' ' + nat.join(', ') + ' plays in the native engine and is not captured yet.';
   else if(exportStems && _stemSkipped.length) msg += ' ' + _stemSkipNote(_stemSkipped) + '.';
   majorToast(msg, nat.length ? {ms:5000} : undefined);
@@ -56452,6 +56475,7 @@ var _recFinishing=false;
 var REC_TAIL_MS=8000;
 async function _stopRecording(transportStopped){
   if(!_isRecording || _recFinishing) return;
+  clearTimeout(_recCapTimer); _recCapTimer=null;
   _recFinishing=true;
   var midiStopWall=Date.now();
   if(window._nsEvents) try{ await window._nsEvents.flushRecording(midiStopWall); }catch(e){ _midiRecNativeCut=true; }
@@ -56720,7 +56744,7 @@ document.addEventListener('pointerdown', function(){ _reviewTouchAt = Date.now()
 setTimeout(function(){ try{ if(_inNativeApp()){ _reviewNote('day'); _reviewArm(); } }catch(e){} }, 4000);
 // The take's clock, m:ss (h:mm:ss past an hour). One timer, only while a take runs; every [data-recclock] is repainted from
 // it: the Record widget, and the page's own copy beside the island (#bounce-clock). _recT0 is set where the take starts.
-var _recT0=0, _recClockTimer=null;
+var _recT0=0, _recClockTimer=null, _recCapTimer=null;
 function _recFmt(ms){
   var t=Math.max(0,Math.floor(ms/1000)), h=Math.floor(t/3600), m=Math.floor(t%3600/60), s=t%60;
   return (h ? h+':'+(m<10?'0':'') : '')+m+':'+(s<10?'0':'')+s;
@@ -76587,6 +76611,29 @@ function modProducts(){
 // landing page, which has the same buttons. Chromebooks and Windows have no
 // store to go to, so they get the landing page either way.
 var WEB_STORE = { appleId:'', landing:'https://modriff.com' };
+// What the free web page holds back on top of the free tier (the app keeps neither
+// limit): it is a try-it page, and an uncapped Bounce plus unlimited sections would
+// let a finished track be made on it without the app. var, not const: it is read
+// from sectionAdd and the recorder, thousands of lines from here.
+var WEB_LIMITS = { bounceSeconds:30, sections:2 };
+function webCapped(){ return window.__modFreeWeb===true; }
+// How many more sections may be ADDED. Only adding is stopped: a setup, shared
+// link, demo or chart that arrives with more still loads and plays whole, so the
+// page never refuses something it was handed.
+function webSectionRoom(){ return webCapped() ? Math.max(0, WEB_LIMITS.sections - sections.length) : Infinity; }
+// The same toast-with-a-door-to-the-sheet as freeBlocked, but for a limit that is
+// not a pack's: the sheet it opens is the web's generic "the app has all of it".
+function webCapBlocked(msg){
+ const now=Date.now();
+ if(now-_freeToastAt>2500){
+  _freeToastAt=now;
+  majorToast(msg, {actionLabel:'Get the app', onAction:function(){ proSheet(); }});
+ }
+ return false;
+}
+function webSectionsFull(){
+ return webCapBlocked('The web version holds '+WEB_LIMITS.sections+' sections. The app has no limit.');
+}
 function webStoreInfo(){
  var ua = String(navigator.userAgent||'');
  var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints||0)>1);
