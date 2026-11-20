@@ -30,7 +30,7 @@ function serve() {
 /* The phones and the other shapes the layout has to hold: width x height in CSS points. */
 const VIEWPORTS = {
   se375: { width: 375, height: 667 }, p390: { width: 390, height: 844 }, p430: { width: 430, height: 932 },
-  ipad820: { width: 820, height: 1180 }, duoOpen: { width: 951, height: 669 }, duoClosed: { width: 466, height: 678 },
+  ipad820: { width: 820, height: 1180 }, duoOpen: { width: 951, height: 669 }, phoneLand: { width: 844, height: 390 }, duoClosed: { width: 466, height: 678 },
 };
 
 async function start(opts) {

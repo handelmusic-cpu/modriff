@@ -216,3 +216,4 @@ Since 6.2:
 - [ ] v1.9.9.9f: Solo's Width control is a bordered 44 pt button now (it read as a heading); tap it in Studio and it steps Auto, S, M, L, XL and the keys resize.
 - [ ] v1.9.9.9g: TestFlight tester build: Settings > About > Packs > Test as now has a Purchases button (the real store answer). Tap it, buy a pack with the sandbox account: it unlocks (before, a saved Free or pack choice masked real purchases). A pack toggled on in Test as shows Owned and cannot be bought until Purchases is tapped.
 - [ ] v1.9.9.9h: Song and Mix draw the bottom part row (Drums, Bass, Melody, Arp, Chords) whether you came from Live or from Studio; it used to vanish on the way from Studio.
+- [ ] v1.9.9.9i: Studio parts strip is the first thing in the Studio page, not pinned: scroll down and it goes with the page, leaving no empty bar; the bottom part row stays. Check on a phone, in landscape and on iPad.
