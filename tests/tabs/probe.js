@@ -50,6 +50,8 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(350);
   };
+  // The nine modules are in the picker (the module's name at the top of Studio), closed until it is tapped.
+  const pick = async (sel) => { await tap('#ss-cur'); await tap(sel); };
   const st = () => page.evaluate(() => ({
     lit: [...document.querySelectorAll('.tab-btn.active')].map(b => b.id.replace('tab-', '')).join(),
     page: (document.querySelector('.tab-page.active') || {}).id,
@@ -97,20 +99,20 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await tap('#ft-drum-btn'); s = await st();
   const d1 = await page.evaluate(() => drumsEnabled);
   check(d0 !== d1 && s.lit === 'studio', 'Studio: a tap on Drums in the bar switches the drums and nothing else', d0 + '->' + d1 + ' ' + s.page);
-  await tap('#ss-drums'); s = await st();
-  check(s.page === 'page-accomp' && s.acc === 'drums' && s.lit === 'studio', 'Studio: the strip opens the Drums page, Studio stays lit', JSON.stringify(s));
-  await tap('#ss-bass'); s = await st();
-  check(s.page === 'page-accomp' && s.acc === 'bass', 'the strip opens the Bass page', JSON.stringify(s));
-  await tap('#ss-melseq'); s = await st();
-  check(s.acc === 'melody', 'the strip opens the Melody sequencer page', JSON.stringify(s));
-  await tap('#ss-arp'); s = await st();
-  check(s.acc === 'arp', 'the strip opens the Arp page', JSON.stringify(s));
-  await tap('#ss-chords'); s = await st();
-  check(s.page === 'page-perform' && s.perf === 'chords' && s.lit === 'studio', 'the strip opens the Chords surface on Play', JSON.stringify(s));
+  await pick('#ss-drums'); s = await st();
+  check(s.page === 'page-accomp' && s.acc === 'drums' && s.lit === 'studio', 'Studio: the picker opens the Drums page, Studio stays lit', JSON.stringify(s));
+  await pick('#ss-bass'); s = await st();
+  check(s.page === 'page-accomp' && s.acc === 'bass', 'the picker opens the Bass page', JSON.stringify(s));
+  await pick('#ss-melseq'); s = await st();
+  check(s.acc === 'melody', 'the picker opens the Melody sequencer page', JSON.stringify(s));
+  await pick('#ss-arp'); s = await st();
+  check(s.acc === 'arp', 'the picker opens the Arp page', JSON.stringify(s));
+  await pick('#ss-chords'); s = await st();
+  check(s.page === 'page-perform' && s.perf === 'chords' && s.lit === 'studio', 'the picker opens the Chords surface on Play', JSON.stringify(s));
   await tap('#ft-drum-btn');
   const subnavHidden = await page.evaluate(() => { const e = document.getElementById('bm-subnav'); return !e || e.hidden || e.getBoundingClientRect().height === 0; });
-  await tap('#ss-bass');
-  check(subnavHidden && await page.evaluate(() => { const e = document.getElementById('bm-subnav'); return !e || e.hidden || e.getBoundingClientRect().height === 0; }), 'Accomp has no sub-nav of its own (the strip is the selector)');
+  await pick('#ss-bass');
+  check(subnavHidden && await page.evaluate(() => { const e = document.getElementById('bm-subnav'); return !e || e.hidden || e.getBoundingClientRect().height === 0; }), 'Accomp has no sub-nav of its own (the module name is the selector)');
 
   await page.keyboard.press('Alt+KeyL'); await page.waitForTimeout(300); s = await st();
   check(s.basic && s.page === 'page-perform' && s.lit === 'live', 'Option+L from Accomp lands on Live', JSON.stringify(s));
