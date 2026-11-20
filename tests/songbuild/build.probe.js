@@ -96,6 +96,34 @@ const overflowing = (page, root) => page.evaluate(r => [...document.querySelecto
       R.check(JSON.stringify(q) === '["Length","Rhythm","Type","Voicing"]' && r.errs.length === 0, 'the quick card keeps Length, Rhythm, Type, Voicing', q.join(',') + ' | ' + r.errs.join('|'));
       await r.ctx.close();
     }
+
+    // ── Task 4: Add a chord sits under the timeline, above the editor ─────────
+    const geo = page => page.evaluate(() => {
+      const r = id => { const e = document.querySelector(id); if (!e) return null; const b = e.getBoundingClientRect(); return { top: b.top + scrollY, bottom: b.bottom + scrollY, shown: b.height > 0 }; };
+      return { inCard: !!document.querySelector('.sb-seccard #chart-chord-picker'), tl: r('#chart-timeline'), seq: r('#chart-sequence'), pick: r('#chart-chord-picker'),
+        ins: r('#chart-inspector'), plays: r('#sec-plays-bar'), panel: r('#tl-panel') };
+    });
+    for (const vp of ['se375', 'p430']) {
+      const { page, ctx, errs } = await openBuild(h, vp);
+      let g = await geo(page);
+      R.check(g.inCard, vp + ': the picker is inside the section card');
+      R.check(g.tl.shown && g.pick.top >= g.tl.bottom - 1 && g.pick.bottom <= g.ins.top + 1, vp + ': timeline, then picker, then editor (line fold shut)', JSON.stringify([g.tl.bottom, g.pick.top, g.ins.top].map(Math.round)));
+      await page.evaluate(() => sbLinesToggle()); await page.waitForTimeout(200);
+      g = await geo(page);
+      R.check(g.plays.shown && g.plays.bottom <= g.pick.top + 1 && g.pick.bottom <= g.ins.top + 1, vp + ': with the line fold open its rows stay above the picker, and the picker above the editor', JSON.stringify([g.plays.bottom, g.pick.top, g.ins.top].map(Math.round)));
+      await page.evaluate(() => buildViewSet('strip')); await page.waitForTimeout(250);
+      g = await geo(page);
+      R.check(g.seq.shown && g.pick.top >= g.seq.bottom - 1 && g.pick.bottom <= g.ins.top + 1, vp + ': in Tiles view: strip, then picker, then editor', JSON.stringify([g.seq.bottom, g.pick.top, g.ins.top].map(Math.round)));
+      const n0 = await page.evaluate(() => sections[curSection].slots.length);
+      await page.evaluate(() => document.querySelectorAll('#chart-chord-picker .cpick-tri')[2].click());
+      R.check(await page.evaluate(() => sections[curSection].slots.length) === n0 + 1, vp + ': tapping a picker tile adds a chord');
+      await page.evaluate(() => document.getElementById('sb-exp-borrowed').click());
+      await page.evaluate(() => document.getElementById('sb-exp-chroma').click());
+      R.check(await page.evaluate(() => getComputedStyle(document.getElementById('sb-borrowed-body')).display !== 'none' && getComputedStyle(document.getElementById('chromatic-body')).display !== 'none'),
+        vp + ': Borrowed and Any root still open their bodies');
+      R.check(errs.length === 0, vp + ': no page errors', errs.join('|'));
+      await ctx.close();
+    }
   } finally { await h.close(); }
   R.done();
 })().catch(e => { console.error(e); process.exitCode = 1; });
