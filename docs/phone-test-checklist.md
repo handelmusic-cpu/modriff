@@ -218,3 +218,4 @@ Since 6.2:
 - [ ] v1.9.9.9h: Song and Mix draw the bottom part row (Drums, Bass, Melody, Arp, Chords) whether you came from Live or from Studio; it used to vanish on the way from Studio.
 - [ ] v1.9.9.9i: Studio parts strip is the first thing in the Studio page, not pinned: scroll down and it goes with the page, leaving no empty bar; the bottom part row stays. Check on a phone, in landscape and on iPad.
 - [ ] v1.9.9.9j: Studio > Bass and Melody: the Generate / Clear row sits above the Generate | Arrange | Play in switch (they were the other way round).
+- [ ] v1.9.9.9k: on the phone, with Kit and Aux both playing, open Studio > Aux, pick a different Aux kit from the chooser: only Aux changes sound (before, the Kit changed); then tap Drums at once while it says Next loop: Aux still gets it. On Live with the Drum grid and Aux grid widgets, pick an Aux kit in Styles: the Drum grid still shows and edits the Kit.

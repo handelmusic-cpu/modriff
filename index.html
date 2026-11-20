@@ -10001,7 +10001,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9j</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9k</span></div>
  </div>
 </div>
 
@@ -11474,7 +11474,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9j</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9k</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12671,7 +12671,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9j';
+const MODRIFF_VERSION = '1.9.9.9k';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -39365,7 +39365,7 @@ function _ppDefine(){
     if(aux) order = ['Percussion & world'].concat(order.filter(function(n){ return n !== 'Percussion & world'; }));
     return _ppSections(order, list);
    },
-   current:function(){ var k = now(), q = !aux && window._sqPendingKit ? window._sqPendingKit() : null; return { name: (q && window._sqKitLabel(q)) || (k && window._sqKitLabel(k)) || '\u2014', note:q ? 'Next loop' : '', queued:!!q }; } };
+   current:function(){ var k = now(), q = window._sqPendingKit ? window._sqPendingKit(aux ? 1 : 0) : null; return { name: (q && window._sqKitLabel(q)) || (k && window._sqKitLabel(k)) || '\u2014', note:q ? 'Next loop' : '', queued:!!q }; } };
  });
  // The Live Styles rows' Pattern half (6.9.9.9.9.9.9): the same grouped list the Voice half and the Kit lists open, not a flat
  // run of every groove, line or rhythm the part has. starterGroups does the grouping; a pick goes through starterApply, so it
@@ -60495,7 +60495,7 @@ window._sqSetAuxKit = function(nk){
   if(sqFocus === 1) sqEnsureGrid();
   sqRender(); return true;
 };
-window._sqPendingKit = function(){ return sqPendMach; };
+window._sqPendingKit = function(layer){ return (layer===undefined || layer===sqPendMachL) ? sqPendMach : null; };
 window._sqKitLabel = function(k){ return SQM[k] ? String(SQM[k].label).replace(/\s*\u25C6\s*$/,'') : null; };
 function sqAuxNextKit(dir){
   var keys=Object.keys(SQM).filter(function(k){ return typeof freeAllowsKit!=='function' || freeAllowsKit(k); });
@@ -60517,7 +60517,10 @@ var sqSeqStep=0, sqDispStep=-1, sqNextT=0;
 // every step it "missed" or fires one at a moment that no longer lines up
 // with anything.
 window._sqResync=function(){ var c=sqCtx(); if(c) sqNextT=clockAlignTo(c, sqSd(), ALIGN_LEAD); };
-var sqPendMach=null, sqPendPat=null;
+// sqPendMachL is the layer the queued kit was picked for (0 Kit, 1 Aux). The queue used to be just the kit's id and
+// the swap landed on whichever layer was focused, or on layer 0 in the native queue: a kit picked for Aux while playing
+// changed the Kit's sound.
+var sqPendMach=null, sqPendMachL=0, sqPendPat=null;
 var sqChain=[], sqChainPos=0, sqUsingChain=false;
 var sqStepEls={};
 var sqAudition=false; // default off — tap steps to preview only when audition enabled
@@ -61046,7 +61049,7 @@ function sqEnsureGrid(){
 // ── machine swap ──
 function sqSwitchMach(key){
   if(key===sqMach)return;
-  if(sqPlaying){sqPendMach=key;sqRenderMachines();sqUpdateStatus();return;}
+  if(sqPlaying){sqPendMach=key;sqPendMachL=sqFocus;sqRenderMachines();sqUpdateStatus();return;}
   sqDoSwap(key);
 }
 // The Drums row in Mix › Voices: the main kit, whichever layer the drum page
@@ -61056,8 +61059,12 @@ window._sqDrumKit = function(){ return sqFocus===0 ? sqMach : (sqLayers[0] && sq
 window._sqPickDrumKit = function(k){
   if(!SQM[k]) return;
   if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit','groove',{kit:k}); return; }
-  if(sqFocus!==0) sqSetFocus(0);
+  // Pick on the Kit layer, then put the page's focus back. It used to stay on the Kit; the Aux pick below left it on Aux, and
+  // on Live the Drum grid widget (always the Kit) then drew and edited the Aux layer until something re-mounted Live.
+  var prev = sqFocus;
+  if(prev!==0) sqSetFocus(0);
   sqSwitchMach(k);
+  if(prev!==0) sqSetFocus(prev);
 };
 // The Aux row (4.9.5): the second layer's kit, the same way through — it
 // takes the drum page's focus to that layer and swaps there, so the tier gate
@@ -61066,8 +61073,10 @@ window._sqAuxKit = function(){ return sqFocus===1 ? sqMach : (sqLayers[1] && sqL
 window._sqPickAuxKit = function(k){
   if(!SQM[k]) return;
   if(typeof freeAllowsKit==='function' && !freeAllowsKit(k)){ if(typeof freeBlocked==='function') freeBlocked('This drum kit','groove',{kit:k}); return; }
-  if(sqFocus!==1) sqSetFocus(1);
+  var prev = sqFocus;
+  if(prev!==1) sqSetFocus(1);
   sqSwitchMach(k);
+  if(prev!==1) sqSetFocus(prev);
 };
 // Focus swaps which layer sqGrid/sqMach point at. The grid keeps its height
 // because only one layer is edited at a time — which matters on a phone, where
@@ -61168,12 +61177,13 @@ window._sqAuxHasPart = function(){
   }
   return false;
 };
-function sqDoSwap(key){
+function sqDoSwap(key, layer){
+  if(layer===undefined) layer=sqFocus;
   // The hits follow their ROLE to the new kit (sqRemapLayer), not their lane number. This used to keep the grid as it was
   // ("sqGrid is ONE shared pattern across every kit"), which is right only while two kits happen to put a kick, a snare and
   // a hat in the same three lanes: from the 808 to the Rock kit the closed-hat line landed on the high tom, and a groove that
   // was fine on one kit had a snare playing time on another.
-  sqStashFocused(); sqRemapLayer(sqFocus,key);
+  sqStashFocused(); sqRemapLayer(layer,key);
   sqPreloadKit(key);
   sqEnsureGrid();
   sqPendMach=null;sqRender();
@@ -61633,7 +61643,7 @@ function sqFlushPending(){
   // The queue lives outside this IIFE with sqLoadGroove, so it is reached the
   // way everything else crosses that boundary — through window.
   if(typeof window._sqFlushGroove==='function' && window._sqFlushGroove()) did=true;
-  if(sqPendMach){sqDoSwap(sqPendMach);did=true;}
+  if(sqPendMach){sqDoSwap(sqPendMach,sqPendMachL);did=true;}
   if(sqPendTpl){var _tp=sqPendTpl;sqPendTpl=null;sqApplyKitTemplateNow(_tp);did=true;}
   if(sqPendPat!==null){var idx=sqPendPat;sqPendPat=null;sqSavePat(sqCurPat);sqCurPat=idx;if(sqPats[idx])sqLoadPatPlay(idx);did=true;}
   // The Aux sequencer's queue is its own: A-patterns change on the loop wrap, whatever
@@ -61908,7 +61918,7 @@ function sqRenderMachines(){
     var b=document.createElement('button');
     // A swap chosen while playing waits for the top of the loop; until now only
     // the status line under the grid said so, and the button did nothing.
-    b.className='sq-mbtn'+(key===sqMach?' active':'')+(key===sqPendMach?' queued':'');
+    b.className='sq-mbtn'+(key===sqMach?' active':'')+(key===sqPendMach&&sqPendMachL===sqFocus?' queued':'');
     b.dataset.mach=key;          // exact id for the tier check, not the label
     b.textContent=m.label;
     // Color the active border with the machine's own color
@@ -64908,7 +64918,9 @@ window._nsDrumQueue={
   var source={mach:sqPendMach,tpl:JSON.stringify(sqPendTpl),pat:sqPendPat,aux:sqAuxPend,groove:sqPendGroove};
   if(hasPending){
    if(sqPendGroove!==null){var r=RHYTHMS[sqPendGroove];s.steps=r.pat.length;s.groove=sqPendGroove;s.layers.forEach(function(l,i){l.grid=sqGrooveGrid(l.mach,r,s.steps,!!i);});var m=/^(\d+)\/(\d+)$/.exec(r.sig||'');if(m&&+m[1]*16/+m[2]===s.steps)s.meter={beats:+m[1],unit:+m[2]};}
-   if(sqPendMach)s.layers[0].mach=sqPendMach;
+   // The layer the kit was picked for, with its hits following their roles as sqRemapLayer does for the page (a bare
+   // mach change kept the old lane numbers on the new kit, and always on layer 0, so an Aux pick re-voiced the Kit).
+   if(sqPendMach){var pl=s.layers[sqPendMachL];if(pl&&pl.mach!==sqPendMach){pl.grid=sqRolesToGrid(sqPendMach,sqGridToRoles(pl.mach,pl.grid,s.steps),s.steps);pl.mach=sqPendMach;}}
    if(sqPendTpl){var t=sqPendTpl;s.layers[0].mach=t.mach;s.layers[0].grid=clone(t.grid||{});s.steps=t.steps||s.steps;s.vols[sqLK(t.mach,0)]=clone(t.vols||{});s.pitches[sqLK(t.mach,0)]=clone(t.pitches||{});}
    if(sqPendPat!==null)me.load(s,sqPendPat);
    if(sqAuxPend!==null){var a=sqAuxPats[sqAuxPend];s.aux=sqAuxPend;if(a){s.layers[1].mach=a.mach;s.layers[1].grid=clone(a.grid||{});s.vols[sqLK(a.mach,1)]=clone(a.vols||{});s.pitches[sqLK(a.mach,1)]=clone(a.pitches||{});}}
