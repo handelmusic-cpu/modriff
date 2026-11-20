@@ -14,7 +14,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // overlap. 768 x 600 is the iPad portrait width and a guess at the
         // height; tune it on a real Mac window, not here. Unbuilt on Mac until
         // Xcode says otherwise.
-        windowScene.sizeRestrictions?.minimumSize = CGSize(width: 768, height: 600)
+        windowScene.sizeRestrictions?.minimumSize = CGSize(width: 768 * ModRiffViewController.macPageZoom, height: 600 * ModRiffViewController.macPageZoom)
         #endif
         // ModRiffViewController, not CAPBridgeViewController: it is the same
         // thing plus the capacitorDidLoad that registers ModEngine. This line

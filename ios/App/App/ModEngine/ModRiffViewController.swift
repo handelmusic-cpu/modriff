@@ -32,6 +32,18 @@ class ModRiffViewController: CAPBridgeViewController {
         super.viewDidAppear(animated)
         takeKeyboard()
     }
+
+    /// The Mac window shows the page 15% larger (the owner found it small). The web view's own page zoom, not CSS `zoom`: it
+    /// shrinks the page's viewport the way Safari's Cmd-+ does, so innerWidth, vh, getBoundingClientRect and the position:fixed
+    /// maths of every popover stay in one coordinate system. CSS zoom on the root left getBoundingClientRect in screen pixels and
+    /// `style.left` in zoomed ones, which moved every list the page places from a measured button. SceneDelegate raises the
+    /// window's minimum size by the same factor so the page never gets less than the 768 pt it is laid out for.
+    static let macPageZoom: CGFloat = 1.15
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        webView?.pageZoom = ModRiffViewController.macPageZoom
+    }
     #endif
 
     override func capacitorDidLoad() {
