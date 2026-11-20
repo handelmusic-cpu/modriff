@@ -44,7 +44,8 @@ const root=path.resolve(__dirname,'../..');
   // Dismissing the picker alone leaves the controls available.
   await page.locator('.lv-slot[data-mod="melody"] .lv-cb').tap();
   await page.locator('#sndpick-melvoice-settings .snd-pick-btn').tap();
-  await page.locator('.lv-sh-t').tap();
+  // The sheet is about half the screen now (1.9.9.9h), so the open menu lies over most of its title: tap the part of the title it leaves free.
+  await page.locator('.lv-sh-t').tap({position:{x:4,y:10}});
   assert.equal(await page.locator('#sndpop-melvoice-settings').evaluate(el=>el.classList.contains('open')),false);
   await page.locator('.lv-sh-done').tap();
   assert.deepEqual(errors,[]);
