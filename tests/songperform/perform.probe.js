@@ -38,7 +38,7 @@ const same = a => a.every(x => x !== null && Math.abs(x - a[0]) <= 2);
       R.check(cur && cur.shown && cur.w >= 44 && cur.h >= 44, t + 'the header button is there and at least 44 pt', JSON.stringify(cur));
       R.check(await text(page, '#songs-cur-n') === 'Build' && pick && !pick.shown && await attr(page, '#songs-cur', 'aria-expanded') === 'false', t + 'it names the page (Build) and the picker is closed', await text(page, '#songs-cur-n'));
       await click(page, '#songs-cur'); await page.waitForTimeout(150);
-      const chips = await page.evaluate(() => [...document.querySelectorAll('#songs-pick .ss-chip')].map(b => { const r = b.getBoundingClientRect(); return { n: b.dataset.m, h: Math.round(r.height), over: b.scrollWidth > b.clientWidth + 1 }; }));
+      const chips = await page.evaluate(() => [...document.querySelectorAll('#songs-pick .sg-chip')].map(b => { const r = b.getBoundingClientRect(); return { n: b.dataset.m, h: Math.round(r.height), over: b.scrollWidth > b.clientWidth + 1 }; }));
       R.check(chips.map(c => c.n).join() === 'build,perform,library' && chips.every(c => c.h >= 44 && !c.over) && await attr(page, '#songs-cur', 'aria-expanded') === 'true',
         t + 'a tap opens three chips (Build, Perform, Library), each 44 pt tall and not overflowing', JSON.stringify(chips));
       await click(page, '#songs-pick [data-m=perform]'); await page.waitForTimeout(200);
@@ -189,7 +189,7 @@ const same = a => a.every(x => x !== null && Math.abs(x - a[0]) <= 2);
       await loadSong(page);
       await page.evaluate(l => { if (l) document.body.classList.add('light-mode'); songsPickToggle(true); }, light); await page.waitForTimeout(300);
       const t = (light ? 'Light: ' : 'dark: ');
-      const targets = ['#songs-cur', '#songs-pick .ss-chip.on', '#songs-pick .ss-chip:not(.on)', '#pv-tiles', '#pv-chart', '#pv-stage', '#songs-ending-row .ms-lbl', '#songs-ending-row .end-btn', '#pf-widgets-btn', '#songs-setlist-nav .pf-cap', '#prev-section-btn .pf-cap'];
+      const targets = ['#songs-cur', '#songs-pick .sg-chip.on', '#songs-pick .sg-chip:not(.on)', '#pv-tiles', '#pv-chart', '#pv-stage', '#songs-ending-row .ms-lbl', '#songs-ending-row .end-btn', '#pf-widgets-btn', '#songs-setlist-nav .pf-cap', '#prev-section-btn .pf-cap'];
       const got = await page.evaluate(([f, ts]) => { const fn = eval('(' + f + ')'); return ts.map(s => [s, fn(s)]); }, [CONTRAST.toString(), targets]);
       const low = got.filter(([s, c]) => c !== null && c < 4.5);
       R.check(got.every(([s, c]) => c !== null) && low.length === 0, t + 'text on the header, chips, tabs, Stage, captions, endings and the widgets switch is at least 4.5:1', JSON.stringify(low.length ? low : got.map(g => g[1])));
@@ -240,12 +240,12 @@ const same = a => a.every(x => x !== null && Math.abs(x - a[0]) <= 2);
     {
       // Keyboard: Escape in the picker hands focus back to the header button (as Studio's picker does); the header names what it opens.
       const { page, ctx } = await openSong(h, 'p390');
-      await page.evaluate(() => songsPickToggle(true)); await page.focus('#songs-pick .ss-chip[data-m=library]'); await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+      await page.evaluate(() => songsPickToggle(true)); await page.focus('#songs-pick .sg-chip[data-m=library]'); await page.keyboard.press('Escape'); await page.waitForTimeout(100);
       R.check(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'songs-cur' && !(await box(page, '#songs-pick')).shown, 'picker: Escape from a chip closes it and focus returns to the header button');
       R.check(await attr(page, '#songs-cur', 'aria-controls') === 'songs-pick' && await attr(page, '#songs-pick', 'role') === 'group' && (await attr(page, '#songs-pick', 'aria-label') || '').length > 0, 'picker: the header says what it controls, and the picker is a labelled group');
-      R.check(await page.evaluate(() => [...document.querySelectorAll('#songs-pick .ss-chip')].filter(b => b.getAttribute('aria-current')).map(b => b.dataset.m).join()) === 'build', 'picker: the chip for the page you are on carries aria-current');
-      await click(page, '#songs-cur'); await page.focus('#songs-pick .ss-chip[data-m=perform]'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
-      R.check(await mode(page) === 'perform' && await page.evaluate(() => document.activeElement && document.activeElement.id) === 'songs-cur' && await page.evaluate(() => document.querySelector('#songs-pick .ss-chip[aria-current]').dataset.m) === 'perform',
+      R.check(await page.evaluate(() => [...document.querySelectorAll('#songs-pick .sg-chip')].filter(b => b.getAttribute('aria-current')).map(b => b.dataset.m).join()) === 'build', 'picker: the chip for the page you are on carries aria-current');
+      await click(page, '#songs-cur'); await page.focus('#songs-pick .sg-chip[data-m=perform]'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+      R.check(await mode(page) === 'perform' && await page.evaluate(() => document.activeElement && document.activeElement.id) === 'songs-cur' && await page.evaluate(() => document.querySelector('#songs-pick .sg-chip[aria-current]').dataset.m) === 'perform',
         'picker: choosing a page by keyboard moves focus to the header and marks the new page');
       await ctx.close();
     }
@@ -286,6 +286,24 @@ const same = a => a.every(x => x !== null && Math.abs(x - a[0]) <= 2);
       R.check(arrows.song.map(a => a.label).join() === 'Previous song,Next song' && arrows.sect.map(a => a.label).join() === 'Previous section,Next section', t + 'the accessible names are unchanged');
       const trL = await tops(page, ['#prev-section-btn', '#slb-auto-btn', '#next-section-btn', '#slb-save-btn']);
       R.check(same(trL), t + 'the transport row is still one line', trL.join());
+      R.check(errs.length === 0, t + 'no page errors', errs.join('|'));
+      await ctx.close();
+    }
+
+    // ── The header on a desktop browser (html.desktop-web, 880 px and up): Studio's own desktop rules hide every .ss-cur and lay every
+    // .ss-pick out as a static row, and the header once shared those class names, so it vanished at 1000 px and the old switch is hidden too.
+    for (const [w, view] of [[900, 'advanced'], [1000, 'basic'], [1280, 'basic'], [1280, 'advanced']]) {
+      const { page, ctx, errs } = await openSong(h, { width: w, height: 800 });
+      await page.evaluate(v => { document.documentElement.classList.add('desktop-web'); window.dispatchEvent(new Event('resize')); setViewMode(v); switchTab('songs'); setSongsMode('build'); }, view);
+      await page.waitForTimeout(400);
+      const t = 'desktop web ' + w + ' ' + view + ': ';
+      const cur = await box(page, '#songs-cur');
+      R.check(cur && cur.shown && cur.w >= 44 && cur.h >= 44, t + 'the header button is drawn and at least 44 pt', JSON.stringify(cur));
+      await click(page, '#songs-cur'); await page.waitForTimeout(150);
+      const chips = await page.evaluate(() => [...document.querySelectorAll('#songs-pick .sg-chip')].map(b => { const r = b.getBoundingClientRect(); return [b.dataset.m, Math.round(r.width), Math.round(r.height)]; }));
+      R.check(chips.length === 3 && chips.every(c => c[1] > 0 && c[2] >= 44), t + 'a tap opens the three choices, each drawn and 44 pt tall', JSON.stringify(chips));
+      await click(page, '#songs-pick [data-m=perform]'); await page.waitForTimeout(200);
+      R.check(await mode(page) === 'perform' && (await box(page, '#songs-perform-panel')).shown && !(await box(page, '#songs-pick')).shown, t + 'picking Perform shows it and closes the choices');
       R.check(errs.length === 0, t + 'no page errors', errs.join('|'));
       await ctx.close();
     }
