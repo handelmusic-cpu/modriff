@@ -49,11 +49,12 @@ const wavSeconds = (buf) => {
       const fs = require('fs'), cp = require('child_process');
       if (/\.wav$/i.test(name)) { st.wavs.push({ name, sec: wavSeconds(fs.readFileSync(p)), at: Date.now() }); return; }
       if (!/\.zip$/i.test(name)) return;
-      const list = cp.spawnSync('unzip', ['-Z1', p], { encoding: 'utf8' }).stdout.split('\n').filter(f => /\.wav$/i.test(f));
-      for (const f of list) {
-        const buf = cp.spawnSync('unzip', ['-p', p, f], { maxBuffer: 1 << 28 }).stdout;
-        st.wavs.push({ name: f, sec: wavSeconds(buf), at: Date.now() });
-      }
+      // A Bounce has one WAV. Let unzip match its name inside the archive:
+      // macOS can corrupt accented names on a round trip through stdout.
+      const names = cp.execFileSync('unzip', ['-Z1', p], { encoding: 'utf8' }).split('\n').filter(f => /\.wav$/i.test(f));
+      if (names.length !== 1) throw new Error('Expected one WAV in the Bounce ZIP, found ' + names.length);
+      const buf = cp.execFileSync('unzip', ['-p', p, '*.[wW][aA][vV]'], { maxBuffer: 1 << 28 });
+      st.wavs.push({ name: names[0], sec: wavSeconds(buf), at: Date.now() });
     });
     await page.goto(url); await page.waitForTimeout(1200);
     await page.click(`button[onclick="unlockAudio('roll')"]`); await page.waitForTimeout(2200);
