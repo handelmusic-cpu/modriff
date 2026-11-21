@@ -2,7 +2,7 @@
    page the roll or grid is on top and the rest is in two columns, with no tabs. A phone keeps its single column and its tabs.
 
    Run (repo served; CLAUDE.md):  python3 -m http.server 8777 --bind 127.0.0.1 &  node tests/studio-wide/wide.test.js
-   Env: URL, CHROME (default macOS Chrome), ONLY (a comma list of: bass, aux, arp, header, phone) */
+   Env: URL, CHROME (default macOS Chrome), ONLY (a comma list of: bass, aux, arp, header, phone, duo) */
 'use strict';
 const { chromium } = require('playwright-core');
 const URL = process.env.URL || 'http://127.0.0.1:8777/index.html';
@@ -99,6 +99,29 @@ const want = k => !ONLY || ONLY.includes(k);
     const { page } = await open(390, 844, true);
     await show(page, 'bass');
     check(await box(page, '#bm-bass-panel .bl-page-wrap > [data-acrow=timing]') === null, 'phone: Timing is still behind its tab on the Pattern page');
+    await page.context().close();
+  }
+  // The open iPhone Duo (951 x 669, touch): two columns for the pages that scroll most, but Bass and Melody keep their tabs
+  // (the roll fills the screen, so Sound and Timing under it made a 1170 pt page where each tab was one screen).
+  if (want('duo')) {
+    const { page, errs } = await open(951, 669, true);
+    const cls = await page.evaluate(() => document.documentElement.className);
+    check(/\bstudio-wide\b/.test(cls) && !/studio-wide-bm/.test(cls), 'duo: html is studio-wide but not studio-wide-bm', cls);
+    await show(page, 'bass');
+    check(await box(page, '#bm-bass-panel .bl-page-wrap > [data-acrow=timing]') === null, 'duo: Bass Timing is still behind its tab on the Pattern page');
+    for (const [k, flow] of [['arp', '#arp-strip-body'], ['smp', '#ps-panel'], ['fx', '#modfx-panel']]) {
+      await show(page, k);
+      const r = await page.evaluate(flow => {
+        const f = document.querySelector(flow), fr = f.getBoundingClientRect(); let over = [];
+        for (const el of f.querySelectorAll('*')) { if (!el.getClientRects().length || el.closest('[style*="overflow"]')) continue;
+          const a = el.getBoundingClientRect(), c = (el.closest('.st-card-body') || f).getBoundingClientRect();
+          if (a.width && a.right > c.right + 3 && el.closest('.st-card-body')) over.push((el.id || el.className).toString().slice(0, 30)); }
+        return { cols: getComputedStyle(f).columnCount, over: [...new Set(over)].filter(x => x !== 'tips-btn').slice(0, 4) };
+      }, flow);
+      check(r.cols === '2', 'duo ' + k + ': two columns', JSON.stringify(r));
+      check(r.over.length === 0, 'duo ' + k + ': nothing runs past its column', r.over.join(','));
+    }
+    check(errs.length === 0, 'duo: the page threw nothing', errs.join(' | '));
     await page.context().close();
   }
   await browser.close();
