@@ -9090,6 +9090,12 @@ body.light-mode .ft-more-menu { background:#f9faff; }
 #songs-subnav, #mix-subnav { position:static; display:flex; width:100%; max-width:700px !important; margin:0 auto 12px; padding:0; gap:0;
  border:1px solid var(--border2); border-radius:14px; overflow:hidden; background:var(--surf2); }
 #songs-subnav .subnav-lbl, #mix-subnav .subnav-lbl { display:none; }
+/* Song's header picker replaces the wide switch (the switch stays in the page, hidden); the Mac app keeps the switch. */
+.sg-head { position:relative; width:100%; max-width:700px; margin:0 auto 8px; --pc:#9b6dff; }
+.sg-head.open .ss-pick { display:block; }
+#songs-subnav { display:none !important; }
+html.mac-app .sg-head { display:none; }
+html.mac-app #songs-subnav { display:flex !important; }
 /* The row's gradient wash is an absolutely placed ::before; with the row no longer positioned it spread over the
    page and took every tap under it. */
 #songs-subnav::before, #mix-subnav::before { display:none; }
@@ -11790,6 +11796,17 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
       v4.0.3 — the one tab whose sub-tabs were not with the others above the
       tab bar, and so the one place they were out of a thumb's reach. Docked
       by subnavDockMount. -->
+ <!-- The page's name as a header button with a caret, like Studio's module picker: one tap opens Build / Perform / Library. The wide
+      three-way switch below it stays in the page, hidden, so setSongsMode and the code that points at its buttons keep working; the
+      Mac app shows it instead of this header (Studio's Mac layout keeps its row too). -->
+ <div class="sg-head" id="songs-head" role="group" aria-label="Song page">
+  <button type="button" class="ss-cur" id="songs-cur" aria-haspopup="true" aria-expanded="false" onclick="songsPickToggle()"><span class="ss-cur-n" id="songs-cur-n">Build</span><span class="ss-caret" aria-hidden="true">&#9662;</span></button>
+  <div class="ss-pick" id="songs-pick"><div class="ss-gb">
+   <button type="button" class="ss-chip on" data-m="build" onclick="songsPickGo('build')">Build</button>
+   <button type="button" class="ss-chip" data-m="perform" onclick="songsPickGo('perform')">Perform</button>
+   <button type="button" class="ss-chip" data-m="library" onclick="songsPickGo('library')">Library</button>
+  </div></div>
+ </div>
  <div class="subnav" id="songs-subnav" style="max-width:700px">
  <span class="subnav-lbl">Song</span>
  <button class="subnav-btn active" id="songs-build-btn" onclick="setSongsMode('build')">Build</button>
@@ -41491,7 +41508,7 @@ var TUT_LIST = [
   {t:'Sample', x:'Run a clip through it instead of the band.', el:'#fx-smp-btn', pro:'synth'}
  ]},
  {id:'song', name:'Song mode', steps:[
-  {t:'Song', x:'Build a chart, perform it, read it.', el:'#songs-subnav', go:function(){ _tutTab('songs'); setSongsMode('build'); }},
+  {t:'Song', x:'Build a chart, perform it, read it.', el:'#songs-head', go:function(){ _tutTab('songs'); setSongsMode('build'); }},
   {t:'Sections', x:'Verse, chorus… each repeats as set, then moves on.', el:'#section-tabs'},
   {t:'Start from something', x:'Common progressions, already in your key, and your own saved songs. Each arrives as sections.', el:'#sb-start'},
   {t:'Play it', x:'Perform shows the chart with Prev and Next, which queue to the end of the pass. Play Song starts the band and the chart together.', el:'#slb-auto-btn', go:function(){ setSongsMode('perform'); }},
@@ -41721,7 +41738,7 @@ var CTRL_TIPS = [
  ['#ss-smp','The sampler pads ◈'], ['#ss-fx','The mõdFX pad'],
  ['#ss-drums','Drum grid'], ['#ss-aux','Aux drum grid'], ['#ss-bass','Bass line and Generate'],
  ['#ss-melseq','Melody sequencer and Generate'], ['#ss-arp','Arpeggiator'],
- ['#songs-build-btn','Write the chart'], ['#songs-perform-btn','Play the chart: tiles, diagrams or timeline'], ['#songs-library-btn','Common progressions, saved songs and imports'],
+ ['#songs-cur','The page you are on: Build, Perform or Library'], ['#songs-build-btn','Write the chart'], ['#songs-perform-btn','Play the chart: tiles, diagrams or timeline'], ['#songs-library-btn','Common progressions, saved songs and imports'],
  ['#set-ui-btn','Setups, chords & timing, look'], ['#set-sounds-btn','Default sounds, global tone, tuning'], ['#set-midi-btn','MIDI in and out'],
  ['[onclick^="showTip"]','Explain this'],
  ['[onclick^="transposeBy(-1)"]','Key down a semitone'], ['[onclick^="transposeBy(+1)"]','Key up a semitone'],
@@ -48582,10 +48599,26 @@ let songAutoTimer = null;
 let songCurrentSlot = -1;
 let songCurrentSection = 0;
 
+// The Song header picker. It closes on a tap outside, on Escape, on a pick, on any mode change (a stored link or Find can change
+// the mode while it is open) and when the Song tab is left, so it is never open with a stale label.
+function songsPickToggle(force){
+ var h=document.getElementById('songs-head'), c=document.getElementById('songs-cur'); if(!h) return;
+ var open = (force===undefined) ? !h.classList.contains('open') : !!force;
+ h.classList.toggle('open', open); if(c) c.setAttribute('aria-expanded', open?'true':'false');
+}
+function songsPickGo(m){ songsPickToggle(false); setSongsMode(m); }
+function songsCurPaint(m){
+ var n=document.getElementById('songs-cur-n'); if(n) n.textContent={build:'Build', perform:'Perform', library:'Library'}[m]||'Build';
+ [].forEach.call(document.querySelectorAll('#songs-pick .ss-chip'), function(b){ b.classList.toggle('on', b.dataset.m===m); });
+ songsPickToggle(false);
+}
+document.addEventListener('pointerdown', function(e){ var h=document.getElementById('songs-head'); if(h && h.classList.contains('open') && !h.contains(e.target)) songsPickToggle(false); }, true);
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') songsPickToggle(false); });
 function setSongsMode(m){
  // Chart is a view of Perform now; the old way in (Find, a stored link) lands there.
  if(m==='chart'){ _songsPerformView = 'chart'; try{ modStore.setItem('modo-perform-view', 'chart'); }catch(e){} m = 'perform'; }
  songsMode = m;
+ songsCurPaint(m);
  document.getElementById('songs-build-btn')?.classList.toggle('active', m==='build');
  document.getElementById('songs-perform-btn')?.classList.toggle('active', m==='perform');
  document.getElementById('songs-library-btn')?.classList.toggle('active', m==='library');
@@ -50239,6 +50272,7 @@ function settingsDone(){
  switchTab(to);
 }
 function switchTab(t){
+ if(typeof songsPickToggle==='function') songsPickToggle(false);   // never leave the Song header picker open behind another tab
  // A falsy target (e.g. the onboarding tour's intro step, which wants to
  // show its card over whatever tab is already open) must be a no-op —
  // not a switch to nothing, which used to blank every tab page since none
