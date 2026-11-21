@@ -9208,6 +9208,10 @@ body.bt-timeline .sb-secdel { position:static; margin-left:auto; }
 #songs-perform-panel #pv-stage { order:2; flex:0 0 98px; min-height:44px; padding:0 8px; border-radius:12px; font-size:.58rem; }
 /* Stage's lilac text was written for the dark page: on Light it was 1.06:1. */
 body.light-mode #songs-perform-panel #pv-stage { color:#43268f; }
+/* A free build draws an "Add-on" badge after the label of Timeline and of Stage. Side by side they ran Timeline's badge into Stage and spilled
+   Stage's past its border (267 px of content in a 245 px tab group at 375 pt); stacked under the label they are as wide as the label. */
+#songs-perform-panel #pv-switch .tb.pv-locked, #songs-perform-panel #pv-stage.pv-locked { display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; line-height:1.1; }
+#songs-perform-panel #pv-switch .tb.pv-locked::after, #songs-perform-panel #pv-stage.pv-locked::after { margin-left:0; font-size:max(.3rem,9px); padding:1px 4px; }
 #songs-perform-panel #prev-section-btn, #songs-perform-panel #next-section-btn { flex:0 0 52px !important; min-width:0; min-height:48px; padding:0 !important;
  background:var(--surf2) !important; color:var(--text) !important; border:1px solid var(--border2) !important; font-size:1.5rem; line-height:1; }
 #songs-perform-panel #prev-section-btn { order:3; }
@@ -11845,9 +11849,9 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
       three-way switch below it stays in the page, hidden, so setSongsMode and the code that points at its buttons keep working; the
       Mac app shows it instead of this header (Studio's Mac layout keeps its row too). -->
  <div class="sg-head" id="songs-head" role="group" aria-label="Song page">
-  <button type="button" class="ss-cur" id="songs-cur" aria-haspopup="true" aria-expanded="false" onclick="songsPickToggle()"><span class="ss-cur-n" id="songs-cur-n">Build</span><span class="ss-caret" aria-hidden="true">&#9662;</span></button>
-  <div class="ss-pick" id="songs-pick"><div class="ss-gb">
-   <button type="button" class="ss-chip on" data-m="build" onclick="songsPickGo('build')">Build</button>
+  <button type="button" class="ss-cur" id="songs-cur" aria-haspopup="true" aria-controls="songs-pick" aria-expanded="false" onclick="songsPickToggle()"><span class="ss-cur-n" id="songs-cur-n">Build</span><span class="ss-caret" aria-hidden="true">&#9662;</span></button>
+  <div class="ss-pick" id="songs-pick" role="group" aria-label="Song pages"><div class="ss-gb">
+   <button type="button" class="ss-chip on" data-m="build" aria-current="true" onclick="songsPickGo('build')">Build</button>
    <button type="button" class="ss-chip" data-m="perform" onclick="songsPickGo('perform')">Perform</button>
    <button type="button" class="ss-chip" data-m="library" onclick="songsPickGo('library')">Library</button>
   </div></div>
@@ -12133,7 +12137,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="tb prac-btn" data-prac-by="5" onclick="pracKeyBy(5)" title="Up a fourth each time: C, F, B♭, E♭… — every key, the way jazz players practise them">Fourth</button>
    <button class="tb prac-btn" data-prac-by="7" onclick="pracKeyBy(7)" title="Up a fifth each time: C, G, D, A… — every key, and the neighbours stay close">Fifth</button>
   </div>
-  <button class="tb prac-btn" id="prac-loop-btn" data-prac="loop" aria-pressed="false" onclick="pracToggle('loop')" title="Loop bars — tap the first and last chord of the bars to repeat on the chart below; the song stays there until you turn this off">Loop bars</button>
+  <button class="tb prac-btn" id="prac-loop-btn" data-prac="loop" aria-pressed="false" onclick="pracToggle('loop')" title="Loop bars — tap the first and last chord of the bars to repeat on the chart; the song stays there until you turn this off">Loop bars</button>
   <div class="prac-set" id="prac-loop-set" hidden><span id="prac-loop-hint"></span></div>
   <div class="prac-status" id="prac-status" aria-live="polite"></div>
  </div>
@@ -41561,7 +41565,7 @@ var TUT_LIST = [
   {t:'Sample', x:'Run a clip through it instead of the band.', el:'#fx-smp-btn', pro:'synth'}
  ]},
  {id:'song', name:'Song mode', steps:[
-  {t:'Song', x:'Build a chart, perform it, read it.', el:'#songs-head', go:function(){ _tutTab('songs'); setSongsMode('build'); }},
+  {t:'Song', x:'Build a chart, perform it, read it.', el:function(){ var h=document.getElementById('songs-head'); return (h && h.offsetParent) ? h : document.getElementById('songs-subnav'); }, go:function(){ _tutTab('songs'); setSongsMode('build'); }},
   {t:'Sections', x:'Verse, chorus… each repeats as set, then moves on.', el:'#section-tabs'},
   {t:'Start from something', x:'Common progressions, already in your key, and your own saved songs. Each arrives as sections.', el:'#sb-start'},
   {t:'Play it', x:'Perform shows the chart with Prev and Next, which queue to the end of the pass. Play Song starts the band and the chart together.', el:'#slb-auto-btn', go:function(){ setSongsMode('perform'); }},
@@ -48659,14 +48663,18 @@ function songsPickToggle(force){
  var open = (force===undefined) ? !h.classList.contains('open') : !!force;
  h.classList.toggle('open', open); if(c) c.setAttribute('aria-expanded', open?'true':'false');
 }
-function songsPickGo(m){ songsPickToggle(false); setSongsMode(m); }
+function songsPickGo(m){ songsPickToggle(false); setSongsMode(m); var c=document.getElementById('songs-cur'); if(c) c.focus(); }   // the chip just went away: focus goes to the header, as in Studio
 function songsCurPaint(m){
  var n=document.getElementById('songs-cur-n'); if(n) n.textContent={build:'Build', perform:'Perform', library:'Library'}[m]||'Build';
- [].forEach.call(document.querySelectorAll('#songs-pick .ss-chip'), function(b){ b.classList.toggle('on', b.dataset.m===m); });
+ [].forEach.call(document.querySelectorAll('#songs-pick .ss-chip'), function(b){ var on=b.dataset.m===m; b.classList.toggle('on', on); if(on) b.setAttribute('aria-current','true'); else b.removeAttribute('aria-current'); });
  songsPickToggle(false);
 }
 document.addEventListener('pointerdown', function(e){ var h=document.getElementById('songs-head'); if(h && h.classList.contains('open') && !h.contains(e.target)) songsPickToggle(false); }, true);
-document.addEventListener('keydown', function(e){ if(e.key==='Escape') songsPickToggle(false); });
+document.addEventListener('keydown', function(e){
+ if(e.key!=='Escape') return;
+ var h=document.getElementById('songs-head'); if(!h || !h.classList.contains('open')) return;
+ songsPickToggle(false); var c=document.getElementById('songs-cur'); if(c) c.focus();   // not left on <body>: a keyboard user keeps their place
+});
 // Perform's widgets. modo-perform-widgets is the list of names that are OFF (nothing stored means everything shown), so a new widget
 // appears by default and an unreadable value can never leave one hidden with no way back: anything that is not an array of strings
 // counts as empty, and names that are not widgets are ignored.
@@ -48691,6 +48699,8 @@ function pfWidgetSet(box){
 function pfWidgetsToggle(){
  var s=document.getElementById('pf-wsheet'), b=document.getElementById('pf-widgets-btn'); if(!s) return;
  s.hidden=!s.hidden; if(b) b.setAttribute('aria-expanded', s.hidden?'false':'true');
+ // It opens below the last button on the page, partly under the bottom bar: bring it to the middle of the screen.
+ if(!s.hidden && s.scrollIntoView) s.scrollIntoView({block:'center'});
 }
 function setSongsMode(m){
  // Chart is a view of Perform now; the old way in (Find, a stored link) lands there.
@@ -54333,7 +54343,7 @@ function pracSync(){
  if(lset) lset.hidden = !pracLoop.sel;
  if(lh){
   var nm = (sections[pracLoop.si] && sections[pracLoop.si].name) || '';
-  lh.textContent = pracLoop.sel === 1 ? 'Tap the first chord of the bars to loop, on the chart below'
+  lh.textContent = pracLoop.sel === 1 ? 'Tap the first chord of the bars to loop, on the chart'
                  : pracLoop.sel === 2 ? 'Now tap the last chord (the same one again loops just that bar)'
                  : pracLoop.sel === 3 ? 'Looping '+nm+', chord '+(pracLoop.a+1)+(pracLoop.b>pracLoop.a ? ' to '+(pracLoop.b+1) : '')+'. Each pass counts as a chorus for Speed up and Next key. Tap Loop bars to clear.'
                  : '';

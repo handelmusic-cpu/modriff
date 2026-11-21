@@ -65,7 +65,7 @@ const same = a => a.every(x => x !== null && Math.abs(x - a[0]) <= 2);
       await ctx.close();
     }
     // Everything that pointed at the old switch now points at the header.
-    R.check(/el:'#songs-head'/.test(HTML) && !/el:'#songs-subnav'/.test(HTML), 'the tutorial step spotlights the header, not the hidden switch');
+    R.check(/t:'Song'[^\n]*getElementById\('songs-head'\)/.test(HTML) && !/el:'#songs-subnav'/.test(HTML), 'the tutorial step spotlights the header (or the switch where the header is not drawn), never the hidden switch by selector');
     R.check(/\['#songs-cur',/.test(HTML), 'the "what is this" labels include the header button');
 
     // ── Task 2: Perform's order, tabs and transport row ───────────────────────
@@ -212,6 +212,58 @@ const same = a => a.every(x => x !== null && Math.abs(x - a[0]) <= 2);
       await loadSong(page); await page.waitForTimeout(300);
       const trM = await tops(page, ['#prev-section-btn', '#slb-auto-btn', '#next-section-btn', '#slb-save-btn']);
       R.check(same(trM) && !(await box(page, '#songs-head')).shown && (await box(page, '#songs-subnav')).shown, 'Mac app: Perform keeps the old three-way switch, no header picker, and a one-line transport row', trM.join());
+      await ctx.close();
+    }
+
+    // ── Review fixes ──────────────────────────────────────────────────────────
+    // A free build draws an "Add-on" badge on Timeline and on Stage: at every width they must neither overflow nor run into each other.
+    for (const vp of ['se375', 'p390', 'p430', 'ipad820', 'phoneLand', 'duoOpen', 'duoClosed']) {
+      const { page, ctx, errs } = await openSong(h, vp, () => setModTier('free'));
+      await page.evaluate(() => { setSongsMode('perform'); window.scrollTo(0, 0); }); await page.waitForTimeout(300);
+      const g = await page.evaluate(() => { const r = id => document.getElementById(id).getBoundingClientRect(), sw = document.getElementById('pv-switch'), st = document.getElementById('pv-stage'), pn = document.getElementById('songs-perform-panel').getBoundingClientRect();
+        return { swOver: sw.scrollWidth > sw.clientWidth + 1, stOver: st.scrollWidth > st.clientWidth + 1, tlRight: Math.round(r('pv-timeline').right), stLeft: Math.round(r('pv-stage').left), stRight: Math.round(r('pv-stage').right), panelRight: Math.round(pn.right),
+          locked: document.getElementById('pv-stage').classList.contains('pv-locked') && document.getElementById('pv-timeline').classList.contains('pv-locked') }; });
+      R.check(g.locked && !g.swOver && !g.stOver && g.tlRight <= g.stLeft && g.stRight <= g.panelRight + 1, 'free build at ' + vp + ': the Add-on badges neither overflow their buttons nor run into each other', JSON.stringify(g));
+      R.check(errs.length === 0, 'free build at ' + vp + ': no page errors', errs.join('|'));
+      await ctx.close();
+    }
+    {
+      // The tutorial's Song step finds something to point at, in the Mac app too (where the header picker is not drawn).
+      for (const mac of [false, true]) {
+        const { page, ctx } = await openSong(h, 'ipad820', mac ? () => document.documentElement.classList.add('mac-app') : null);
+        const r = await page.evaluate(() => { const st = TUT_LIST.filter(x => x.id === 'song')[0].steps[0]; const e = typeof st.el === 'function' ? st.el() : document.querySelector(st.el);
+          if (!e) return null; const b = e.getBoundingClientRect(); return { id: e.id, ok: b.width > 0 && b.height > 0 }; });
+        R.check(r && r.ok, (mac ? 'Mac app' : 'phone') + ': the Song tutorial step points at something drawn', JSON.stringify(r));
+        await ctx.close();
+      }
+    }
+    {
+      // Keyboard: Escape in the picker hands focus back to the header button (as Studio's picker does); the header names what it opens.
+      const { page, ctx } = await openSong(h, 'p390');
+      await page.evaluate(() => songsPickToggle(true)); await page.focus('#songs-pick .ss-chip[data-m=library]'); await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+      R.check(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'songs-cur' && !(await box(page, '#songs-pick')).shown, 'picker: Escape from a chip closes it and focus returns to the header button');
+      R.check(await attr(page, '#songs-cur', 'aria-controls') === 'songs-pick' && await attr(page, '#songs-pick', 'role') === 'group' && (await attr(page, '#songs-pick', 'aria-label') || '').length > 0, 'picker: the header says what it controls, and the picker is a labelled group');
+      R.check(await page.evaluate(() => [...document.querySelectorAll('#songs-pick .ss-chip')].filter(b => b.getAttribute('aria-current')).map(b => b.dataset.m).join()) === 'build', 'picker: the chip for the page you are on carries aria-current');
+      await click(page, '#songs-cur'); await page.focus('#songs-pick .ss-chip[data-m=perform]'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+      R.check(await mode(page) === 'perform' && await page.evaluate(() => document.activeElement && document.activeElement.id) === 'songs-cur' && await page.evaluate(() => document.querySelector('#songs-pick .ss-chip[aria-current]').dataset.m) === 'perform',
+        'picker: choosing a page by keyboard moves focus to the header and marks the new page');
+      await ctx.close();
+    }
+    R.check(!/on the chart below/.test(HTML), 'Loop bars no longer says "on the chart below" (the chart is above the Practice card now)');
+    {
+      // The widgets sheet opens into view, even from the bottom of the page.
+      const { page, ctx } = await openSong(h, 'se375');
+      await loadSong(page); await page.waitForTimeout(300);
+      await page.evaluate(() => { window.scrollTo(0, 1e6); pfWidgetsToggle(); }); await page.waitForTimeout(500);
+      const sh = await page.evaluate(() => { const r = document.getElementById('pf-wsheet').getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight }; });
+      R.check(sh.top >= 0 && sh.bottom <= sh.vh - 170, 'widgets: opening the sheet from the bottom of the page brings all of it above the bottom bar', JSON.stringify(sh));
+      await ctx.close();
+    }
+    // The storage filter itself: a bare string and an array-like object must not hide anything (the earlier cases hold no real widget names).
+    for (const [name, val] of [['a bare string', '"endings"'], ['an array-like object', '{"length":1,"0":"endings"}']]) {
+      const { page, ctx, errs } = await openSong(h, 'se375');
+      await page.evaluate(v => { localStorage.setItem('modo-perform-widgets', v); setSongsMode('perform'); }, val); await page.waitForTimeout(300);
+      R.check(await allShown(page) && errs.length === 0, 'storage ' + name + ': every widget stays shown', errs.join('|'));
       await ctx.close();
     }
   } finally { await h.close(); }

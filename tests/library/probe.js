@@ -159,7 +159,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await tap('#pv-tiles');
   check((await page.evaluate(() => [document.getElementById('songs-chart-panel').style.display, getComputedStyle(document.getElementById('songs-full-chart')).display])).join() === 'none,block', 'Tiles brings the tiles back and hides the chart');
   await page.evaluate(() => { setSongsMode('chart'); });
-  const old = await page.evaluate(() => ({ perf: document.getElementById('songs-perform-panel').style.display !== 'none', view: songsPerformViewGet(), active: document.getElementById('songs-perform-btn').classList.contains('active') }));
+  const old = await page.evaluate(() => ({ perf: document.getElementById('songs-perform-panel').style.display !== 'none', view: songsPerformViewGet(), active: document.getElementById('songs-cur-n').textContent === 'Perform' }));   // the header names the page (the hidden switch's .active is not what a person sees)
   check(old.perf && old.view === 'chart' && old.active, 'setSongsMode(\'chart\') (Find, an old link) lands on Perform’s Chart view', JSON.stringify(old));
 
   // ── 3. The sheet's Setups.
