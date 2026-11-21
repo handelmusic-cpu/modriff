@@ -4278,6 +4278,9 @@ body.mode-basic .part-dice:not(.lv-adv .part-dice) { display:none !important; }
 .sq-kit-legend span { display:inline-flex; align-items:center; gap:5px; }
 .sq-kit-legend i { font-style:normal; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:4px; border:1px solid var(--border2); font-size:max(.42rem,10.5px); }
 .sq-shape { display:flex; flex-direction:column; gap:14px; padding:6px 4px 14px; }
+.fx-prev-note { font-size:.72rem; line-height:1.35; padding:7px 10px; margin:0 0 8px; border-radius:8px; background:color-mix(in srgb, var(--accent, #7aa2ff) 14%, transparent); }
+.sq-shape-note { font-size:.74rem; line-height:1.35; padding:8px 10px; margin:0 0 8px; border-radius:8px; background:color-mix(in srgb, var(--accent, #7aa2ff) 14%, transparent); }
+.sq-shape-see { font:inherit; font-weight:600; color:var(--accent, #7aa2ff); background:none; border:0; padding:0 0 0 2px; text-decoration:underline; cursor:pointer; }
 .sq-shape-pv { display:block; width:100%; height:84px; border-radius:var(--r-sm); background:var(--surf); border:1px solid var(--border); }
 .sq-shape-row { display:grid; grid-template-columns:64px 1fr 74px; align-items:center; gap:10px; }
 .sq-shape-l { font-size:.6rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
@@ -4925,6 +4928,8 @@ body.light-mode .ft-btn.tp-rec  { color:#c81e3a; }
 .ft-bpm-pop { flex-direction:column; align-items:stretch; gap:6px; }
 .ft-bpm-pop { max-width:calc(100vw - 16px); }
 .ft-bpm-pop input[type=range] { width:min(46vw,160px); }
+.ft-bpm-note { font-size:.62rem; line-height:1.3; color:var(--sq-txt, var(--dim, #999)); max-width:min(70vw,220px); padding:0 2px; }
+.ft-bpm-note[hidden] { display:none; }
 .ft-pop-row { display:flex; align-items:center; gap:7px; }
 .ft-pop-sep { height:1px; background:var(--border2); margin:1px 0; }
 .ft-pop-lbl {
@@ -10123,9 +10128,10 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
   <div class="ft-pop-row">
    <button class="ft-bpm-nudge" onclick="nudgeBpm(-1)" aria-label="Slower" title="1 bpm slower">−</button>
    <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
-          oninput="onBpmInput(this.value)" aria-label="Tempo">
+          oninput="bpmByHand(this.value)" aria-label="Tempo">
    <button class="ft-bpm-nudge" onclick="nudgeBpm(1)" aria-label="Faster" title="1 bpm faster">+</button>
   </div>
+  <div class="ft-bpm-note" id="ft-bpm-note" hidden></div>
   <!-- Feel lives with tempo because they are the same decision — how the beat
        is laid out — and because it used to be reachable only from the Drums
        tab, with nothing anywhere else saying it was on or that it governed
@@ -10355,7 +10361,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9.1</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9.2</span></div>
  </div>
 </div>
 
@@ -11836,7 +11842,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9.1</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9.2</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13055,7 +13061,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9.1';
+const MODRIFF_VERSION = '1.9.9.9.2';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -25494,7 +25500,7 @@ var _link = window._link = {
   if(!st) return;
   this.seen=true;
   var on=!!st.enabled;
-  if(on!==this.on){ this.on=on; this.synced=false; this.pendN=0; }
+  if(on!==this.on){ this.on=on; this.synced=false; this.pendN=0; try{ freeTempoSync(); }catch(e){} }
   this.peers=st.peers|0; this.tempo=+st.tempo||0;
   this.paint();
   if(on && !this.timer){ var me=this; this.timer=setInterval(function(){ me.poll(); }, 500); }
@@ -39334,6 +39340,7 @@ function randomizeSettings(opts){
   // Tempo comes from the archetype too — a Cathedral patch at 148bpm isn't
   // a cathedral. Never the slider's full 40–220; most of that rolls unusable.
   s.bpm  = Math.round(_rndBand(A.bpm||[70,150],0));
+  if(freeTempoLocked()) s.bpm = freeTempoNearest(s.bpm);   // a roll lands on a tempo a free install can set itself
  }
  // Feel and shape roll on every press, playing or not — these change the
  // groove without touching anything the user authored (the step grids,
@@ -41703,7 +41710,7 @@ var TUT_LIST = [
   {t:'Autosave', x:'Your session keeps itself. The splash picks up where you left off.', el:'#ft-setups-btn', go:function(){ _tutSheet(true); }}
  ]},
  {id:'export', name:'Export & stems', steps:[
-  {t:'Bounce', x:'Records what you hear: a .wav and a .mid. The .wav is the whole take; free keeps the first four bars of the .mid, the Studio Pack all of it, and stems.', el:'#ft-bounce-btn', go:function(){ _tutSheet(true); }},
+  {t:'Bounce', x:'Records what you hear: a .wav and a .mid. Free stops a take at 30 seconds and keeps the first four bars of the .mid; the Studio Pack takes any length, all of the .mid, and stems.', el:'#ft-bounce-btn', go:function(){ _tutSheet(true); }},
   {t:'Stems', x:'Adds one .wav per part.', el:'#ft-stems-btn', pro:'studio'},
   {t:'Project files', x:'Project: New, Open and Save the piece as one file — chart, parts, patches and mixer.', el:'#ft-sheet-file', go:function(){ _tutSheet(true); }},
   {t:'Capture', x:'Turns what you just played into chart, melody or pattern.', el:'#ft-rec-btn'}
@@ -42788,6 +42795,7 @@ function sectionDelete(){
 
 // Add a section after the selected one. The chip row's "+ Section" and Build's own both call this.
 function sectionAdd(){
+  if(freeSectionRoom()<1){ freeSectionsFull(); return; }
   // Inserted after the selected section rather than always appended, so a
   // section can be put where it belongs instead of only ever at the end and
   // then walked back with the arrows.
@@ -44572,6 +44580,13 @@ function sbLoadItem(item, keepKey, how){
   // song around it is not a thing this chart model can express, so "Keep"
   // here means "keep the pitches", which is what the transposition above
   // already decided.
+  // The free section cap: take what fits, say how many were left out.
+  var room=freeSectionRoom();
+  if(secs.length>room){
+   if(room<1){ freeSectionsFull(); return; }
+   showToast('Added '+room+' of '+secs.length+' sections. Free holds '+FREE_NUMBERS.sections+'.');
+   secs=secs.slice(0,room);
+  }
   var at=Math.min(sections.length, curSection+1);
   secs.forEach(function(s,i){
    var nm=s.name||item.name;
@@ -50687,7 +50702,7 @@ Switch the diagrams to <strong>Guitar</strong> or <strong>Ukulele</strong> and e
  'export': {
   title: 'Export — audio, MIDI & stems',
   body: `<strong>Bounce</strong> — in the More sheet under Export, in Live's Record widget, and on this panel — captures a <strong>.wav</strong> of everything you hear — post master bus, including Master Vol — plus a <strong>.mid</strong> of the exact notes played, so you can carry the take into a DAW. Both download when you stop.<br><br>
-<span class="tip-pro">Studio Pack</span> The audio is the whole take for everyone. Free keeps the first four bars of the .mid, and says so when it stops; the Studio Pack keeps all of it, and adds stems.<br><br>
+<span class="tip-pro">Studio Pack</span> A free take stops by itself at 30 seconds and keeps the first four bars of the .mid, and says so; the Studio Pack takes any length, keeps all of the .mid and adds stems.<br><br>
 In the ${window.__modMacApp?'Mac':'iPhone'} app a bounce is written to disk <em>as it records</em>, so a long take cannot run the app out of memory, and it is kept in ${window.__modMacApp?'<strong>Downloads › mõdRïff › Bounces</strong> — in the Finder —':'<strong>Documents › Bounces</strong> — in the Files app —'} as well as offered to the share sheet, so a cancelled share loses nothing.<br><br>
 <span class="tip-pro">Studio Pack</span> <strong>Stems</strong> adds one <strong>.wav</strong> per part next to the mix: Drums, Aux, Bass, Melody, Chords, Solo, Sampler and Arp. They are <strong>dry</strong> — tapped at each part's own bus, before the reverb send and the master limiter — so you can put your own space on them in a DAW. A part that never sounded is skipped rather than written as silence.<br><br>
 <strong class="rnd-keep">Not the same as ◉ Capture in the More sheet</strong>, which writes what you play into something editable that stays inside the app — chords into a Song section, and the melody, the bass and the sampler pads into their own grids. Use that one to build a chart; use this one to get files out.<br><br>
@@ -50695,7 +50710,7 @@ In the ${window.__modMacApp?'Mac':'iPhone'} app a bounce is written to disk <em>
  },
  'modfx': {
   title: 'mõdFX — the performance pad',
-  body: `<span class="tip-pro">mõdSynth Engine</span> The pad is free with three patches — Filter Sweep, Tape Stop and Dub Delay. The mõdSynth Engine adds the X and Y menus, every other patch, saving your own, and playing a sample through the pad.<br><br>
+  body: `<span class="tip-pro">mõdSynth Engine</span> The pad is free with three patches — Filter Sweep, Tape Stop and Dub Delay. Tap any other patch to hear it for 20 seconds, twice each; the mõdSynth Engine keeps it, and adds the X and Y menus, saving your own, and playing a sample through the pad.<br><br>
 Two effects at once under one finger. Pick what each axis does with the <strong>X</strong> and <strong>Y</strong> menus — cutoff, high-pass, resonance, drive, and the buffer effects below — then hold the pad and move.<br><br>
 <strong>It overrides the sends while you hold it.</strong> Each channel's REV / DLY / DRV encoders on the Mix strips are where the effect sits at rest; the pad takes over for as long as your finger is down and hands it back when you lift. <strong>Hold</strong> latches the last position instead, which is the difference between a stab and a setting. <strong>Clear</strong> puts everything back to the sends.<br><br>
 <strong>Which channels it reaches</strong> is the row of channel chips here, in Studio. Everything is swept until you narrow it. <strong>How much</strong> of each channel goes through it is its <strong>Mix</strong> — the sliders under the pad, the row under each part's mõdFX bar, or the <strong>MIX</strong> knob on its mixer strip. 0% leaves a part untouched.<br><br>
@@ -51005,6 +51020,7 @@ function toggleSongRecord(){
 
 function startSongRecord(){
  if(songRecActive) return;
+ if(freeSectionRoom()<1){ freeSectionsFull(); return; }
  stopSongLoopIfActive();
  const base='Recording';
  let n=1; while(sections.some(s=>s.name===base+' '+n)) n++;
@@ -51324,6 +51340,7 @@ function captureBack(){
  const ctx=getCtx();
  const run=_chordRingRun();
  if(!ctx || !run.length){ showToast('Play some chords first'); return; }
+ if(freeSectionRoom()<1){ freeSectionsFull(); return; }
 
  const cyc=_capOneCycle(run);
  const fit=_capFit(cyc.evs, {endT:cyc.endT, liberal:true, adapt:!_capClock()});
@@ -55589,7 +55606,7 @@ function onBpmInput(v){
 // slider and the drag all stay in sync with each other for free.
 const BPM_MIN=40, BPM_MAX=220;
 function _clampBpm(v){ return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(v))); }
-function nudgeBpm(d){ onBpmInput(_clampBpm(_bpmNow()+d)); }
+function nudgeBpm(d){ bpmByHand(_bpmNow()+d, d>0?1:-1); }
 function _bpmPopOpen(on){
  const pop=document.getElementById('ft-bpm-pop'); if(!pop) return;
  pop.classList.toggle('open', !!on);
@@ -55633,7 +55650,7 @@ function _bpmPopIsOpen(){ return !!document.getElementById('ft-bpm-pop')?.classL
   const v=_clampBpm(v0+(dx+dy)/2.5);
   // Only push a real change — onBpmInput restarts the clock, and doing that
   // on every pointermove that rounds to the same bpm stutters the transport.
-  if(v!==_bpmNow()) onBpmInput(v);
+  if(v!==_bpmNow()) bpmByHand(v);
  });
  const end=e=>{
   if(!drag) return;
@@ -56217,6 +56234,8 @@ function _startRecording(){
   if(_recFinishing) return;
   // The pack sheet's demo plays through the drum engine the take listens to.
   try{ if(typeof packDemoStop==='function') packDemoStop(); }catch(e){}
+  // A mõdFX patch that is only being heard never reaches a take.
+  try{ _fxPreviewEnd(false); }catch(e){}
   var ctx=getCtx();if(!ctx)return;
   _withAudio(ctx);
   buildReverb();
@@ -56274,11 +56293,25 @@ function _startRecording(){
   }
   _recT0=Date.now();
   _isRecording=true;_updateRecBtn();
+  // A free take runs FREE_NUMBERS.bounceSeconds and stops itself: it is saved like any other,
+  // then says why it ended. Cleared in _stopRecording, so a take stopped by hand never leaves
+  // a timer that cuts the next one short.
+  var _cap=freeBounceCap();
+  if(_cap){
+    clearTimeout(_recCapTimer);
+    _recCapTimer=setTimeout(function(){
+      _recCapTimer=null;
+      if(!_isRecording || _recFinishing) return;
+      _stopRecording();
+      setTimeout(function(){ freeBlocked('Takes longer than '+_cap+' seconds', 'studio'); }, 1200);
+    }, _cap*1000);
+  }
   // Native-engine parts are not in the bus the recorder taps. When the host's
   // capture is running they come in through that; when it is not, say so.
   var nat=_nativeUncaptured();
   var msg = stemsFailed ? 'Recording the mix — stems could not start'
           : (exportStems ? 'Recording — mix + stems…' : 'Recording…');
+  if(_cap) msg = 'Recording — a free take stops at '+_cap+' seconds…';
   if(nat.length) msg += ' ' + nat.join(', ') + ' plays in the native engine and is not captured yet.';
   else if(exportStems && _stemSkipped.length) msg += ' ' + _stemSkipNote(_stemSkipped) + '.';
   majorToast(msg, nat.length ? {ms:5000} : undefined);
@@ -56777,6 +56810,7 @@ var _recFinishing=false;
 var REC_TAIL_MS=8000;
 async function _stopRecording(transportStopped){
   if(!_isRecording || _recFinishing) return;
+  clearTimeout(_recCapTimer); _recCapTimer=null;
   _recFinishing=true;
   var midiStopWall=Date.now();
   if(window._nsEvents) try{ await window._nsEvents.flushRecording(midiStopWall); }catch(e){ _midiRecNativeCut=true; }
@@ -57045,7 +57079,7 @@ document.addEventListener('pointerdown', function(){ _reviewTouchAt = Date.now()
 setTimeout(function(){ try{ if(_inNativeApp()){ _reviewNote('day'); _reviewArm(); } }catch(e){} }, 4000);
 // The take's clock, m:ss (h:mm:ss past an hour). One timer, only while a take runs; every [data-recclock] is repainted from
 // it: the Record widget, and the page's own copy beside the island (#bounce-clock). _recT0 is set where the take starts.
-var _recT0=0, _recClockTimer=null;
+var _recT0=0, _recClockTimer=null, _recCapTimer=null;
 function _recFmt(ms){
   var t=Math.max(0,Math.floor(ms/1000)), h=Math.floor(t/3600), m=Math.floor(t%3600/60), s=t%60;
   return (h ? h+':'+(m<10?'0':'') : '')+m+':'+(s<10?'0':'')+s;
@@ -57893,8 +57927,13 @@ function tapTempo(){
  const avg=intervals.reduce((a,b)=>a+b,0)/intervals.length;
  const bpm=Math.round(60000/avg);
  const clamped=Math.max(40,Math.min(220,bpm));
- onBpmInput(clamped);
- const sl=document.getElementById('bpm'); if(sl) sl.value=clamped;
+ // Tap tempo is the Groove Pack's. The taps are counted, and the fourth says so (rather than the first, so a tap
+ // that only meant to open the slider never does); the tempo stays where it was.
+ if(freeTempoLocked()){ _tapTimes=[]; freeBlocked('Tap tempo','groove'); }
+ else {
+  onBpmInput(clamped);
+  const sl=document.getElementById('bpm'); if(sl) sl.value=clamped;
+ }
  }
  // Flash the readout itself so each registered tap gives feedback, even
  // the first few before there's enough of a window to set a tempo yet.
@@ -59080,7 +59119,7 @@ mhApply(0);
 
 
 // Wire sliders
-document.getElementById('ft-bpm-sl').addEventListener('input',e=>onBpmInput(e.target.value));
+document.getElementById('ft-bpm-sl').addEventListener('input',e=>bpmByHand(e.target.value));
 // Ensure songs perform setlist initialised
 renderSetlistPerform();
 // Build arp gate-pattern buttons (strip is open by default)
@@ -61617,7 +61656,8 @@ function sqLaneSheet(ti){
   act('Sample', clip ? 'Playing '+clip.name+' instead of the kit’s drum — change, trim or remove it' : 'The kit’s own drum. Load a sample, or record one with the microphone',
     function(){ if(typeof window.smpOpenDrum==='function') window.smpOpenDrum(mk,ti); });
   if(M.shape){
-    act('Shape', _sqShapeOf(tr) ? 'Shaped away from the kit — level, tune, decay, tone, drive, pan' : 'Level, tune, decay, tone, drive and pan for this drum',
+    act('Shape', modHas('synth') ? (_sqShapeOf(tr) ? 'Shaped away from the kit — level, tune, decay, tone, drive, pan' : 'Level, tune, decay, tone, drive and pan for this drum')
+                                 : 'Hear decay, tone, drive and pan on this drum. Keeping a shape is part of the mõdSynth Engine',
       function(){ sqShapeSheet(ti); });
   }
   sec('Row');
@@ -61636,7 +61676,7 @@ window.sqLaneSheet = sqLaneSheet;
 function sqRowMenu(ti, anchor){
   var tr=(SQM[sqMach]||{tracks:[]}).tracks[ti]; if(!tr) return;
   gridClipMenu(anchor, tr.n||tr.s, sqRowItems(ti)
-    .concat((SQM[sqMach]||{}).shape ? [{label:'Shape…', title:'Tune, decay, tone, drive and pan for this drum', fn:function(){ sqShapeSheet(ti); }}] : []));
+    .concat((SQM[sqMach]||{}).shape ? [{label:modHas('synth') ? 'Shape…' : 'Shape… (hear only)', title:modHas('synth') ? 'Tune, decay, tone, drive and pan for this drum' : 'Hear decay, tone, drive and pan on this drum. Keeping a shape is part of the mõdSynth Engine', fn:function(){ sqShapeSheet(ti); }}] : []));
 }
 // A drum drawn, for the Shape sheet: the lane's voice built into an offline
 // context with the lane's current Shape and rendered, so the picture is the
@@ -61707,6 +61747,10 @@ function sqShapeSheet(ti){
  var put=function(k,v){ var m=sqShapes[key]||(sqShapes[key]={}); var sh=cur(); sh[k]=v; m[ti]=sh; };
  var hear=function(){ try{ sqInitFX(); sqEnsureNoise(); var c=sqCtx(); sqHitTrack(tr, c?c.currentTime+0.02:0, sqGv(key,ti), false, sqGp(key,ti), sqFocus===1 ? 'auxperc' : undefined); }catch(e){} };
  var box=_sbSheet(tr.n+' · shape');
+ // Free hears every setting but keeps none: what the lane had when the sheet opened (nothing, or a shape that arrived with a
+ // song) is put back on close. Said at the top, before any of the work, and at the door (the lane sheet and the row menu).
+ var hearOnly = !modHas('synth');
+ var snap = (sqShapes[key] && sqShapes[key][ti]) ? Object.assign({}, sqShapes[key][ti]) : null;
  var rows=[
   // Level and Pitch are the lane's own (the volume and PCH controls on the
   // grid), shown here so every way to change the drum is in one place.
@@ -61730,6 +61774,14 @@ function sqShapeSheet(ti){
  var getV=function(k){ return k==='p' ? sqGp(key,ti) : k==='v' ? sqGv(key,ti) : cur()[k]; };
  var setV=function(k,v){ if(k==='p') sqSp(key,ti,v); else if(k==='v') sqSv(key,ti,v); else put(k,v); };
  var wrap=document.createElement('div'); wrap.className='sq-shape';
+ if(hearOnly){
+  var nt=document.createElement('div'); nt.className='sq-shape-note'; nt.setAttribute('data-shape-note','1');
+  nt.appendChild(document.createTextNode('You can hear every setting. Keeping a shape is part of the mõdSynth Engine, so the drum goes back to the kit’s when you close this. '));
+  var nb=document.createElement('button'); nb.type='button'; nb.className='sq-shape-see'; nb.textContent='See pack';
+  nb.addEventListener('click', function(){ proSheet('Drum shaping','synth'); });
+  nt.appendChild(nb);
+  wrap.appendChild(nt);
+ }
  // The drum, drawn. Redrawn a beat after the last slider movement, not on
  // every input event: each one is an offline render.
  var pv=document.createElement('canvas'); pv.className='sq-shape-pv'; pv.setAttribute('aria-hidden','true');
@@ -61773,7 +61825,10 @@ function sqShapeSheet(ti){
  box.body.appendChild(wrap); box.body.appendChild(act);
  box.addCancel('Done');
  // The lane's PCH knob and its Shape button both show what was changed here.
- box.onClose=function(){ try{ sqRenderGrid(); }catch(e){} };
+ box.onClose=function(){
+  if(hearOnly){ var m=sqShapes[key]; if(snap){ (m||(sqShapes[key]={}))[ti]=snap; } else if(m) delete m[ti]; }
+  try{ sqRenderGrid(); }catch(e){}
+ };
 }
 window.sqShapeSheet = sqShapeSheet;
 function sqColMenu(step, anchor){
@@ -75564,7 +75619,8 @@ function _fxIsSamplePatch(p){
 // says what is missing, with the way to fix it one tap away.
 function fxPickPreset(i){
  const p=fxAllPresets()[i]; if(!p) return;
- if(_fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)','synth'); return; }
+ if(_fxFreeLocked(p)){ if(!fxPreviewTap(i)) freeBlocked(p.name+' (mõdFX)','synth'); return; }
+ _fxPreviewEnd(false);
  fxApplyPreset(i);
  if(_fxIsSamplePatch(p) && !(typeof fxSmpLoaded==='function' && fxSmpLoaded())){
   showToast(p.name+' needs a clip on the pad', {
@@ -75573,9 +75629,44 @@ function fxPickPreset(i){
  }
 }
 window.fxPickPreset=fxPickPreset;
-function fxApplyPreset(i){
+// ── Hearing a locked patch ──────────────────────────────────────────────────
+// A patch is a gesture on a pad, so it is heard by wearing it: a locked patch loads for FX_PREVIEW_SEC, twice per
+// patch (the same two as a pad or a voice, counted in modo-previews), and the pad goes back to the patch it was on,
+// axes and targets, when the time is up, when a free patch is picked, or when a take starts. It is never saved:
+// the pack is for keeping one. var: read from far away (CLAUDE.md).
+var FX_PREVIEW_SEC = 20;
+var _fxPrev = null;
+function _fxPreviewEnd(announce){
+ if(!_fxPrev) return;
+ var o=_fxPrev; _fxPrev=null; clearTimeout(o.timer);
+ if(modHas('synth')) return;                       // bought while it was on: it stays
+ fxPadX=o.x; fxPadY=o.y; fxTargets=o.t.slice();
+ try{ modParamsFlush(); fxSyncUI(); }catch(e){}
+ if(announce) showToast('Back to '+o.name+'. Keeping a mõdFX patch is part of the mõdSynth Engine.');
+}
+function fxPreviewTap(i){
+ var p=fxAllPresets()[i];
+ if(!p || p.user || !_fxFreeLocked(p)) return false;
+ if(typeof _isRecording!=='undefined' && _isRecording) return false;
+ var seen=_prevLoad(), k='fx:'+p.name;
+ if((seen[k]||0) >= FREE_NUMBERS.previewsPerItem) return false;   // heard twice: the sheet
+ // A patch with nothing playing under it is not heard, so it is not counted either.
+ if(!isAnythingPlaying()){ showToast('Start the band, then tap a patch to hear it'); return true; }
+ seen[k]=(seen[k]||0)+1;
+ try{ modStore.setItem('modo-previews', JSON.stringify(seen)); }catch(e){}
+ if(!_fxPrev){
+  var all=fxAllPresets(), cur=all.find(function(x){ return x.x===fxPadX && x.y===fxPadY; });
+  _fxPrev={ x:fxPadX, y:fxPadY, t:fxTargets.slice(), name: cur ? cur.name : (FX_PARAMS[fxPadX].label+' × '+FX_PARAMS[fxPadY].label), timer:null };
+ }
+ clearTimeout(_fxPrev.timer);
+ _fxPrev.timer=setTimeout(function(){ _fxPreviewEnd(true); }, FX_PREVIEW_SEC*1000);
+ fxApplyPreset(i, true);
+ majorToast(p.name+' (mõdFX): hear it for '+FX_PREVIEW_SEC+' seconds. Keeping it is part of the mõdSynth Engine.', {actionLabel:'See pack', onAction:function(){ proSheet(p.name+' (mõdFX)','synth'); }});
+ return true;
+}
+function fxApplyPreset(i, preview){
  const p=fxAllPresets()[i]; if(!p) return;
- if(_fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)','synth'); return; }
+ if(!preview && _fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)','synth'); return; }
  if(FX_PARAMS[p.x]) fxPadX=p.x;
  if(FX_PARAMS[p.y]) fxPadY=p.y;
  // In ADVANCED this deliberately does NOT touch fxTargets. A patch is a pair
@@ -76399,7 +76490,7 @@ function fxSyncUI(){
    const smp=_fxIsSamplePatch(x);
    return '<button class="fx-preset'+(i===cur?' on':'')+(_fxFreeLocked(x)?' tier-locked':'')+(x.user?' user':'')+(smp?' smp':'')+(smp&&!hasClip?' noclip':'')+'"'
     +' data-mod="synth" onclick="fxPickPreset('+i+')"'
-    +' title="'+FX_PARAMS[x.x].label+' × '+FX_PARAMS[x.y].label+(smp&&!hasClip?' — needs a clip on the pad':'')+'"'
+    +' title="'+FX_PARAMS[x.x].label+' × '+FX_PARAMS[x.y].label+(smp&&!hasClip?' — needs a clip on the pad':'')+(_fxFreeLocked(x)&&!x.user?' — hear it for '+FX_PREVIEW_SEC+' seconds; keeping it is part of the mõdSynth Engine':'')+'"'
     +' aria-label="Preset '+x.name+': '+FX_PARAMS[x.x].label+' on X, '+FX_PARAMS[x.y].label+' on Y">'
     +(smp?'<span class="fx-smp-mark" aria-hidden="true">◈</span>':'')+x.name
     +(x.user?'<span class="fx-preset-x" onclick="event.stopPropagation();fxDeleteUserPreset('+i+')" '
@@ -76412,7 +76503,8 @@ function fxSyncUI(){
   const lbl=document.getElementById('fx-patch-cur');
   if(lbl) lbl.textContent = cur>=0 ? all[cur].name : (FX_PARAMS[fxPadX].label+' × '+FX_PARAMS[fxPadY].label);
   pr.innerHTML=
-    '<div class="fx-pgroup"><div class="fx-pgroup-lbl">Effects<span>shape the parts that are playing</span></div>'
+    (!modHas('synth') ? '<div class="fx-prev-note">Tap a locked patch to hear it for '+FX_PREVIEW_SEC+' seconds, twice each. Keeping a patch is part of the mõdSynth Engine.</div>' : '')
+   +'<div class="fx-pgroup"><div class="fx-pgroup-lbl">Effects<span>shape the parts that are playing</span></div>'
    +'<div class="fx-pgroup-row">'+fx.map(i=>chip(all[i],i)).join('')+'</div></div>'
    +'<div class="fx-pgroup smp"><div class="fx-pgroup-lbl">◈ Sample pad<span>'
    +(hasClip ? 'play the clip loaded on the pad' : 'play a clip — load one with ◈ Sample')+'</span></div>'
@@ -76705,10 +76797,10 @@ const MODULE_COPY = {
  sampler:  { name:'Sampler Engine', line:'Pro sampler: your samples, kits, loop slicing',
   bullets:['Play the pads: every bank, all 16','Sampled melodic instruments','Every sample kit','Load your own samples onto the pads','Slice a loop across the pads'] },
  synth:    { name:'mõdSynth Engine', line:'Wavetable power synth + the full mõdFX rack',
-  bullets:['All mõdSynth sound sets','The full mõdFX library on the XY pad'] },
+  bullets:['All mõdSynth sound sets','The full mõdFX library on the XY pad','Drum shaping: decay, sweep, body, tone, drive and pan for every drum, kept'] },
  groove:   { name:'Groove Pack', line:'World grooves, odd meters, extra kits, aux',
   bullets:['More grooves, including Latin and world rhythms','Extra drum kits and the aux channel','More bass and melody styles',
-           'Odd meters','More than 16 steps','Separate step length per generator'] },
+           'Odd meters','More than 16 steps','Separate step length per generator','Every tempo, 1 bpm nudges and tap tempo (free has six tempos)'] },
  theory:   { name:'Theory Pack', line:'Every mode, chord and voicing, neo-soul ready',
   bullets:['All modes, harmonic and melodic minor, and exotic scales','Every chord type','Drop 2, Drop 3, Soul and Neo-soul voicings',
            'Circle-of-fifths key colours','Pure tuning for chords, bass, melody and arp'] },
@@ -76717,7 +76809,7 @@ const MODULE_COPY = {
            'Timeline: chords and words on the beats','Stage: the song full screen, big enough to read from a stand'] },
  studio:   { name:'Studio Pack', line:'EQ, sound shaping, Play in, Arrange, stems',
   bullets:['EQ on every part and the master: five bands, filters at 12 or 24 dB','Sound shaping: filter, attack, release, reverb and voice tone','Play in: write a part with your keys or a MIDI keyboard','Arrange: a different line for every chord',
-           'Capture and export stems','Full-length MIDI export','Unlimited saved songs','Full Live mode: more modules, rearrange your layout'] }
+           'Capture and export stems','Bounce takes of any length: free stops at 30 seconds','Full-length MIDI export','Unlimited saved songs and sections','Full Live mode: more modules, rearrange your layout'] }
 };
 const BUNDLE_COPY = {
  full:     { name:'Full Studio', line:'Every pack, in one purchase',
@@ -76785,6 +76877,15 @@ const FREE_LIMITS = {
   // Three meters, and the step counts are derived from them: a whole number of
   // bars of any of these, up to FREE_NUMBERS.stepMax. See freeAllowsSteps.
   meters:       ['4/4','3/4','12/8'],
+  // Tempo, by hand: the six stops. The slider, the nudges and a drag land on the nearest (or next) one; the whole
+  // 40-220 dial, 1 bpm nudges and tap tempo are the Groove Pack's. A tempo that ARRIVES (a load, the demo, a shared
+  // link, Keep fitting the band to what you played, the practice trainer, Ableton Link) is never moved: only a hand is.
+  tempoStops:   [70,88,100,110,128,150],
+  tapTempo:     false,
+  // The drum Shape sheet's six (decay, sweep, body, tone, drive, pan) are the mõdSynth Engine's to KEEP. A free install can open the
+  // sheet and hear every setting, then the lane goes back to the kit's drum when the sheet closes. A shape that ARRIVES (a song,
+  // a setup, a shared link) keeps sounding, as a saved EQ does. Level and Tune are the lane's own controls and stay free.
+  drumShape:    false,
   // None: the whole sampler is the Sampler Engine's (6.9.9.9.5). Free sees the
   // grid, the first FREE_NUMBERS.padCount pads of the preset bank on show, drawn
   // locked, and a tap plays that pad's sample softly twice (psPreviewTap); it is
@@ -76794,13 +76895,13 @@ const FREE_LIMITS = {
 // Which module owns each row above. Every row has exactly one; the test fails
 // on a row with none, which would be a lock nothing could ever open.
 const FEATURE_MODULE = {
-  modfx:'synth', fxPatches:'synth', modsynth:'synth',
+  modfx:'synth', fxPatches:'synth', modsynth:'synth', drumShape:'synth',
   freeModes:'theory', chordExtensions:'theory', outsideChords:'theory', voicings:'theory', keyColours:'theory', pureTuning:'theory', chordHold:'theory',
   samples:'sampler', sampler:'sampler', padBanks:'sampler',
   stemExport:'studio', fullMidiExport:'studio', liveLayout:'studio', liveMixer:'studio',
   liveRolls:'groove', liveSynth:'synth',
   arrange:'studio', playIn:'studio', soundShaping:'studio', eq:'studio', stepsUnlinked:'groove', auxLayer:'groove', drumKits:'groove', drumGrooves:'groove',
-  bassStyles:'groove', melodyStyles:'groove', arpRates:'groove', meters:'groove',
+  bassStyles:'groove', melodyStyles:'groove', arpRates:'groove', meters:'groove', tempoStops:'groove', tapTempo:'groove',
   iRealBatch:'practice', practiceTrainer:'practice', timeline:'practice', stage:'practice'
 };
 // The voices the Sounds Pack holds: the electric piano, organ and pad, the
@@ -76827,11 +76928,13 @@ const EMBED_LIMITS = {
 const FREE_NUMBERS = {
   stepMax:            16,   // the app's own maximum is 64
   saveSlots:          5,    // setlist songs, and iReal charts without the Practice Pack; Setups are not counted
+  sections:           2,    // sections a song may be ADDED up to (loading one with more is never refused)
+  bounceSeconds:      30,   // a Bounce stops itself here; the file adds the recorder's usual 8 s tail
   midiExportBars:     4,
   padCount:           9,    // pads SHOWN (locked) on a free install: a 3x3
   previewsPerItem:    2     // taps that sound on a locked pad or voice; then a tap only opens the sheet
 };
-const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', midiExportBars:'studio', padCount:'sampler', previewsPerItem:'sampler' };
+const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', sections:'studio', bounceSeconds:'studio', midiExportBars:'studio', padCount:'sampler', previewsPerItem:'sampler' };
 
 // The "Hear it" demo in a pack's sheet (6.9.9.9.6), as data so it can be changed
 // here and nowhere else. A locked kit or groove never plays under the user's own
@@ -76920,6 +77023,15 @@ function modProducts(){
 // landing page, which has the same buttons. Chromebooks and Windows have no
 // store to go to, so they get the landing page either way.
 var WEB_STORE = { appleId:'', landing:'https://modriff.com' };
+// The Studio Pack's two caps on what a song and a take may be (FREE_NUMBERS.sections and
+// bounceSeconds). One rule for the free app and the free web page alike: neither holds a
+// pack, so modHas('studio') is false on both. Only ADDING a section is stopped: a setup,
+// shared link, demo or chart that arrives with more still loads and plays whole, so the
+// page never refuses something it was handed.
+function freeSectionRoom(){ return modHas('studio') ? Infinity : Math.max(0, FREE_NUMBERS.sections - sections.length); }
+function freeSectionsFull(){ return freeBlocked('More than '+FREE_NUMBERS.sections+' sections', 'studio'); }
+// Seconds a take may run before it stops itself; 0 means no cap.
+function freeBounceCap(){ return modHas('studio') ? 0 : FREE_NUMBERS.bounceSeconds; }
 function webStoreInfo(){
  var ua = String(navigator.userAgent||'');
  var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints||0)>1);
@@ -77023,6 +77135,44 @@ function freeAllowsVoice(w){
  if(_modOwned===undefined) return true;      // voiceModule reads consts declared above this line in file order only
  const m=voiceModule(w);
  return !m || modHas(m);
+}
+// ── Tempo by hand ───────────────────────────────────────────────────────────
+// Ableton Link is never sold (its licence: free for everyone, outside every pack), so while it is on the tempo is
+// unrestricted, including the user's own moves, which then go out to the session.
+function freeTempoLocked(){ return !modHas('groove') && !(window._link && window._link.on); }
+function freeTempoNearest(v){
+ var st=FREE_LIMITS.tempoStops, best=st[0];
+ st.forEach(function(x){ if(Math.abs(x-v)<Math.abs(best-v)) best=x; });
+ return best;
+}
+// dir +1 / -1: the next stop above or below where the tempo is now (a nudge); stays put at the end of the list.
+function freeTempoStep(dir){
+ var st=FREE_LIMITS.tempoStops, cur=_bpmNow(), i;
+ if(dir>0){ for(i=0;i<st.length;i++) if(st[i]>cur) return st[i]; return st[st.length-1]; }
+ for(i=st.length-1;i>=0;i--) if(st[i]<cur) return st[i];
+ return st[0];
+}
+var _tempoToldFree=false;
+// Every tempo a person sets goes through here: the slider, the nudges, the arrow keys, a drag, a MIDI knob.
+// `dir` is given by a nudge (a step is a step, not a distance). Free is told once, on the first move that lands
+// somewhere other than where it was asked to; the note in the tempo popover says it before anyone tries.
+function bpmByHand(v, dir){
+ v=_clampBpm(v);
+ if(freeTempoLocked()){
+  var t = dir ? freeTempoStep(dir) : freeTempoNearest(v);
+  if(!_tempoToldFree && t!==v){
+   _tempoToldFree=true;
+   majorToast('Free sets the tempo from six stops. The Groove Pack opens the whole dial.', {actionLabel:'See pack', onAction:function(){ proSheet('Every tempo', 'groove'); }});
+  }
+  v=t;
+ }
+ if(v!==_bpmNow() || String(document.getElementById('ft-bpm-sl') && document.getElementById('ft-bpm-sl').value)!==String(v)) onBpmInput(v);
+}
+function freeTempoSync(){
+ var n=document.getElementById('ft-bpm-note'); if(!n) return;
+ var lock=freeTempoLocked();
+ n.hidden=!lock;
+ if(lock) n.textContent='Free: '+FREE_LIMITS.tempoStops.join(', ')+'. The Groove Pack opens every tempo and tap tempo.';
 }
 function freeAllowsArpRate(label){
  if(modHas('groove')) return true;
@@ -78179,6 +78329,8 @@ function proSyncRow(){
   // A Sounds Pack voice button plays the chord instead (two per voice).
   const vw=el.dataset.wave||el.dataset.arpwave||el.dataset.melwave||el.dataset.mlwave||((/setBlWave\('([^']+)'\)/.exec(el.getAttribute('onclick')||''))||[])[1];
   if(vw && voiceHearable(vw)){ voiceHearTap(vw, nameOf(el)); return; }
+  // A locked mõdFX patch is worn for a few seconds first (fxPreviewTap), twice; then this opens the sheet.
+  if(el.classList.contains('fx-preset')){ const fm=/fxPickPreset\((\d+)\)/.exec(el.getAttribute('onclick')||''); if(fm && fxPreviewTap(+fm[1])) return; }
   proSheet(nameOf(el), el.getAttribute('data-mod')||'', { kit:(el.dataset.mach||'').trim()||null, groove:el.dataset.groove||null });
  }, true);
 })();
@@ -78222,6 +78374,7 @@ function freeApplyLimits(){
   // The meter steps through the three free ones itself (see meterNudge), so
   // the base buttons, which can only make others, are locked.
   document.querySelectorAll('.ft-meter-base').forEach(b=>modLockEl(b, !modHas('groove'), 'groove'));
+  try{ freeTempoSync(); }catch(e){}
   // Bass and melody generator styles.
   document.querySelectorAll('[data-blstyle]').forEach(b=>{
    modLockEl(b, !freeAllowsStyle(b.dataset.blstyle), 'groove');

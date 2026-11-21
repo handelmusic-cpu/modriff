@@ -95,7 +95,7 @@ PLAYS WELL WITH OTHERS
 - Map its knobs and pads to anything on the screen
 
 FREE TO START, PACKS WHEN YOU WANT MORE
-mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits, five saved songs and full-length audio export are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack listed here, and every update to them. No subscriptions.
+mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits, five saved songs, two sections per song and 30-second audio export are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack listed here, and every update to them. No subscriptions.
 
 PRIVATE BY DESIGN
 No account. No ads. No tracking. No third-party analytics. Works offline. Your songs, patterns and recordings stay on your device. Apple provides aggregate store statistics and, if you opt in to sharing, app usage and diagnostics.
@@ -262,7 +262,7 @@ launch, tap Random, tap play, tap a chord, then `xcrun simctl io <udid> screensh
 Simulator: the shared one gets other sessions' builds installed over it. Driving a new Simulator needs the owner's
 approval in the app once per device.
 
-**IAP review shots** (`screenshots/iap/`, 1320 x 2868, opaque) were retaken from 1.9.4a: all eleven, including Studio’s EQ, Theory’s pure tuning and Practice’s current playlist-import wording. `verification.json` records each sheet’s text, ownership and image hash; `source/` holds the disposable Simulator capture automation.
+**IAP review shots** (`screenshots/iap/`, 1320 x 2868, opaque) show all eleven purchase sheets from the 1.9.9.9.2 iPhone Simulator build. `verification.json` records each sheet’s text, ownership and image hash; `source/` holds the disposable Simulator capture automation.
 
 There is no Mac set in this folder: the old `mac-16x10-*` files in `v6.9.2/` are the web build in Chrome. Mac App Store
 needs 16:10 shots (2880 x 1800 at 2x, a 1440 x 900 window). `ios/mac-catalyst/run-mac.sh` builds and opens the Mac app, but it
@@ -368,9 +368,7 @@ does). The pack’s list inside the app and its retaken `iap/Handel.modRiff.prac
   eleven different. Upload each under that product's Review Information. Each is the pack's
   sheet over a rolled song, with the store's launch prices filled in; the three Complete Your
   Studio shots come from owning one, two and three packs (Groove; Groove and Sounds; Groove,
-  Sounds and Studio), and `Full Studio` is the All packs screen. They were retaken at 1.9.4a
-  from the web build in a phone-sized browser (not a device) once the descriptions changed, so
-  they show the current look and wording. Retake them on a device once a purchase runs, and
+  Sounds and Studio), and `Full Studio` is the All packs screen. They were captured from the 1.9.9.9.2 iPhone Simulator build. Retake them on a device once a purchase runs, and
   again if a pack's copy, price or the sheet changes.
 - A **promotional image** per product, which is optional and is what the store shows if it
   features the item: `docs/app-store/promo/<product id>.png`, 1024 x 1024, opaque, no rounded

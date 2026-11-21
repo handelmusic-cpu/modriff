@@ -1,6 +1,6 @@
 # IAP review screenshots
 
-Eleven distinct native Simulator captures from 1.9.4a, 1320 × 2868, opaque. `verification.json` records the actual sheet text, ownership state and final image hashes. Studio includes EQ; Theory includes pure tuning; Practice uses the current playlist-import wording. The backdrop is the current Live layout.
+Eleven distinct native Simulator captures from 1.9.9.9.2, 1320 × 2868, opaque. `verification.json` records the actual sheet text, ownership state and final image hashes. Studio includes EQ; Theory includes pure tuning; Practice uses the current playlist-import wording. The backdrop is the current Live layout.
 
 Launch prices come from the table in `docs/app-store.md` and are supplied only to the disposable capture bundle’s provider. These images verify presentation, not a StoreKit purchase. The upgrade shots own Groove; Groove and Sounds; Groove, Sounds and Studio.
 

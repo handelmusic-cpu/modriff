@@ -46,6 +46,11 @@ packages and which is untouched):
 - A locked thing opens the same sheet, but `webView()` replaces the buy buttons:
   the pack's bullets, "The app is free to download", and one link. No price, no
   Restore.
+- The Studio Pack's two caps apply here as in a free app (`FREE_NUMBERS.sections` and `bounceSeconds`;
+  the page holds no pack, so `modHas('studio')` is false): **Bounce stops itself after 30 seconds**
+  (the file is those 30 plus the recorder's usual 8-second tail) and **a song holds 2 sections**. Only
+  *adding* is stopped; a setup, shared link, demo or chart that arrives with more still loads whole.
+  Both say so in a toast with "See pack", which on the web opens the page that points at the app.
 
 A local checkout served as-is (the tests, `python3 -m http.server`) is not flagged
 and still holds everything. Keep `play/` on `/play/` of the site: school filters are
@@ -69,6 +74,10 @@ npm run build:web && npm run build
 (cd dist-web && python3 -m http.server 8778 --bind 127.0.0.1 &)
 node tests/webplay/probe.js
 ```
+
+`tests/webplay/caps.js` measures the two caps on the built web page (a take's saved length
+read out of the zip, the section gates) and on the app build, free and with the Studio Pack; it
+also wants `dist/` served on 8779.
 
 Asserts the build contents, that nothing unlocks it, zero requests to `samples/`
 across Start, 21 Random rolls, every tab and playback, that the speakers still get
