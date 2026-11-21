@@ -247,6 +247,15 @@ T.window.__modTesters = 'true';
 ok(T.devTierAvailable('modriff.vercel.app') === false, 'only the boolean the host sets counts for the tester flag too');
 T.window.__modTesters = undefined;
 T.window.__modDebug = undefined;
+// Capacitor's iOS host is capacitor://localhost: inside the native app that is not "a local page".
+T.window.Capacitor = { isNativePlatform: () => true };
+eq(['localhost','127.0.0.1'].map(h => T.devTierAvailable(h)), [false,false], 'in the native app a localhost host does not get the switch');
+T.window.__modTesters = true;
+ok(T.devTierAvailable('localhost') === true, 'the native tester build still gets it by its flag');
+T.window.__modTesters = undefined;
+T.window.Capacitor = { isNativePlatform: () => false };
+ok(T.devTierAvailable('localhost') === true, 'a browser with Capacitor present but not native still counts as a local page');
+T.window.Capacitor = undefined;
 T.location.hostname = 'modriff.vercel.app';
 ok(T.devTierAvailable() === false, 'with no argument it reads the page host: a deployed release build has none');
 eq([T.devOwnedFromString('free'), T.devOwnedFromString('pro'), T.devOwnedFromString('groove,theory'), T.devOwnedFromString('nonsense,groove'), T.devOwnedFromString('nonsense'), T.devOwnedFromString(null)],
