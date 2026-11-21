@@ -26,6 +26,15 @@ eq(M.slotDurFromEighths(10, 8), { bars: 1, beats: 1, eighths: 0 }, 'a bar and a 
 eq(M.slotDurFromEighths(3, 6), { bars: 0, beats: 1, eighths: 1 }, 'a half bar of 3/4 is a beat and an eighth');
 eq(M.slotDurFromEighths(12, 6), { bars: 2, beats: 0, eighths: 0 }, 'two bars of 3/4');
 eq(M.slotDurFromEighths(0, 8), { bars: 0, beats: 0, eighths: 1 }, 'never nothing');
+// A bar of an odd number of eighths (3/8, 5/8, 7/8): the eighths left over after the bars are the bar's own remainder, not the total's parity.
+// It used to be e % 2, so in 7/8 a bar and an eighth (8) stored as a bar, and the nudge could not step past a whole bar.
+eq(M.slotDurFromEighths(7, 7), { bars: 1, beats: 0, eighths: 0 }, '7/8: seven eighths is a bar');
+eq(M.slotDurFromEighths(8, 7), { bars: 1, beats: 0, eighths: 1 }, '7/8: a bar and an eighth');
+eq(M.slotDurFromEighths(9, 7), { bars: 1, beats: 1, eighths: 0 }, '7/8: a bar and a beat');
+eq(M.slotDurFromEighths(13, 7), { bars: 1, beats: 3, eighths: 0 }, '7/8: a bar and three beats');
+eq(M.slotDurFromEighths(5, 7), { bars: 0, beats: 2, eighths: 1 }, '7/8: five eighths is two beats and an eighth');
+eq(M.slotDurFromEighths(10, 5), { bars: 2, beats: 0, eighths: 0 }, '5/8: two bars');
+eq(M.slotDurFromEighths(11, 5), { bars: 2, beats: 0, eighths: 1 }, '5/8: two bars and an eighth');
 
 // ── _sheetSplit: shares of a number of beats ────────────────────────────
 eq(M._sheetSplit([1, 1], 8), [4, 4], 'equal halves');

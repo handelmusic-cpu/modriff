@@ -27,6 +27,21 @@ window.modColourway = function(){ return document.documentElement.getAttribute('
 // host. Pointer capability keeps touch tablets on their existing layout.
 try{ if(!window.__modMacApp && matchMedia('(hover:hover) and (pointer:fine)').matches)
  document.documentElement.classList.add('desktop-web'); }catch(e){}
+// studio-wide: the Mac app or a desktop browser with 1000+ css px of page. Studio lays out the roll on top and the rest in two
+// columns there, and its Pattern / Sound / Timing tabs are not needed. Set here for the first paint and again on every resize
+// (the Mac app's zoom changes the page's width after load). The open iPhone Duo (951 x 669, the "wide Duo" media query in the CSS,
+// kept in step with it) is wide too: its Studio page is 855 pt beside the rail, room for two columns, and a touch screen has no
+// hover, so it is not tagged desktop-web.
+try{
+ var _sw = function(){ var c = document.documentElement.classList, duo = false;
+  try{ duo = matchMedia('(orientation:landscape) and (min-width:800px) and (max-width:1100px) and (min-height:560px) and (max-height:759px)').matches; }catch(e){}
+  var big = (c.contains('mac-app') || c.contains('desktop-web')) && (window.innerWidth || 0) >= 1000;
+  c.toggle('studio-wide', big || duo);
+  // Bass and Melody drop their tabs only on the big window: the Duo is 669 pt tall, the roll alone fills it, and Sound and Timing
+  // beneath it made the page 1170 pt where each tab was one screen.
+  c.toggle('studio-wide-bm', big); };
+ _sw(); window.addEventListener('resize', _sw);
+}catch(e){}
 // ── Follow the iOS text size ────────────────────────────────────────────
 // A WKWebView's default text is 16px whatever Text Size is set to, so the app
 // ignored the setting. WebKit resolves `font:-apple-system-body` to the size the
@@ -98,6 +113,10 @@ document.addEventListener('visibilitychange', function(){ if(!document.hidden) w
       s = Math.min(1.45, shortSide / 720);
       if(w > h) s = Math.min(s, longSide / 1100);
     }
+    // The Mac app: the same browser zoom, not the web view's pageZoom (v1.9.9.9q), which on macOS 27 scaled the picture but
+    // left the page laid out for the whole window, so the right edge and the bottom were cut off. Capped where the page would
+    // drop under 1100px, like a tablet on its side, so the two-column layouts keep their room.
+    if(window.__modMacApp) s = Math.max(1, Math.min(1.3, w / 1100));
     var want = (s < 1.06) ? base
       : 'width=' + Math.round(w / s) + ', initial-scale=' + s.toFixed(3) + ', viewport-fit=cover';
     // While a text field has focus the page may not scale past where it is now
@@ -2371,6 +2390,20 @@ html.mac-app body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel, #bm-arp
 html.mac-app body:not(.mode-basic) :is(#pf-chords-panel > *, #pf-chords-panel > #chord-voice-panel, #pf-chords-panel > #ms-host-chord) { max-width:700px !important; margin-left:auto; margin-right:auto; }
 html.mac-app body:not(.mode-basic) #pf-chords-panel #chords-main { flex-direction:column; align-items:center; }
 html.mac-app body:not(.mode-basic) #pf-chords-panel #chords-main > #chord-diagram-panel { flex:none; width:100% !important; max-width:700px !important; margin-top:12px !important; }
+/* The desktop web page mirrors the Mac window (html.mac-app, above) from 880 px of page up: the nine module chips in one row and the
+   pages' columns centred. A narrower browser window keeps the phone's picker. */
+@media (min-width:880px){
+ html.desktop-web body:not(.mode-basic) .studio-strip.ss-placed { max-width:820px; margin-left:auto; margin-right:auto; }
+ html.desktop-web .ss-cur, html.desktop-web .ss-gh { display:none; }
+ html.desktop-web .ss-head { display:block; }
+ html.desktop-web body:not(.mode-basic) .ss-pick { display:grid; position:static; grid-template-columns:repeat(9,minmax(0,1fr)); gap:5px 4px; padding:0; border:0; background:none; box-shadow:none; }
+ html.desktop-web .ss-grp, html.desktop-web .ss-gb { display:contents; }
+ html.desktop-web .ss-chip { height:36px; min-height:36px; font-size:13px; }
+ html.desktop-web body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel, #bm-arp-panel) > * { margin-left:auto; margin-right:auto; }
+ html.desktop-web body:not(.mode-basic) :is(#pf-chords-panel > *, #pf-chords-panel > #chord-voice-panel, #pf-chords-panel > #ms-host-chord) { max-width:700px !important; margin-left:auto; margin-right:auto; }
+ html.desktop-web body:not(.mode-basic) #pf-chords-panel #chords-main { flex-direction:column; align-items:center; }
+ html.desktop-web body:not(.mode-basic) #pf-chords-panel #chords-main > #chord-diagram-panel { flex:none; width:100% !important; max-width:700px !important; margin-top:12px !important; }
+}
 .pp-cell { min-width:0; }
 .pp-cell + .pp-cell { border-left:1.5px solid color-mix(in srgb, var(--wc) 55%, transparent); }
 .pp-btn {
@@ -4256,6 +4289,9 @@ body.mode-basic .part-dice:not(.lv-adv .part-dice) { display:none !important; }
 .sq-kit-legend span { display:inline-flex; align-items:center; gap:5px; }
 .sq-kit-legend i { font-style:normal; display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:4px; border:1px solid var(--border2); font-size:max(.42rem,10.5px); }
 .sq-shape { display:flex; flex-direction:column; gap:14px; padding:6px 4px 14px; }
+.fx-prev-note { font-size:.72rem; line-height:1.35; padding:7px 10px; margin:0 0 8px; border-radius:8px; background:color-mix(in srgb, var(--accent, #7aa2ff) 14%, transparent); }
+.sq-shape-note { font-size:.74rem; line-height:1.35; padding:8px 10px; margin:0 0 8px; border-radius:8px; background:color-mix(in srgb, var(--accent, #7aa2ff) 14%, transparent); }
+.sq-shape-see { font:inherit; font-weight:600; color:var(--accent, #7aa2ff); background:none; border:0; padding:0 0 0 2px; text-decoration:underline; cursor:pointer; }
 .sq-shape-pv { display:block; width:100%; height:84px; border-radius:var(--r-sm); background:var(--surf); border:1px solid var(--border); }
 .sq-shape-row { display:grid; grid-template-columns:64px 1fr 74px; align-items:center; gap:10px; }
 .sq-shape-l { font-size:.6rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
@@ -4903,6 +4939,8 @@ body.light-mode .ft-btn.tp-rec  { color:#c81e3a; }
 .ft-bpm-pop { flex-direction:column; align-items:stretch; gap:6px; }
 .ft-bpm-pop { max-width:calc(100vw - 16px); }
 .ft-bpm-pop input[type=range] { width:min(46vw,160px); }
+.ft-bpm-note { font-size:.62rem; line-height:1.3; color:var(--sq-txt, var(--dim, #999)); max-width:min(70vw,220px); padding:0 2px; }
+.ft-bpm-note[hidden] { display:none; }
 .ft-pop-row { display:flex; align-items:center; gap:7px; }
 .ft-pop-sep { height:1px; background:var(--border2); margin:1px 0; }
 .ft-pop-lbl {
@@ -7107,6 +7145,55 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
   #bm-bass-panel, #bm-melody-panel, #bm-bass-panel .bl-page-wrap, #bm-melody-panel .bl-page-wrap, #ac-drums-panel, #ac-drums-panel > .sq-wrap { max-width:none; }
 }
 
+/* The Mac window (about 1100 pt of page after the zoom) and a desktop browser window left the Bass and Melody rolls in a 700 pt column with 200 pt of nothing
+   either side. They take the width, and the rolls size their steps to it (_prMeasureColW) and their rows and height to the window
+   (prLayout, `macWide`). */
+@media (min-width:1000px){
+  html:is(.mac-app, .desktop-web) #bm-bass-panel, html:is(.mac-app, .desktop-web) #bm-melody-panel,
+  html:is(.mac-app, .desktop-web) #bm-bass-panel .bl-page-wrap, html:is(.mac-app, .desktop-web) #bm-melody-panel .bl-page-wrap { max-width:none; }
+  /* 90%, not all of it: a roll to the very edges has nowhere to put the pointer that scrolls the page, and the wheel over a roll
+     scrolls the roll, so the whole page seemed to be the roll. The 5% gutters either side are page. */
+  html:is(.mac-app, .desktop-web) #bm-bass-panel .bl-page-wrap, html:is(.mac-app, .desktop-web) #bm-melody-panel .bl-page-wrap { max-width:90%; margin-left:auto; margin-right:auto; }
+}
+
+/* ── Studio, wide window (html.studio-wide: the Mac app or a desktop browser, 1000+ px, and the open Duo; studio-wide-bm: not the Duo) ──
+   Bass and Melody: the roll and its toolbar on top across the page, Sound (the voice card) in the left column and Timing in the
+   right, no tabs. The page is a flex column ordered by data-acrow; as a grid every row spans both columns but those two. The
+   Timing header and body share the rows the voice card spans, so they sit at the top of the right column. */
+html.studio-wide-bm #ss-tabs[data-for="bass"], html.studio-wide-bm #ss-tabs[data-for="melseq"] { display:none !important; }
+html.studio-wide-bm body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-auto-flow:row dense; column-gap:16px; align-items:start; }
+html.studio-wide-bm body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap > * { grid-column:1 / -1; }
+html.studio-wide-bm body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap > [data-acrow="tone"] { grid-column:1; }
+html.studio-wide-bm body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap > [data-acrow="timing"] { grid-column:2; }
+/* The voice card is taller than the Timing header, so Timing's header and body sit in the two rows it spans, header at the bottom
+   of the first and body at the top of the second, which keeps them together instead of a card's height apart. */
+html.studio-wide-bm body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap > div[data-acrow="tone"]:has(+ button[data-acrow="tone"]) { grid-row:span 2; }
+html.studio-wide-bm body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap > button[data-acrow="timing"] { align-self:end; }
+
+/* Arp, Sampler and mõdFX are stacks of card headers (.st-fold-h) and bodies. Two CSS columns balance them for free; a header stays
+   with its body (break-after), the pad grids stay in one column (spanning the page made each pad 700 pt tall), and the 700 pt page caps are lifted.
+   Arp's cards are inside #arp-strip-body, under its head, voice card and preview, which stay across the top. */
+html.studio-wide body:not(.mode-basic) :is(#bm-arp-panel, #pf-pads-panel, #pf-fx-panel, #bm-arp-panel > .panel.p-perform, #ps-panel, #modfx-panel) { max-width:none !important; }   /* !important: #ps-panel and #pf-fx-panel carry max-width:700px inline */
+html.studio-wide body:not(.mode-basic) :is(#arp-strip-body, #ps-panel, #modfx-panel) { display:block; column-count:2; column-gap:16px; }
+html.studio-wide body:not(.mode-basic) :is(#arp-strip-body, #ps-panel, #modfx-panel) > .st-fold-h { break-after:avoid-column; break-inside:avoid; }
+html.studio-wide body:not(.mode-basic) :is(#arp-strip-body, #ps-panel, #modfx-panel) > :not(.st-fold-h) { break-inside:avoid; }
+html.studio-wide body:not(.mode-basic) #modfx-panel > .fx-head { column-span:all; }
+/* A column is about 400 pt on the Duo and 480 at the Mac's narrowest, and the pattern row (a label and eight 44 pt buttons, no wrapping)
+   ran 10 to 36 pt past it. Let the label wrap above the buttons and the buttons share the width. */
+html.studio-wide body:not(.mode-basic) #ps-panel .ps-grp:has(> .ps-pats) { flex-wrap:wrap; white-space:normal; max-width:100%; }
+html.studio-wide body:not(.mode-basic) #ps-panel .ps-pats { max-width:100%; }
+html.studio-wide body:not(.mode-basic) #ps-panel .ps-pats .ps-segb { min-width:32px; flex:1 1 0; }
+
+/* Drums and Aux: the grid and its rows across the page, then Timing, the part's mõdFX readout and the saved patterns in two columns,
+   then the status and toolbar rows across again. The pairs flow like the pages above; the rows with a data-acrow that is part of
+   the editing surface (pick, roll, voice, toolbar, saved, status) and the kit legend span both columns. */
+html.studio-wide body:not(.mode-basic) #ac-drums-panel { max-width:none; }
+html.studio-wide body:not(.mode-basic) #ac-drums-panel .sq-wrap { display:block; column-count:2; column-gap:16px; max-width:90%; margin-left:auto; margin-right:auto; }
+html.studio-wide body:not(.mode-basic) #ac-drums-panel .sq-wrap > .st-fold-h { break-after:avoid-column; break-inside:avoid; }
+html.studio-wide body:not(.mode-basic) #ac-drums-panel .sq-wrap > :not(.st-fold-h) { break-inside:avoid; }
+html.studio-wide body:not(.mode-basic) #ac-drums-panel .sq-wrap > :is([data-acrow="pick"], [data-acrow="voice"], [data-acrow="roll"], [data-acrow="toolbar"], [data-acrow="saved"], [data-acrow="status"], .sq-kit-legend) { column-span:all; }
+
 /* ── Accomp: one vertical order for every part ──────────────────────────────
    The four panels were built at different times and drifted apart, so a control
    that exists on more than one of them was in a different place depending on
@@ -8123,6 +8210,60 @@ html:is(.mac-app, .desktop-web) #_pro-sheet .pro-box { max-width:480px; max-heig
  box-shadow:0 0 0 1px var(--bg), 0 4px 14px rgba(0,0,0,.45);
 }
 .ci-rest { font-size:.5rem; color:var(--muted); text-align:center; padding:2px 0; }
+/* Length is the biggest row: six whole-width buttons on one line, the eighth nudge and the links under them. */
+.ci-row.ci-len { flex-wrap:wrap; }
+.ci-row.ci-len .ci-seg { flex-wrap:nowrap; }
+.ci-row.ci-len .ci-seg > button { flex:1 1 0; padding:11px 1px; font-size:.56rem; }
+.ci-row.ci-len .ci-seg > button:nth-child(3) { border-right:1px solid var(--border2); border-radius:0; margin-right:2px; }
+.ci-nudge { flex:1 1 100%; display:flex; align-items:center; gap:6px; margin-top:2px; }
+.ci-nudge .ci-extras { margin-left:auto; }
+.ci-nudge > button { flex:0 0 auto; min-width:44px; min-height:44px; padding:0 8px; cursor:pointer; touch-action:manipulation;
+ border:1px solid var(--border2); border-radius:var(--r-sm); background:var(--bg); color:var(--text); font:600 .66rem 'Outfit',sans-serif; }
+.ci-nudge > button:hover { border-color:var(--accent); color:var(--accent); }
+.ci-nudge-read { flex:1; min-width:0; font-size:.62rem; color:var(--text); }
+.ci-row.ci-rshut .ci-nudge { display:none; }
+/* Add a chord inside the section card: in the timeline view the card is a flex column ordered by the .sb-lines-* rules (timeline 1,
+   line fold 2-5, editor 6); the picker goes after the fold's own rows and before the editor, so it is under the chords it adds to
+   whether the fold is open or shut. In the Tiles view the card is a plain block and the markup order does the same. */
+.sb-seccard > .sb-hdr, .sb-seccard > #chart-chord-picker, .sb-seccard > .sb-exprow, .sb-seccard > .sb-expbody { order:5; }
+.sb-seccard > .sb-hdr { margin:10px 0 6px; }
+/* ── Song Builder: three levels of weight ──
+   The page drew everything at one strength: red-glowing picker tiles, a solid yellow section tab, purple-glowing library buttons,
+   an accent fill on every selected thing. Now the progression and the picker are the bright zone (--play-surf and --play-edge,
+   the colour of the surfaces you touch); the setup rows (title, key, scale, library) are flat and dim; the editor's second-step
+   rows are the darkest (.ci-quiet). Tokens only, so Light and Monotone follow. Scoped to the Build panel: Live and Studio share
+   .logic-suggest and the section tabs' look and must not change. The card's id-scoped rule outranks the timeline view's
+   "border:0; background:none; padding:0" on .sb-seccard, which is why it carries its own padding. */
+#songs-build-panel .sb-seccard { background:var(--play-surf); border:1px solid var(--play-edge); border-radius:var(--r-md); padding:10px; }
+#songs-build-panel .cpick-split.logic-suggest { box-shadow:inset 0 -3px 0 var(--accent); filter:none; border-color:var(--border2) !important; }
+#songs-build-panel .sec-tab.active { background:color-mix(in srgb, var(--py) 26%, var(--bg)); color:var(--text); border-color:var(--py); box-shadow:none; }
+#songs-build-panel .sb-lib { background:color-mix(in srgb, var(--bg) 60%, var(--surf)); border-color:var(--border); box-shadow:none; color:var(--muted); }
+#songs-build-panel .sb-lib:hover { background:var(--surf); color:var(--text); box-shadow:none; }
+#songs-build-panel .sb-lib-ch { color:var(--muted); }
+#songs-build-panel .sb-keystep { background:color-mix(in srgb, var(--bg) 60%, var(--surf)); border-color:var(--border); }
+#songs-build-panel .sb-scale .tb, #songs-build-panel .sb-scale .tb.blue, #songs-build-panel .sb-scale .tb.purple {
+ background:none; border-color:transparent; box-shadow:none; color:var(--muted); }
+#songs-build-panel .sb-scale .tb.active { background:color-mix(in srgb, var(--accent) 20%, var(--surf)); border-color:var(--accent); color:var(--text); }
+#songs-build-panel .chart-inspector.has-slot { background:var(--surf2); border-color:var(--play-edge); }
+/* Type is one line at the width of a small phone. */
+.ci-row.ci-onerow .ci-seg { flex-wrap:nowrap; }
+.ci-row.ci-onerow .ci-seg > button { flex:1 1 0; padding:11px 1px; font-size:.58rem; }
+.ci-row.ci-onerow .ci-seg .ci-more { flex:0 0 auto; padding:8px 6px !important; }
+.ci-head { min-width:0; }
+.ci-pos { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1; }
+/* Less red: the links to the rest of a row (More, Exact, All chords) are grey until pressed; red stays for what is selected. */
+.ci-body .ci-more, .ci-body .ci-fine { color:var(--muted) !important; }
+.ci-body .ci-more:hover, .ci-body .ci-fine:hover { color:var(--accent) !important; }
+/* Second-step rows: a darker inset with grey selection. Words, Rhythm, Voicing, Bass and Plays are visible but they are the
+   second thing you do to a chord, not the first. */
+.ci-body > .ci-row.ci-quiet { background:color-mix(in srgb, var(--bg) 55%, var(--surf2)); padding:4px 4px; margin-top:0 !important; }
+.ci-body > .ci-row.ci-quiet-first { margin-top:8px !important; border-top-left-radius:var(--r-md); border-top-right-radius:var(--r-md); }
+.ci-body > .ci-row.ci-quiet:last-child { border-bottom-left-radius:var(--r-md); border-bottom-right-radius:var(--r-md); }
+.ci-row.ci-quiet .ci-lbl { opacity:.55; }
+.ci-row.ci-quiet .ci-sum { color:var(--muted); }
+.ci-row.ci-quiet .ci-seg button { font-size:.5rem; padding:8px 1px; letter-spacing:0; }
+.ci-body > .ci-row.ci-quiet { gap:4px; padding-left:2px; padding-right:2px; }
+.ci-row.ci-quiet .ci-seg button.on, .ci-row.ci-quiet .ci-seg.ci-compact button.on { background:var(--border2); color:var(--text); border-color:var(--border2); }
 /* The quick card: beside the chord that was tapped, over the page. Under the modals (800) and over the transport (521). */
 .qc-card { position:fixed; z-index:700; box-sizing:border-box; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:6px;
  padding:10px 12px; background:var(--surf2); border:1px solid var(--accent); border-radius:var(--r-md); box-shadow:0 10px 34px rgba(0,0,0,.6); }
@@ -8317,13 +8458,13 @@ body.mode-basic #bm-bass-panel .ac-more, body.mode-basic #bm-melody-panel .ac-mo
    patterns; Sound is the voice, the mõdSynth card and the filter; Timing is the timing card. On Live's wide Duo pane there
    are no tabs, so the ··· button and its fold stay as they were (the body.mode-basic rules above). */
 body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .ac-more { display:none !important; }
-body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap[data-ed="pattern"] > :is([data-acrow="timing"], [data-acrow="tone"], [data-acrow="voice"]),
-body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap[data-ed="pattern"] > .pp-bar > [id$="-patch"],
-body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap[data-ed="sound"] > :is([data-acrow="roll"], [data-acrow="toolbar"], [data-acrow="timing"], [data-acrow="saved"], [data-acrow="chips"], [data-acrow="write"]),
-body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap[data-ed="sound"] > .pp-bar > [id$="-line"],
-body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap[data-ed="timing"] > :not([data-acrow="timing"]) { display:none !important; }
+html:not(.studio-wide-bm) body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap[data-ed="pattern"] > :is([data-acrow="timing"], [data-acrow="tone"], [data-acrow="voice"]),
+html:not(.studio-wide-bm) body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap[data-ed="pattern"] > .pp-bar > [id$="-patch"],
+html:not(.studio-wide-bm) body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap[data-ed="sound"] > :is([data-acrow="roll"], [data-acrow="toolbar"], [data-acrow="timing"], [data-acrow="saved"], [data-acrow="chips"], [data-acrow="write"]),
+html:not(.studio-wide-bm) body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap[data-ed="sound"] > .pp-bar > [id$="-line"],
+html:not(.studio-wide-bm) body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel) .bl-page-wrap[data-ed="timing"] > :not([data-acrow="timing"]) { display:none !important; }
 /* The part's mõdFX readout goes with Sound. */
-body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel):is([data-ed="pattern"], [data-ed="timing"]) > :is(.fx-readout-bar, .fx-ro-mix),
+html:not(.studio-wide-bm) body:not(.mode-basic) :is(#bm-bass-panel, #bm-melody-panel):is([data-ed="pattern"], [data-ed="timing"]) > :is(.fx-readout-bar, .fx-ro-mix),
 body:not(.mode-basic) #pf-melody-panel:is([data-ed="keys"], [data-ed="touch"]) > .fx-ro-mix { display:none !important; }
 /* Solo: Keys is the strip you play (mode, octave, Hold, the keys, the scale); Sound is its voice, mõdSynth card and tone;
    Touch is Touch Mod. The fold headers go with their cards. */
@@ -9040,6 +9181,31 @@ body.light-mode .ft-more-menu { background:#f9faff; }
 #songs-subnav, #mix-subnav { position:static; display:flex; width:100%; max-width:700px !important; margin:0 auto 12px; padding:0; gap:0;
  border:1px solid var(--border2); border-radius:14px; overflow:hidden; background:var(--surf2); }
 #songs-subnav .subnav-lbl, #mix-subnav .subnav-lbl { display:none; }
+/* Song's header picker replaces the wide switch (the switch stays in the page, hidden); the Mac app keeps the switch. */
+.sg-head { position:relative; width:100%; max-width:700px; margin:0 auto 8px; --pc:#9b6dff; }
+/* The header looks like Studio's picker (.ss-cur / .ss-pick / .ss-chip) but has classes of its own. It used to reuse those, and Studio's
+   per-platform rules (html.desktop-web, html.mac-app: hide every .ss-cur, lay every .ss-pick out as a static row) hid it on a desktop
+   browser from 880 px up, where the old switch is hidden too, so Song had no way to change page. */
+.sg-cur { display:flex; align-items:center; gap:8px; min-height:44px; max-width:100%; padding:0 14px; border-radius:12px; border:1px solid var(--pc); background:var(--surf2); color:var(--text);
+ font:700 18px/1.1 'Outfit',sans-serif; letter-spacing:0; cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+.sg-cur[aria-expanded="true"] { background:var(--pc); color:#0B1020; }
+.sg-caret { font-size:14px; line-height:1; opacity:.85; transition:transform .2s; }
+.sg-cur[aria-expanded="true"] .sg-caret { transform:rotate(180deg); }
+@media (prefers-reduced-motion:reduce){ .sg-caret { transition:none; } }
+.sg-pick { display:none; position:absolute; z-index:60; left:0; right:0; top:calc(100% + 4px); padding:10px 10px 12px; border-radius:14px; border:1px solid var(--border2); background:var(--surf);
+ box-shadow:0 12px 32px rgba(0,0,0,.45); }
+.sg-head.open .sg-pick { display:block; }
+.sg-gb { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+/* All three are choices, so the ones you are not on read at full weight (4.5:1), not Studio's dimmed 45%. */
+.sg-chip { min-width:0; height:44px; min-height:44px; padding:0 4px; border-radius:9px; border:1px solid color-mix(in srgb, var(--pc) 30%, #0F172A); background:#0F172A;
+ color:color-mix(in srgb, var(--text) 82%, transparent); font:600 15px/1.1 'Outfit',sans-serif; letter-spacing:0; display:flex; align-items:center; justify-content:center; white-space:nowrap; overflow:hidden;
+ cursor:pointer; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+.sg-chip.on { background:var(--pc); border-color:var(--pc); color:#0B1020; }
+body.light-mode .sg-chip { background:var(--surf2); border-color:color-mix(in srgb, var(--pc) 45%, var(--border2)); }
+body.light-mode .sg-chip.on { background:var(--pc); color:#0B1020; border-color:var(--pc); }
+#songs-subnav { display:none !important; }
+html.mac-app .sg-head { display:none; }
+html.mac-app #songs-subnav { display:flex !important; }
 /* The row's gradient wash is an absolutely placed ::before; with the row no longer positioned it spread over the
    page and took every tap under it. */
 #songs-subnav::before, #mix-subnav::before { display:none; }
@@ -9134,6 +9300,58 @@ body.bt-timeline .sb-secdel { position:static; margin-left:auto; }
 #songs-perform-panel .ending-row .tb.armed { border-color:var(--dom); }
 #songs-perform-panel .slb-play-btn { flex:1 1 100%; min-height:44px; }
 #songs-perform-panel #slb-save-btn { font-size:.6rem; }
+
+/* ── Song > Perform, compact ──
+   Five rows of wide buttons stood between the top of the page and the chart, and with the Chart view on, the chart began below all of
+   them. Now: the song, then Tiles | Chart | Timeline as small tabs with Stage beside them, then one transport row (Prev, Play, Next,
+   Save), then the chart or tiles themselves; Endings, Practice and the key controls follow the content. The panel is a flex column
+   ordered by these numbers; !important only where the older, more specific .slb-controls rules would otherwise win. */
+#songs-perform-panel #songs-chart-panel, #songs-perform-panel #songs-full-chart { order:7; }
+#songs-perform-panel > .setlist-nav { order:1; }
+#songs-perform-panel #pv-switch { order:2; flex:1 1 calc(100% - 106px); min-width:0; margin:0; gap:2px; padding:0; border:0 !important; border-bottom:1px solid var(--border2) !important;
+ border-radius:0; background:none; overflow:visible; box-shadow:none !important; }
+#songs-perform-panel #pv-switch .tb { flex:0 0 auto; min-width:44px; min-height:44px; padding:0 9px; border:0; border-radius:0; background:none !important; box-shadow:none !important; color:color-mix(in srgb, var(--text) 72%, var(--bg));
+ font:600 .7rem 'Outfit',sans-serif; letter-spacing:.03em; text-transform:none; }
+#songs-perform-panel #pv-switch .tb.active { background:none !important; color:var(--text); border-bottom:3px solid #9b6dff; margin-bottom:-1px; }
+#songs-perform-panel #pv-stage { order:2; flex:0 0 98px; min-height:44px; padding:0 8px; border-radius:12px; font-size:.58rem; }
+/* Stage's lilac text was written for the dark page: on Light it was 1.06:1. */
+body.light-mode #songs-perform-panel #pv-stage { color:#43268f; }
+/* A free build draws an "Add-on" badge after the label of Timeline and of Stage. Side by side they ran Timeline's badge into Stage and spilled
+   Stage's past its border (267 px of content in a 245 px tab group at 375 pt); stacked under the label they are as wide as the label. */
+#songs-perform-panel #pv-switch .tb.pv-locked, #songs-perform-panel #pv-stage.pv-locked { display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; line-height:1.1; }
+#songs-perform-panel #pv-switch .tb.pv-locked::after, #songs-perform-panel #pv-stage.pv-locked::after { margin-left:0; font-size:max(.3rem,9px); padding:1px 4px; }
+#songs-perform-panel #prev-section-btn, #songs-perform-panel #next-section-btn { flex:0 0 52px !important; min-width:0; min-height:48px; padding:0 !important;
+ background:var(--surf2) !important; color:var(--text) !important; border:1px solid var(--border2) !important; font-size:1.5rem; line-height:1; }
+#songs-perform-panel #prev-section-btn { order:3; }
+#songs-perform-panel #slb-auto-btn { order:4 !important; flex:1 1 calc(100% - 192px); min-width:0; min-height:48px; border-radius:14px; }
+#songs-perform-panel #next-section-btn { order:5; }
+#songs-perform-panel #slb-save-btn { order:6; flex:0 0 64px !important; min-height:48px; }
+#songs-perform-panel .ending-row { order:8; }
+#songs-perform-panel .prac-row { order:9; }
+#songs-perform-panel .slb-controls > .sc-btn:not(#prev-section-btn):not(#next-section-btn):not(#slb-save-btn):not(#slb-auto-btn), #songs-perform-panel .slb-controls > .tg { order:10 !important; }
+/* The setlist arrows (song to song) and the transport arrows (section to section) were both a bare chevron, one row above the other, told apart
+   only by their screen-reader names. Each pair now says what it moves, in a caption under the glyph (10.5 px, the app's smallest text). */
+#songs-perform-panel .sn-btn, #songs-perform-panel #prev-section-btn, #songs-perform-panel #next-section-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; }
+#songs-perform-panel .pf-glyph { font-size:1.4rem; line-height:1; }
+#songs-perform-panel .pf-cap { font:600 max(.42rem,10.5px)/1 'Outfit',sans-serif; letter-spacing:.02em; text-transform:none; color:color-mix(in srgb, var(--text) 74%, var(--surf2)); }
+#songs-perform-panel > .panel { order:11; }
+/* Widgets: a quiet card each with a small caption, chips that share a row. */
+#songs-perform-panel .ending-row, #songs-perform-panel .prac-row { gap:6px; padding:8px 10px; border:1px solid var(--border); border-radius:14px; background:color-mix(in srgb, var(--bg) 60%, var(--surf)); }
+#songs-perform-panel .ending-row .ms-lbl, #songs-perform-panel .prac-row .ms-lbl { display:block; flex:0 0 100%; margin:0 0 2px; font:700 .46rem 'Orbitron',sans-serif; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); }
+#songs-perform-panel .ending-row .tb, #songs-perform-panel .prac-row > .prac-btn { min-height:44px; border-radius:10px; font-size:.54rem; }
+#songs-perform-panel .ending-hint, #songs-perform-panel .ending-row .tips-btn { display:none; }
+#songs-perform-panel .sc-btn.pf-w-key { flex:1 1 0; min-height:44px; border-radius:12px; font-size:.56rem; }
+#songs-perform-panel .tg.pf-w-key { flex:0 0 184px; flex-wrap:nowrap; min-height:44px; justify-content:center; border:1px solid var(--border2); border-radius:12px; padding:0 6px; gap:8px !important; }
+#songs-perform-panel .tg.pf-w-key .slb-key { white-space:nowrap; font-size:.62rem; }
+#songs-perform-panel .tg.pf-w-key .btn-xp { flex:0 0 44px; width:44px !important; height:44px !important; min-width:0; padding:0; }
+.pf-widgets-btn { order:12; flex:0 0 100%; min-height:44px; border:1px dashed var(--border2); border-radius:12px; background:none; color:color-mix(in srgb, var(--text) 72%, var(--bg));
+ font:600 .58rem 'Outfit',sans-serif; letter-spacing:.04em; cursor:pointer; touch-action:manipulation; }
+.pf-wsheet { order:13; display:flex; flex-direction:column; padding:2px 10px; border:1px solid var(--border); border-radius:12px; background:var(--surf); }
+.pf-wsheet[hidden] { display:none; }
+.pf-wsheet label { display:flex; align-items:center; gap:10px; min-height:44px; font-size:.62rem; color:var(--text); }
+.pf-wsheet input { width:22px; height:22px; accent-color:#9b6dff; }
+#songs-perform-panel.pf-off-endings .ending-row, #songs-perform-panel.pf-off-practice .prac-row, #songs-perform-panel.pf-off-key .pf-w-key,
+#songs-perform-panel.pf-off-setlist > .panel { display:none !important; }
 
 /* Library page: three sections down one page (6.9b). */
 #lib-page .lib-sec { margin:0 0 18px; }
@@ -9943,9 +10161,10 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
   <div class="ft-pop-row">
    <button class="ft-bpm-nudge" onclick="nudgeBpm(-1)" aria-label="Slower" title="1 bpm slower">−</button>
    <input type="range" min="40" max="220" step="1" value="100" id="ft-bpm-sl"
-          oninput="onBpmInput(this.value)" aria-label="Tempo">
+          oninput="bpmByHand(this.value)" aria-label="Tempo">
    <button class="ft-bpm-nudge" onclick="nudgeBpm(1)" aria-label="Faster" title="1 bpm faster">+</button>
   </div>
+  <div class="ft-bpm-note" id="ft-bpm-note" hidden></div>
   <!-- Feel lives with tempo because they are the same decision — how the beat
        is laid out — and because it used to be reachable only from the Drums
        tab, with nothing anywhere else saying it was on or that it governed
@@ -10175,7 +10394,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9t</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9.5</span></div>
  </div>
 </div>
 
@@ -11656,7 +11875,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9t</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9.5</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -11740,6 +11959,17 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
       v4.0.3 — the one tab whose sub-tabs were not with the others above the
       tab bar, and so the one place they were out of a thumb's reach. Docked
       by subnavDockMount. -->
+ <!-- The page's name as a header button with a caret, like Studio's module picker: one tap opens Build / Perform / Library. The wide
+      three-way switch below it stays in the page, hidden, so setSongsMode and the code that points at its buttons keep working; the
+      Mac app shows it instead of this header (Studio's Mac layout keeps its row too). -->
+ <div class="sg-head" id="songs-head" role="group" aria-label="Song page">
+  <button type="button" class="sg-cur" id="songs-cur" aria-haspopup="true" aria-controls="songs-pick" aria-expanded="false" onclick="songsPickToggle()"><span class="sg-cur-n" id="songs-cur-n">Build</span><span class="sg-caret" aria-hidden="true">&#9662;</span></button>
+  <div class="sg-pick" id="songs-pick" role="group" aria-label="Song pages"><div class="sg-gb">
+   <button type="button" class="sg-chip on" data-m="build" aria-current="true" onclick="songsPickGo('build')">Build</button>
+   <button type="button" class="sg-chip" data-m="perform" onclick="songsPickGo('perform')">Perform</button>
+   <button type="button" class="sg-chip" data-m="library" onclick="songsPickGo('library')">Library</button>
+  </div></div>
+ </div>
  <div class="subnav" id="songs-subnav" style="max-width:700px">
  <span class="subnav-lbl">Song</span>
  <button class="subnav-btn active" id="songs-build-btn" onclick="setSongsMode('build')">Build</button>
@@ -11890,10 +12120,9 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
   <div class="chart-timeline" id="chart-timeline"></div>
   <div class="tl-panel" id="tl-panel" style="display:none"></div>
   <div class="chart-seq empty" id="chart-sequence"></div>
-  <!-- One set of controls, for whichever chord is selected. -->
-  <div class="chart-inspector" id="chart-inspector" aria-live="polite"></div>
- </div>
-
+  <!-- Add a chord, under the chords it adds to and above the editor for the selected one (it was below the editor, so
+       adding the next chord meant scrolling past a screen of controls). Same ids and handlers as before; CSS .sb-seccard
+       > .sb-hdr etc. orders it in the timeline view's flex column. -->
  <!-- Add a chord. The seven diatonic chords are always here; borrowed and
       fully chromatic open when asked for, because they are the exception and
       used to take up more of the page than the seven that are not. -->
@@ -11924,6 +12153,10 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
     <button class="tb" id="cq-sus4" onclick="setChromaQ('sus4')">sus4</button>
    </div>
   </div>
+ </div>
+
+  <!-- One set of controls, for whichever chord is selected. -->
+  <div class="chart-inspector" id="chart-inspector" aria-live="polite"></div>
  </div>
 
  </div>
@@ -11971,11 +12204,11 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
  <div class="slb-meta" id="slb-meta">Load a song from Build mode</div>
  </div>
  <div class="slb-controls">
- <button class="sc-btn" id="prev-section-btn" onclick="songPrevSection()" title="Previous section (B key) — queues until the current section finishes its pass" style="background:var(--surf2);color:var(--pg);border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 14px">← Prev</button>
- <button class="sc-btn" id="next-section-btn" onclick="songNextSection()" title="Next section (N key) — queues until the current section finishes its pass" style="background:var(--pg);color:#07080f;border-color:var(--pg);font-weight:700;font-size:.65rem;padding:9px 18px">Next →</button>
+ <button class="sc-btn" id="prev-section-btn" aria-label="Previous section" onclick="songPrevSection()" title="Previous section (B key) — queues until the current section finishes its pass"><span class="pf-glyph" aria-hidden="true">&lsaquo;</span><span class="pf-cap" aria-hidden="true">section</span></button>
+ <button class="sc-btn" id="next-section-btn" aria-label="Next section" onclick="songNextSection()" title="Next section (N key) — queues until the current section finishes its pass"><span class="pf-glyph" aria-hidden="true">&rsaquo;</span><span class="pf-cap" aria-hidden="true">section</span></button>
  <button class="sc-btn" id="slb-save-btn" onclick="showSongSaveDialog()" title="Save this song to the setlist — playback keeps going">Save</button>
- <button class="sc-btn" onclick="updateSongPerfSettings()" title="Store the tempo, the feel and the arp settings as they are now against this song">Save Settings</button>
- <div class="tg" style="align-items:center;gap:4px">
+ <button class="sc-btn pf-w-key" onclick="updateSongPerfSettings()" title="Store the tempo, the feel and the arp settings as they are now against this song">Save Settings</button>
+ <div class="tg pf-w-key" style="align-items:center;gap:4px">
  <button class="btn-xp" id="slb-key-dn" onclick="transposeSong(-1)" title="Transpose song down a semitone" style="width:22px;height:22px;font-size:.75rem">−</button>
  <span class="slb-key" id="slb-key">C Maj</span>
  <button class="btn-xp" id="slb-key-up" onclick="transposeSong(+1)" title="Transpose song up a semitone" style="width:22px;height:22px;font-size:.75rem">+</button>
@@ -12018,7 +12251,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="tb prac-btn" data-prac-by="5" onclick="pracKeyBy(5)" title="Up a fourth each time: C, F, B♭, E♭… — every key, the way jazz players practise them">Fourth</button>
    <button class="tb prac-btn" data-prac-by="7" onclick="pracKeyBy(7)" title="Up a fifth each time: C, G, D, A… — every key, and the neighbours stay close">Fifth</button>
   </div>
-  <button class="tb prac-btn" id="prac-loop-btn" data-prac="loop" aria-pressed="false" onclick="pracToggle('loop')" title="Loop bars — tap the first and last chord of the bars to repeat on the chart below; the song stays there until you turn this off">Loop bars</button>
+  <button class="tb prac-btn" id="prac-loop-btn" data-prac="loop" aria-pressed="false" onclick="pracToggle('loop')" title="Loop bars — tap the first and last chord of the bars to repeat on the chart; the song stays there until you turn this off">Loop bars</button>
   <div class="prac-set" id="prac-loop-set" hidden><span id="prac-loop-hint"></span></div>
   <div class="prac-status" id="prac-status" aria-live="polite"></div>
  </div>
@@ -12026,9 +12259,9 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
  <!-- Setlist nav -->
  <div class="setlist-nav" id="songs-setlist-nav" style="width:100%;max-width:700px;margin-bottom:8px">
- <button class="sn-btn" onclick="setlistStep(-1)" aria-label="Previous song">&lsaquo;</button>
+ <button class="sn-btn" onclick="setlistStep(-1)" aria-label="Previous song"><span class="pf-glyph" aria-hidden="true">&lsaquo;</span><span class="pf-cap" aria-hidden="true">song</span></button>
  <div class="sn-title" id="songs-sn-title">—</div>
- <button class="sn-btn" onclick="setlistStep(1)" aria-label="Next song">&rsaquo;</button>
+ <button class="sn-btn" onclick="setlistStep(1)" aria-label="Next song"><span class="pf-glyph" aria-hidden="true">&rsaquo;</span><span class="pf-cap" aria-hidden="true">song</span></button>
  </div>
 
  <!-- Full chart display — all sections -->
@@ -12055,6 +12288,14 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
  </div>
  </div>
 
+ <!-- Which of Perform's widgets are drawn. Hiding changes only what is drawn: an armed ending stays armed, a key stays set. -->
+ <button type="button" class="pf-widgets-btn" id="pf-widgets-btn" aria-expanded="false" onclick="pfWidgetsToggle()">Show or hide widgets</button>
+ <div class="pf-wsheet" id="pf-wsheet" hidden>
+  <label><input type="checkbox" data-w="endings" onchange="pfWidgetSet(this)" checked> Endings</label>
+  <label><input type="checkbox" data-w="practice" onchange="pfWidgetSet(this)" checked> Practice: speed up, next key, loop bars</label>
+  <label><input type="checkbox" data-w="key" onchange="pfWidgetSet(this)" checked> Key and saved settings</label>
+  <label><input type="checkbox" data-w="setlist" onchange="pfWidgetSet(this)" checked> Setlist</label>
+ </div>
  </div>
 
  <!-- LIBRARY. Where a song comes from: common progressions, the songs you saved, and the ways to bring
@@ -12853,7 +13094,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9t';
+const MODRIFF_VERSION = '1.9.9.9.5';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -16372,7 +16613,11 @@ function slotFromChordSymbol(sym, keyRoot, keyMode, nearM){
 // eighths (8 in 4/4, 6 in 3/4); the grid a chord is cut to is the beat, which is two.
 function slotDurFromEighths(e, barE){
  e = Math.max(1, Math.round(e));
- return {bars: Math.floor(e / barE), beats: Math.floor((e % barE) / 2), eighths: e % 2};
+ // What is left after the whole bars is split into beats and an eighth. The eighth is the bar's own remainder being odd, not the
+ // total: with e % 2 a bar of seven eighths (7/8) plus one stored as a bare bar, so the eighth nudge sat still and a dragged join
+ // lost an eighth of the song.
+ const r = e % barE;
+ return {bars: Math.floor(e / barE), beats: Math.floor(r / 2), eighths: r % 2};
 }
 // n shares of `units` beats, in proportion to `weights`, each at least one beat,
 // handed out by largest remainder so the shares add up to exactly `units`.
@@ -21551,7 +21796,7 @@ function psRollKnob(){
  // A tap steps on and wraps back to the slowest after the fastest.
  var up=function(){ if(y0!=null && !moved){ var n=(PS.roll+1)%PS_ROLLS.length; PS.roll=n; psSavePrefs(); paint(); } y0=null; };
  k.addEventListener('pointerup', up); k.addEventListener('pointercancel', function(){ y0=null; });
- k.addEventListener('wheel', function(e){ e.preventDefault(); set(PS.roll+(e.deltaY<0?1:-1)); }, {passive:false});
+ k.addEventListener('wheel', function(e){ if(!wheelEdits(e)) return; e.preventDefault(); set(PS.roll+(e.deltaY<0?1:-1)); }, {passive:false});
  k.addEventListener('keydown', function(e){
   if(e.key==='ArrowUp'||e.key==='ArrowRight'){ e.preventDefault(); set(PS.roll+1); }
   else if(e.key==='ArrowDown'||e.key==='ArrowLeft'){ e.preventDefault(); set(PS.roll-1); }
@@ -22143,7 +22388,7 @@ function psKnob(k){
   var end=function(){ drag=false; };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
   cv.addEventListener('dblclick', function(){ put(k.def); });
-  cv.addEventListener('wheel', function(e){ e.preventDefault(); put(v + (e.deltaY<0?1:-1)*Math.max(1,(k.max-k.min)/50)); }, {passive:false});
+  cv.addEventListener('wheel', function(e){ if(!wheelEdits(e)) return; e.preventDefault(); put(v + (e.deltaY<0?1:-1)*Math.max(1,(k.max-k.min)/50)); }, {passive:false});
   cv.addEventListener('keydown', function(e){
    var st=Math.max(1,(k.max-k.min)/50);
    if(e.key==='ArrowUp'||e.key==='ArrowRight'){ e.preventDefault(); put(v+st); }
@@ -25288,7 +25533,7 @@ var _link = window._link = {
   if(!st) return;
   this.seen=true;
   var on=!!st.enabled;
-  if(on!==this.on){ this.on=on; this.synced=false; this.pendN=0; }
+  if(on!==this.on){ this.on=on; this.synced=false; this.pendN=0; try{ freeTempoSync(); }catch(e){} }
   this.peers=st.peers|0; this.tempo=+st.tempo||0;
   this.paint();
   if(on && !this.timer){ var me=this; this.timer=setInterval(function(){ me.poll(); }, 500); }
@@ -29500,7 +29745,7 @@ function _varyCode(){
  var m = 0; VOICING_CYCLE.forEach(function(k, i){ if(_varyList().indexOf(k) >= 0) m |= 1 << i; });
  return 64 + m;
 }
-function chordVoicing(rootM, relIntvs){
+function chordVoicing(rootM, relIntvs, floor){
  var style = voicing, vk = 0;
  if(voiceVary){
   var step = _vvStep(rootM, relIntvs);
@@ -29515,7 +29760,22 @@ function chordVoicing(rootM, relIntvs){
   if(g) return g;
  }
  if(styled) return styled;
- return voiceIntervals(relIntvs, style);
+ return spreadFit(rootM, relIntvs, voiceIntervals(relIntvs, style), floor);
+}
+// Spread raises voices an octave on top of a chord smartVoiceLead has already
+// seated in C3-G5, so the two stacked: measured over every diatonic triad,
+// seventh and ninth in all twelve keys, Spread's mean top voice was MIDI 78.7
+// (the other voicings 70-72) and 23 of 252 chords had a note above C6, up to
+// D#6. The whole chord comes down an octave while its top is over G5, as far as
+// C3 (smartVoiceLead's own floor) and, for a slash chord, never to or under its
+// bass note: `floor` is that bass. Mirrored in native/modsynth/voicing.h.
+var SPREAD_CEIL = 79, SPREAD_LOW = 48;
+function spreadFit(rootM, rel, out, bass){
+ if(out===rel) return out;
+ var low = (bass!=null && isFinite(bass)) ? Math.max(SPREAD_LOW, bass + 1) : SPREAD_LOW;
+ var lo = rootM + Math.min.apply(null, out), top = rootM + Math.max.apply(null, out), sh = 0;
+ while(top + sh > SPREAD_CEIL && lo + sh - 12 >= low) sh -= 12;
+ return sh ? out.map(function(x){ return x + sh; }) : out;
 }
 
 // ── Glide ────────────────────────────────────────────────────────────────
@@ -29865,7 +30125,7 @@ function playChord(rootM,relIntvs,skipStop,pressure,sustain,atTime,slashBass,vel
  // No atTime is a live tap — always a new chord for Vary. Scheduled calls
  // (comp re-strikes) are not; playChartSlot2 raises the flag itself.
  if(atTime==null) _vvFresh = true;
- const intvs=chordVoicing(rootM, relIntvs);
+ const intvs=chordVoicing(rootM, relIntvs, (slashBass!=null && isFinite(slashBass)) ? slashBass : null);
  // A slash chord is a voicing: the named bass note becomes the chord's lowest
  // tone, in the chord's own sound, directly under the rest of the voicing.
  // See playSlashChord for why it is no longer a separate oscillator.
@@ -39184,6 +39444,7 @@ function randomizeSettings(opts){
   // Tempo comes from the archetype too — a Cathedral patch at 148bpm isn't
   // a cathedral. Never the slider's full 40–220; most of that rolls unusable.
   s.bpm  = Math.round(_rndBand(A.bpm||[70,150],0));
+  if(freeTempoLocked()) s.bpm = freeTempoNearest(s.bpm);   // a roll lands on a tempo a free install can set itself
  }
  // Feel and shape roll on every press, playing or not — these change the
  // groove without touching anything the user authored (the step grids,
@@ -41490,7 +41751,7 @@ var TUT_LIST = [
   {t:'Sample', x:'Run a clip through it instead of the band.', el:'#fx-smp-btn', pro:'synth'}
  ]},
  {id:'song', name:'Song mode', steps:[
-  {t:'Song', x:'Build a chart, perform it, read it.', el:'#songs-subnav', go:function(){ _tutTab('songs'); setSongsMode('build'); }},
+  {t:'Song', x:'Build a chart, perform it, read it.', el:function(){ var h=document.getElementById('songs-head'); return (h && h.offsetParent) ? h : document.getElementById('songs-subnav'); }, go:function(){ _tutTab('songs'); setSongsMode('build'); }},
   {t:'Sections', x:'Verse, chorus… each repeats as set, then moves on.', el:'#section-tabs'},
   {t:'Start from something', x:'Common progressions, already in your key, and your own saved songs. Each arrives as sections.', el:'#sb-start'},
   {t:'Play it', x:'Perform shows the chart with Prev and Next, which queue to the end of the pass. Play Song starts the band and the chart together.', el:'#slb-auto-btn', go:function(){ setSongsMode('perform'); }},
@@ -41553,7 +41814,7 @@ var TUT_LIST = [
   {t:'Autosave', x:'Your session keeps itself. The splash picks up where you left off.', el:'#ft-setups-btn', go:function(){ _tutSheet(true); }}
  ]},
  {id:'export', name:'Export & stems', steps:[
-  {t:'Bounce', x:'Records what you hear: a .wav and a .mid. The .wav is the whole take; free keeps the first four bars of the .mid, the Studio Pack all of it, and stems.', el:'#ft-bounce-btn', go:function(){ _tutSheet(true); }},
+  {t:'Bounce', x:'Records what you hear: a .wav and a .mid. Free stops a take at 30 seconds and keeps the first four bars of the .mid; the Studio Pack takes any length, all of the .mid, and stems.', el:'#ft-bounce-btn', go:function(){ _tutSheet(true); }},
   {t:'Stems', x:'Adds one .wav per part.', el:'#ft-stems-btn', pro:'studio'},
   {t:'Project files', x:'Project: New, Open and Save the piece as one file — chart, parts, patches and mixer.', el:'#ft-sheet-file', go:function(){ _tutSheet(true); }},
   {t:'Capture', x:'Turns what you just played into chart, melody or pattern.', el:'#ft-rec-btn'}
@@ -41720,7 +41981,7 @@ var CTRL_TIPS = [
  ['#ss-smp','The sampler pads ◈'], ['#ss-fx','The mõdFX pad'],
  ['#ss-drums','Drum grid'], ['#ss-aux','Aux drum grid'], ['#ss-bass','Bass line and Generate'],
  ['#ss-melseq','Melody sequencer and Generate'], ['#ss-arp','Arpeggiator'],
- ['#songs-build-btn','Write the chart'], ['#songs-perform-btn','Play the chart: tiles, diagrams or timeline'], ['#songs-library-btn','Common progressions, saved songs and imports'],
+ ['#songs-cur','The page you are on: Build, Perform or Library'], ['#songs-build-btn','Write the chart'], ['#songs-perform-btn','Play the chart: tiles, diagrams or timeline'], ['#songs-library-btn','Common progressions, saved songs and imports'],
  ['#set-ui-btn','Setups, chords & timing, look'], ['#set-sounds-btn','Default sounds, global tone, tuning'], ['#set-midi-btn','MIDI in and out'],
  ['[onclick^="showTip"]','Explain this'],
  ['[onclick^="transposeBy(-1)"]','Key down a semitone'], ['[onclick^="transposeBy(+1)"]','Key up a semitone'],
@@ -42638,6 +42899,7 @@ function sectionDelete(){
 
 // Add a section after the selected one. The chip row's "+ Section" and Build's own both call this.
 function sectionAdd(){
+  if(freeSectionRoom()<1){ freeSectionsFull(); return; }
   // Inserted after the selected section rather than always appended, so a
   // section can be put where it belongs instead of only ever at the end and
   // then walked back with the arrows.
@@ -43230,7 +43492,8 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint, opts){
  var pos=document.createElement('span'); pos.className='ci-pos';
  var bits=[];
  if(slot.numeral) bits.push(slot.numeral);
- if(SB_FUNC_WORD[slot.func]) bits.push(SB_FUNC_WORD[slot.func]);
+ // The function word ("dominant") is dropped on a narrow phone, where it ran into the move and delete buttons and was cut off.
+ if(SB_FUNC_WORD[slot.func] && window.innerWidth>=420) bits.push(SB_FUNC_WORD[slot.func]);
  bits.push((i+1)+' of '+slots.length);
  pos.textContent=bits.join(' · ');
  head.appendChild(pos);
@@ -43433,18 +43696,12 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint, opts){
   // LENGTH. The same five presets the duration modal offered, on the page.
   // Fine-tune still opens that modal, for the odd bar counts and eighth-note
   // pushes the presets deliberately do not cover.
-  var lenOpts=DUR_PRESETS.map(function(p,idx){
-   // "2 beats" -> "2♪", "1 bar" -> "1", "4 bars" -> "4". The row is labelled
-   // Length; repeating "bars" on every option only costs the row the width
-   // that its type needs.
-   var lbl=String(p.lbl||'');
-   var short = /beat/i.test(lbl) ? (p.val+'\u266a') : String(p.val);
-   return [idx, short, p.val+' '+lbl];
-  });
+  // Every option names its unit. The row used to read "2\u266a | 1 | 2 | 4 | 8": the note meant two BEATS here and two
+  // eighths everywhere else, the bars had no unit, and a one-beat chord had no button at all.
+  var lenOpts=SB_LEN_ROW.map(function(p,idx){ return [idx, p.short, p.title]; });
   var fine=document.createElement('button');
   fine.type='button'; fine.className='ci-fine';
-  var custom=!DUR_PRESETS.some(function(p){ return _durMatchesPreset(slot,p); });
-  fine.textContent = custom ? (_slotDurLabel(slot)+' \u25b8') : 'Exact \u25b8';
+  fine.textContent = 'Exact \u25b8';
   fine.addEventListener('click', function(){ showDurationPicker(slot, repaint); });
   // A song imported from a sheet has every chord the same length by guess, so the
   // fix is one setting for all of them, not one chord at a time.
@@ -43453,11 +43710,27 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint, opts){
   var allLen=_ciMoreBtn('All chords\u2026', function(){ sbLengthAll(repaint); });
   allLen.title='Set the length of every chord in the song at once';
   lx.appendChild(allLen);
-  body.appendChild(_ciSeg('Length', lenOpts,
-   function(idx){ return _durMatchesPreset(slot, DUR_PRESETS[idx]); },
-   function(idx){ var p=DUR_PRESETS[idx];
-                  slot.bars=p.bars; slot.beats=p.beats; slot.eighths=p.eighths; repaint(); },
-   lx));
+  var lenRow=_ciSeg('Length', lenOpts,
+   function(idx){ return _durMatchesPreset(slot, SB_LEN_ROW[idx]); },
+   function(idx){ var p=SB_LEN_ROW[idx];
+                  slot.bars=p.bars; slot.beats=p.beats; slot.eighths=p.eighths; repaint(); });
+  lenRow.classList.add('ci-len');
+  // The eighth-note step. A chord can change on any eighth in the song; this is the one tap for it, with the length said in
+  // words beside it so "2½ beats" is something you read, not work out. Exact and All chords moved down here from the end
+  // of the Length row, which left six whole-width buttons that fit one line at 375 pt.
+  var nd=document.createElement('div'); nd.className='ci-nudge';
+  var ndBtn=function(txt, label, step){
+   var b=document.createElement('button'); b.type='button'; b.textContent=txt; b.title=label; b.setAttribute('aria-label',label);
+   b.addEventListener('click', function(){ _setSlotE(slot, Math.max(1, _slotE(slot)+step)); repaint(); });
+   return b;
+  };
+  nd.appendChild(ndBtn('\u2212\u215b','One eighth shorter',-1));
+  nd.appendChild(ndBtn('+\u215b','One eighth longer',1));
+  var ndRead=document.createElement('span'); ndRead.className='ci-nudge-read'; ndRead.textContent=_slotDurLabel(slot);
+  nd.appendChild(ndRead);
+  nd.appendChild(lx);
+  lenRow.appendChild(nd);
+  body.appendChild(lenRow);
 
   // RHYTHM. How this chord re-strikes while it is held.
   // More holds the rest of the patterns; All sets one rhythm on every chord in
@@ -43533,6 +43806,18 @@ function sbBuildChordEditor(ins, slot, i, slots, repaint, opts){
  rrow.appendChild(rseg);
  body.appendChild(rrow);
 
+ if(!quick){
+  // Chord, Length and Type first: those are the choices made on every chord. Words, Rhythm, Voicing, Bass and Plays follow in
+  // a quieter band (CSS .ci-quiet), shut on a first launch (_ciFoldGet). The quick card keeps its own order (_qcLayout picks
+  // its rows by label), so it is left alone.
+  var rowBy=function(n){ return [].slice.call(body.children).filter(function(r){
+   var l=r.classList.contains('ci-row') && r.querySelector('.ci-lbl'); return l && l.textContent===n; })[0] || null; };
+  ['Chord','Length','Type','Words','Rhythm','Voicing','Bass','Plays'].forEach(function(n){ var r=rowBy(n); if(r) body.appendChild(r); });
+  var typeRow=rowBy('Type'); if(typeRow) typeRow.classList.add('ci-onerow');
+  var qFirst=true;
+  ['Words','Rhythm','Voicing','Bass','Plays'].forEach(function(n){
+   var r=rowBy(n); if(!r) return; r.classList.add('ci-quiet'); if(qFirst){ r.classList.add('ci-quiet-first'); qFirst=false; } });
+ }
  if(quick){ _qcLayout(ins, head, tools, body, opts); return; }
  ins.appendChild(body);
  _ciFoldWire(ins, tools, body);
@@ -43574,6 +43859,10 @@ function _ciFoldGet(){
   var v=null; try{ v=JSON.parse(modStore.getItem('modo-ci-fold')||'null'); }catch(e){}
   _ciFold=(v && typeof v==='object') ? v : {};
   if(!_ciFold.rows || typeof _ciFold.rows!=='object') _ciFold.rows={};
+  // First launch: the second-step rows start shut, one line each with what they are set to, so the editor is Chord, Length and
+  // Type and the page is not a wall of buttons. Someone who has opened or shut a row keeps what they chose: this only runs when
+  // nothing readable is stored.
+  if(!v) ['Words','Rhythm','Voicing','Bass','Plays'].forEach(function(k){ _ciFold.rows[k]=1; });
  }
  return _ciFold;
 }
@@ -43604,8 +43893,8 @@ function _ciFoldWire(ins, tools, body){
    lb.setAttribute('aria-expanded', shut?'false':'true');
    lb.title=(shut?'Show ':'Hide ')+key.toLowerCase();
    if(shut){
-    var on=row.querySelector('.ci-seg .on'), inp=row.querySelector('input');
-    sum.textContent = on ? on.textContent : (inp ? inp.value : '');
+    var on=row.querySelector('.ci-seg .on') || (key==='Bass' ? row.querySelector('.ci-seg button') : null), inp=row.querySelector('input');
+    sum.textContent = key==='Length' ? ((row.querySelector('.ci-nudge-read')||{}).textContent || '') : (on ? on.textContent : (inp ? (inp.value || 'none') : ''));
    }
   };
   var flip=function(){ if(F.rows[key]) delete F.rows[key]; else F.rows[key]=1; _ciFoldSave(); paintRow(); };
@@ -44395,6 +44684,13 @@ function sbLoadItem(item, keepKey, how){
   // song around it is not a thing this chart model can express, so "Keep"
   // here means "keep the pitches", which is what the transposition above
   // already decided.
+  // The free section cap: take what fits, say how many were left out.
+  var room=freeSectionRoom();
+  if(secs.length>room){
+   if(room<1){ freeSectionsFull(); return; }
+   showToast('Added '+room+' of '+secs.length+' sections. Free holds '+FREE_NUMBERS.sections+'.');
+   secs=secs.slice(0,room);
+  }
   var at=Math.min(sections.length, curSection+1);
   secs.forEach(function(s,i){
    var nm=s.name||item.name;
@@ -47472,6 +47768,13 @@ const midiChordTokens = {};
 //
 // One delegated listener, so this reaches all of them — including any added
 // later — and none of them need their markup or their oninput touched.
+// The wheel only edits a control when Option (Alt) is held. Every control that
+// took the wheel used to cancel the scroll and step itself on each event, so
+// scrolling Settings with a trackpad turned whatever knob the pointer was over
+// and stopped the page moving under it: the Drive slider went to 100% (the
+// whole mix distorted) with nobody having touched it, as did Width, Reso and
+// Sweep. A plain scroll now scrolls the page.
+function wheelEdits(e){ return !!e.altKey; }
 const SLIDER_FINE_ZONES = [
  {beyond:70, scale:1/12, label:'fine ×12'},
  {beyond:26, scale:1/4,  label:'fine ×4'},
@@ -47654,6 +47957,7 @@ function _slZone(dy){
   const t=e.target;
   if(!t || t.tagName!=='INPUT' || (t.type||'').toLowerCase()!=='range') return;
   if(t.disabled || t.readOnly) return;
+  if(!wheelEdits(e)) return;
   e.preventDefault();
   const st=stepOf(t);
   const mult = e.shiftKey ? 10 : 1;
@@ -48512,17 +48816,64 @@ let songAutoTimer = null;
 let songCurrentSlot = -1;
 let songCurrentSection = 0;
 
+// The Song header picker. It closes on a tap outside, on Escape, on a pick, on any mode change (a stored link or Find can change
+// the mode while it is open) and when the Song tab is left, so it is never open with a stale label.
+function songsPickToggle(force){
+ var h=document.getElementById('songs-head'), c=document.getElementById('songs-cur'); if(!h) return;
+ var open = (force===undefined) ? !h.classList.contains('open') : !!force;
+ h.classList.toggle('open', open); if(c) c.setAttribute('aria-expanded', open?'true':'false');
+}
+function songsPickGo(m){ songsPickToggle(false); setSongsMode(m); var c=document.getElementById('songs-cur'); if(c) c.focus(); }   // the chip just went away: focus goes to the header, as in Studio
+function songsCurPaint(m){
+ var n=document.getElementById('songs-cur-n'); if(n) n.textContent={build:'Build', perform:'Perform', library:'Library'}[m]||'Build';
+ [].forEach.call(document.querySelectorAll('#songs-pick .sg-chip'), function(b){ var on=b.dataset.m===m; b.classList.toggle('on', on); if(on) b.setAttribute('aria-current','true'); else b.removeAttribute('aria-current'); });
+ songsPickToggle(false);
+}
+document.addEventListener('pointerdown', function(e){ var h=document.getElementById('songs-head'); if(h && h.classList.contains('open') && !h.contains(e.target)) songsPickToggle(false); }, true);
+document.addEventListener('keydown', function(e){
+ if(e.key!=='Escape') return;
+ var h=document.getElementById('songs-head'); if(!h || !h.classList.contains('open')) return;
+ songsPickToggle(false); var c=document.getElementById('songs-cur'); if(c) c.focus();   // not left on <body>: a keyboard user keeps their place
+});
+// Perform's widgets. modo-perform-widgets is the list of names that are OFF (nothing stored means everything shown), so a new widget
+// appears by default and an unreadable value can never leave one hidden with no way back: anything that is not an array of strings
+// counts as empty, and names that are not widgets are ignored.
+var PF_WIDGETS=['endings','practice','key','setlist'];
+function pfWidgetsOff(){
+ var v; try{ v=JSON.parse(modStore.getItem('modo-perform-widgets')||'null'); }catch(e){ return []; }
+ return Array.isArray(v) ? v.filter(function(x){ return typeof x==='string'; }) : [];
+}
+function pfWidgetsPaint(){
+ var off=pfWidgetsOff(), p=document.getElementById('songs-perform-panel'); if(!p) return;
+ PF_WIDGETS.forEach(function(w){
+  p.classList.toggle('pf-off-'+w, off.indexOf(w)>=0);
+  var c=p.querySelector('input[data-w="'+w+'"]'); if(c) c.checked = off.indexOf(w)<0;
+ });
+}
+function pfWidgetSet(box){
+ var w=box.dataset.w; if(PF_WIDGETS.indexOf(w)<0) return;
+ var off=pfWidgetsOff().filter(function(x){ return x!==w && PF_WIDGETS.indexOf(x)>=0; }); if(!box.checked) off.push(w);
+ try{ modStore.setItem('modo-perform-widgets', JSON.stringify(off)); }catch(e){}
+ pfWidgetsPaint();
+}
+function pfWidgetsToggle(){
+ var s=document.getElementById('pf-wsheet'), b=document.getElementById('pf-widgets-btn'); if(!s) return;
+ s.hidden=!s.hidden; if(b) b.setAttribute('aria-expanded', s.hidden?'false':'true');
+ // It opens below the last button on the page, partly under the bottom bar: bring it to the middle of the screen.
+ if(!s.hidden && s.scrollIntoView) s.scrollIntoView({block:'center'});
+}
 function setSongsMode(m){
  // Chart is a view of Perform now; the old way in (Find, a stored link) lands there.
  if(m==='chart'){ _songsPerformView = 'chart'; try{ modStore.setItem('modo-perform-view', 'chart'); }catch(e){} m = 'perform'; }
  songsMode = m;
+ songsCurPaint(m);
  document.getElementById('songs-build-btn')?.classList.toggle('active', m==='build');
  document.getElementById('songs-perform-btn')?.classList.toggle('active', m==='perform');
  document.getElementById('songs-library-btn')?.classList.toggle('active', m==='library');
  document.getElementById('songs-build-panel').style.display = m==='build'?'':'none';
  document.getElementById('songs-perform-panel').style.display = m==='perform'?'':'none';
  const lp=document.getElementById('songs-library-panel'); if(lp) lp.style.display = m==='library' ? '' : 'none';
- if(m === 'perform'){ renderSongsPerformView(); if(typeof renderSetlistPerform==='function') renderSetlistPerform(); }
+ if(m === 'perform'){ pfWidgetsPaint(); renderSongsPerformView(); if(typeof renderSetlistPerform==='function') renderSetlistPerform(); }
  if(m === 'library') libPageRender();
  if(typeof positionSubnavLed==='function') positionSubnavLed('songs-subnav');
 }
@@ -48996,7 +49347,7 @@ function _timelineBars(beats, per){
 // The same cards, in Build, for the section being edited. Tap a column to select the chord
 // (the controls under the progression are the strip's own, so words, length, rhythm and
 // the rest are all there); drag the JOIN between two chords to move where the second one
-// starts: it snaps to a beat, the two chords keep their sum, and the panel says where it
+// starts: it snaps to an eighth, the two chords keep their sum, and the panel says where it
 // landed. A line's chords can be shared out evenly, a line can be made 1, 2 or 4 bars, and
 // a chord can be split in two. Every edit is one Undo.
 var _tlDragEndedAt = 0;
@@ -49009,8 +49360,9 @@ function _tlLineAt(si, ci){
 }
 // "bar 2, beat 3" for a position in beats from the start of the section.
 function _tlWhere(beatsFromStart){
- var per = _songBarSteps()/4, b = Math.floor(beatsFromStart / per) + 1, n = Math.floor(beatsFromStart % per) + 1;
- return 'bar '+b+', beat '+n;
+ var per = _songBarSteps()/4, b = Math.floor(beatsFromStart / per) + 1, inBar = beatsFromStart % per, n = Math.floor(inBar) + 1;
+ // "and a half" is half a beat INTO the bar: a 7/8 bar is 3.5 beats, so 3.5 from the start is the downbeat of bar 2, not a half.
+ return 'bar '+b+', beat '+n+((inBar % 1) >= 0.5 ? ' and a half' : '');
 }
 function _tlSecBefore(si, ci){ var t=0; for(var i=0; i<ci; i++) t+=_slotBeats(sections[si].slots[i]); return t; }
 function tlRefresh(){
@@ -49034,15 +49386,16 @@ function tlJoinDown(ev, si, ci, row){
  var a0 = _slotBeats(A), b0 = _slotBeats(B), sum = a0 + b0;
  var before = _tlSecBefore(si, ci);                         // beats from the section's start to A
  var px = row.getBoundingClientRect().width / line.beats;   // pixels a beat on this card
- var unit = sum >= 2 ? 1 : 0.5;                              // a beat, or a half where there is no more room
+ var unit = 0.5;                                            // an eighth: a chord can change on any eighth in the song (it was a beat,
+                                                             // so a change on the "and" meant Exact and the 8ths stepper)
  var colA = row.querySelector('.tl-col[data-ci="'+ci+'"]'), colB = row.querySelector('.tl-col[data-ci="'+(ci+1)+'"]');
  var jn = ev.currentTarget, x0 = ev.clientX, a1 = a0, moved = false;
  try{ jn.setPointerCapture(ev.pointerId); }catch(e){}
  jn.classList.add('drag');
  var info = document.getElementById('tl-where');
  var move = function(e){
-  var dx = e.clientX - x0; if(Math.abs(dx) > 3) moved = true;
-  // Where the join would be, in beats after the start of A, snapped to a beat and kept
+  var dx = e.clientX - x0; if(Math.abs(dx) > 6) moved = true;   // 6 px, not 3: an eighth is a few px on a long card, and a finger wobbles more than that
+  // Where the join would be, in beats after the start of A, snapped to an eighth and kept
   // clear of both ends so neither chord goes to nothing.
   a1 = Math.max(unit, Math.min(sum - unit, Math.round((a0 + dx/px) / unit) * unit));
   if(colA) colA.style.flexGrow = a1;
@@ -49933,6 +50286,7 @@ function edTabsSync(sel){
  });
  var e=sel && EDITOR_TABS[sel];
  row.classList.toggle('has', !!e);
+ row.dataset.for = sel || '';
  if(!e){ row._for=null; row.textContent=''; return; }
  if(row._for!==sel){
   row._for=sel; row.textContent='';
@@ -50167,6 +50521,7 @@ function settingsDone(){
  switchTab(to);
 }
 function switchTab(t){
+ if(typeof songsPickToggle==='function') songsPickToggle(false);   // never leave the Song header picker open behind another tab
  // A falsy target (e.g. the onboarding tour's intro step, which wants to
  // show its card over whatever tab is already open) must be a no-op —
  // not a switch to nothing, which used to blank every tab page since none
@@ -50417,7 +50772,7 @@ Switch the diagrams to <strong>Guitar</strong> or <strong>Ukulele</strong> and e
  'export': {
   title: 'Export — audio, MIDI & stems',
   body: `<strong>Bounce</strong> — in the More sheet under Export, in Live's Record widget, and on this panel — captures a <strong>.wav</strong> of everything you hear — post master bus, including Master Vol — plus a <strong>.mid</strong> of the exact notes played, so you can carry the take into a DAW. Both download when you stop.<br><br>
-<span class="tip-pro">Studio Pack</span> The audio is the whole take for everyone. Free keeps the first four bars of the .mid, and says so when it stops; the Studio Pack keeps all of it, and adds stems.<br><br>
+<span class="tip-pro">Studio Pack</span> A free take stops by itself at 30 seconds and keeps the first four bars of the .mid, and says so; the Studio Pack takes any length, keeps all of the .mid and adds stems.<br><br>
 In the ${window.__modMacApp?'Mac':'iPhone'} app a bounce is written to disk <em>as it records</em>, so a long take cannot run the app out of memory, and it is kept in ${window.__modMacApp?'<strong>Downloads › mõdRïff › Bounces</strong> — in the Finder —':'<strong>Documents › Bounces</strong> — in the Files app —'} as well as offered to the share sheet, so a cancelled share loses nothing.<br><br>
 <span class="tip-pro">Studio Pack</span> <strong>Stems</strong> adds one <strong>.wav</strong> per part next to the mix: Drums, Aux, Bass, Melody, Chords, Solo, Sampler and Arp. They are <strong>dry</strong> — tapped at each part's own bus, before the reverb send and the master limiter — so you can put your own space on them in a DAW. A part that never sounded is skipped rather than written as silence.<br><br>
 <strong class="rnd-keep">Not the same as ◉ Capture in the More sheet</strong>, which writes what you play into something editable that stays inside the app — chords into a Song section, and the melody, the bass and the sampler pads into their own grids. Use that one to build a chart; use this one to get files out.<br><br>
@@ -50425,7 +50780,7 @@ In the ${window.__modMacApp?'Mac':'iPhone'} app a bounce is written to disk <em>
  },
  'modfx': {
   title: 'mõdFX — the performance pad',
-  body: `<span class="tip-pro">mõdSynth Engine</span> The pad is free with three patches — Filter Sweep, Tape Stop and Dub Delay. The mõdSynth Engine adds the X and Y menus, every other patch, saving your own, and playing a sample through the pad.<br><br>
+  body: `<span class="tip-pro">mõdSynth Engine</span> The pad is free with three patches — Filter Sweep, Tape Stop and Dub Delay. Tap any other patch to hear it for 20 seconds, twice each; the mõdSynth Engine keeps it, and adds the X and Y menus, saving your own, and playing a sample through the pad.<br><br>
 Two effects at once under one finger. Pick what each axis does with the <strong>X</strong> and <strong>Y</strong> menus — cutoff, high-pass, resonance, drive, and the buffer effects below — then hold the pad and move.<br><br>
 <strong>It overrides the sends while you hold it.</strong> Each channel's REV / DLY / DRV encoders on the Mix strips are where the effect sits at rest; the pad takes over for as long as your finger is down and hands it back when you lift. <strong>Hold</strong> latches the last position instead, which is the difference between a stab and a setting. <strong>Clear</strong> puts everything back to the sends.<br><br>
 <strong>Which channels it reaches</strong> is the row of channel chips here, in Studio. Everything is swept until you narrow it. <strong>How much</strong> of each channel goes through it is its <strong>Mix</strong> — the sliders under the pad, the row under each part's mõdFX bar, or the <strong>MIX</strong> knob on its mixer strip. 0% leaves a part untouched.<br><br>
@@ -50735,6 +51090,7 @@ function toggleSongRecord(){
 
 function startSongRecord(){
  if(songRecActive) return;
+ if(freeSectionRoom()<1){ freeSectionsFull(); return; }
  stopSongLoopIfActive();
  const base='Recording';
  let n=1; while(sections.some(s=>s.name===base+' '+n)) n++;
@@ -51054,6 +51410,7 @@ function captureBack(){
  const ctx=getCtx();
  const run=_chordRingRun();
  if(!ctx || !run.length){ showToast('Play some chords first'); return; }
+ if(freeSectionRoom()<1){ freeSectionsFull(); return; }
 
  const cyc=_capOneCycle(run);
  const fit=_capFit(cyc.evs, {endT:cyc.endT, liberal:true, adapt:!_capClock()});
@@ -52154,7 +52511,7 @@ function _crNativeScore(voiced, nativeVoicing){
   var uppers = chord.intvs.filter(function(d){ return d >= 0; }), lows = chord.intvs.filter(function(d){ return d < 0; });
   var bass = lows.length ? chord.root + Math.min.apply(null, lows) : null;
   var vo = !nativeVoicing && autoInvOn ? smartVoiceLead(chord.root, uppers, bass) : uppers;
-  var ivs = nativeVoicing ? vo : chordVoicing(chord.root, vo);
+  var ivs = nativeVoicing ? vo : chordVoicing(chord.root, vo, bass);
   var m = chordEngineEvent({root: chord.root, ivs: ivs, bass: bass != null ? bass : null}, chord.root, {part: 'chord', ivs: ivs, vel: 1, at: 0, dur: 1});
   v = {notes: (m.bass != null ? [m.bass] : []).concat(m.notes), root: m.root, bass: m.bass};
  }
@@ -52990,14 +53347,28 @@ function slotTotalMs(slot){
  return total > 0 ? total : barMs;
 }
 
+// The length in words, from the total, so every place that shows it says the same thing. It used to print the stored
+// parts ("2♪" for two eighths, "1bar" with no space) while the Length row's own "2♪" meant two BEATS.
 function _slotDurLabel(slot){
- const b=slot.bars||0, bt=slot.beats||0, e=slot.eighths||0;
- const parts=[];
- if(b) parts.push(b+(b===1?'bar':'bars'));
- if(bt) parts.push(bt+(bt===1?'beat':'beats'));
- if(e) parts.push(e+'♪');
- return parts.length ? parts.join('+') : '1bar';
+ const e=Math.round(_slotBeats(slot)*2), barE=Math.max(2, Math.round(_songBarSteps()/2));
+ const bars=Math.floor(e/barE), rem=e-bars*barE, parts=[];
+ if(bars) parts.push(bars+(bars===1?' bar':' bars'));
+ if(rem){
+  const b=rem/2, whole=Math.floor(b);
+  parts.push((whole?String(whole):'')+(b!==whole?'\u00bd':'')+(b<=1?' beat':' beats'));
+ }
+ return parts.length ? parts.join(' + ') : '1 bar';
 }
+// The Length row of the chord editor: the changes that happen on a beat, then whole bars. Eighths are the nudge under
+// it; anything else (8 bars, odd counts) is Exact. var, not const: read from the editor, far from here (CLAUDE.md, TDZ).
+var SB_LEN_ROW=[
+ {short:'\u00bd',  title:'Half a beat (one eighth)', bars:0, beats:0, eighths:1},
+ {short:'1 beat',  title:'One beat',                 bars:0, beats:1, eighths:0},
+ {short:'2 beats', title:'Two beats',                bars:0, beats:2, eighths:0},
+ {short:'1 bar',   title:'One bar',                  bars:1, beats:0, eighths:0},
+ {short:'2 bars',  title:'Two bars',                 bars:2, beats:0, eighths:0},
+ {short:'4 bars',  title:'Four bars',                bars:4, beats:0, eighths:0}
+];
 
 // Jazz-friendly duration presets — cover the phrase lengths that show up in
 // real charts (quick change, 1-bar, 2-bar, 4-bar, 8-bar) so picking a duration
@@ -54135,7 +54506,7 @@ function pracSync(){
  if(lset) lset.hidden = !pracLoop.sel;
  if(lh){
   var nm = (sections[pracLoop.si] && sections[pracLoop.si].name) || '';
-  lh.textContent = pracLoop.sel === 1 ? 'Tap the first chord of the bars to loop, on the chart below'
+  lh.textContent = pracLoop.sel === 1 ? 'Tap the first chord of the bars to loop, on the chart'
                  : pracLoop.sel === 2 ? 'Now tap the last chord (the same one again loops just that bar)'
                  : pracLoop.sel === 3 ? 'Looping '+nm+', chord '+(pracLoop.a+1)+(pracLoop.b>pracLoop.a ? ' to '+(pracLoop.b+1) : '')+'. Each pass counts as a chorus for Speed up and Next key. Tap Loop bars to clear.'
                  : '';
@@ -55305,7 +55676,7 @@ function onBpmInput(v){
 // slider and the drag all stay in sync with each other for free.
 const BPM_MIN=40, BPM_MAX=220;
 function _clampBpm(v){ return Math.max(BPM_MIN, Math.min(BPM_MAX, Math.round(v))); }
-function nudgeBpm(d){ onBpmInput(_clampBpm(_bpmNow()+d)); }
+function nudgeBpm(d){ bpmByHand(_bpmNow()+d, d>0?1:-1); }
 function _bpmPopOpen(on){
  const pop=document.getElementById('ft-bpm-pop'); if(!pop) return;
  pop.classList.toggle('open', !!on);
@@ -55349,7 +55720,7 @@ function _bpmPopIsOpen(){ return !!document.getElementById('ft-bpm-pop')?.classL
   const v=_clampBpm(v0+(dx+dy)/2.5);
   // Only push a real change — onBpmInput restarts the clock, and doing that
   // on every pointermove that rounds to the same bpm stutters the transport.
-  if(v!==_bpmNow()) onBpmInput(v);
+  if(v!==_bpmNow()) bpmByHand(v);
  });
  const end=e=>{
   if(!drag) return;
@@ -55364,7 +55735,7 @@ function _bpmPopIsOpen(){ return !!document.getElementById('ft-bpm-pop')?.classL
  };
  el.addEventListener('pointerup', end);
  el.addEventListener('pointercancel', end);
- el.addEventListener('wheel', e=>{ e.preventDefault(); nudgeBpm(e.deltaY<0?1:-1); }, {passive:false});
+ el.addEventListener('wheel', e=>{ if(!wheelEdits(e)) return; e.preventDefault(); nudgeBpm(e.deltaY<0?1:-1); }, {passive:false});
  // The readout reports itself as a slider, so it has to behave like one for
  // the keyboard too. stopPropagation matters: these are document-level keys
  // elsewhere (arrows drive key nav, Space is play/stop) and a focused tempo
@@ -55933,6 +56304,8 @@ function _startRecording(){
   if(_recFinishing) return;
   // The pack sheet's demo plays through the drum engine the take listens to.
   try{ if(typeof packDemoStop==='function') packDemoStop(); }catch(e){}
+  // A mõdFX patch that is only being heard never reaches a take.
+  try{ _fxPreviewEnd(false); }catch(e){}
   var ctx=getCtx();if(!ctx)return;
   _withAudio(ctx);
   buildReverb();
@@ -55990,11 +56363,25 @@ function _startRecording(){
   }
   _recT0=Date.now();
   _isRecording=true;_updateRecBtn();
+  // A free take runs FREE_NUMBERS.bounceSeconds and stops itself: it is saved like any other,
+  // then says why it ended. Cleared in _stopRecording, so a take stopped by hand never leaves
+  // a timer that cuts the next one short.
+  var _cap=freeBounceCap();
+  if(_cap){
+    clearTimeout(_recCapTimer);
+    _recCapTimer=setTimeout(function(){
+      _recCapTimer=null;
+      if(!_isRecording || _recFinishing) return;
+      _stopRecording();
+      setTimeout(function(){ freeBlocked('Takes longer than '+_cap+' seconds', 'studio'); }, 1200);
+    }, _cap*1000);
+  }
   // Native-engine parts are not in the bus the recorder taps. When the host's
   // capture is running they come in through that; when it is not, say so.
   var nat=_nativeUncaptured();
   var msg = stemsFailed ? 'Recording the mix — stems could not start'
           : (exportStems ? 'Recording — mix + stems…' : 'Recording…');
+  if(_cap) msg = 'Recording — a free take stops at '+_cap+' seconds…';
   if(nat.length) msg += ' ' + nat.join(', ') + ' plays in the native engine and is not captured yet.';
   else if(exportStems && _stemSkipped.length) msg += ' ' + _stemSkipNote(_stemSkipped) + '.';
   majorToast(msg, nat.length ? {ms:5000} : undefined);
@@ -56493,6 +56880,7 @@ var _recFinishing=false;
 var REC_TAIL_MS=8000;
 async function _stopRecording(transportStopped){
   if(!_isRecording || _recFinishing) return;
+  clearTimeout(_recCapTimer); _recCapTimer=null;
   _recFinishing=true;
   var midiStopWall=Date.now();
   if(window._nsEvents) try{ await window._nsEvents.flushRecording(midiStopWall); }catch(e){ _midiRecNativeCut=true; }
@@ -56761,7 +57149,7 @@ document.addEventListener('pointerdown', function(){ _reviewTouchAt = Date.now()
 setTimeout(function(){ try{ if(_inNativeApp()){ _reviewNote('day'); _reviewArm(); } }catch(e){} }, 4000);
 // The take's clock, m:ss (h:mm:ss past an hour). One timer, only while a take runs; every [data-recclock] is repainted from
 // it: the Record widget, and the page's own copy beside the island (#bounce-clock). _recT0 is set where the take starts.
-var _recT0=0, _recClockTimer=null;
+var _recT0=0, _recClockTimer=null, _recCapTimer=null;
 function _recFmt(ms){
   var t=Math.max(0,Math.floor(ms/1000)), h=Math.floor(t/3600), m=Math.floor(t%3600/60), s=t%60;
   return (h ? h+':'+(m<10?'0':'') : '')+m+':'+(s<10?'0':'')+s;
@@ -57609,8 +57997,13 @@ function tapTempo(){
  const avg=intervals.reduce((a,b)=>a+b,0)/intervals.length;
  const bpm=Math.round(60000/avg);
  const clamped=Math.max(40,Math.min(220,bpm));
- onBpmInput(clamped);
- const sl=document.getElementById('bpm'); if(sl) sl.value=clamped;
+ // Tap tempo is the Groove Pack's. The taps are counted, and the fourth says so (rather than the first, so a tap
+ // that only meant to open the slider never does); the tempo stays where it was.
+ if(freeTempoLocked()){ _tapTimes=[]; freeBlocked('Tap tempo','groove'); }
+ else {
+  onBpmInput(clamped);
+  const sl=document.getElementById('bpm'); if(sl) sl.value=clamped;
+ }
  }
  // Flash the readout itself so each registered tap gives feedback, even
  // the first few before there's enough of a window to set a tempo yet.
@@ -58796,7 +59189,7 @@ mhApply(0);
 
 
 // Wire sliders
-document.getElementById('ft-bpm-sl').addEventListener('input',e=>onBpmInput(e.target.value));
+document.getElementById('ft-bpm-sl').addEventListener('input',e=>bpmByHand(e.target.value));
 // Ensure songs perform setlist initialised
 renderSetlistPerform();
 // Build arp gate-pattern buttons (strip is open by default)
@@ -58925,6 +59318,7 @@ function sqAttachKnob(cvs, valEl, initVal, min, max, type, onChange){
 
   // Scroll wheel fine-tune
   cvs.addEventListener('wheel', function(e){
+    if(!wheelEdits(e)) return;
     e.preventDefault();
     var step = type==='pitch' ? 1 : 2;
     setVal(val + (e.deltaY < 0 ? step : -step));
@@ -59027,6 +59421,7 @@ function knobify(inp){
   var now = Date.now(); if(now - lastTap < 300) put(parseFloat(inp.defaultValue), true); lastTap = now;
  });
  wrap.addEventListener('wheel', function(e){
+  if(!wheelEdits(e)) return;
   e.preventDefault(); var r = rng(); put(cur() + (e.deltaY < 0 ? 1 : -1) * r.step * (e.shiftKey ? 1 : Math.max(1, Math.round((r.max-r.min)/r.step/50))), true);
  }, {passive:false});
  wrap.addEventListener('keydown', function(e){
@@ -61331,7 +61726,8 @@ function sqLaneSheet(ti){
   act('Sample', clip ? 'Playing '+clip.name+' instead of the kit’s drum — change, trim or remove it' : 'The kit’s own drum. Load a sample, or record one with the microphone',
     function(){ if(typeof window.smpOpenDrum==='function') window.smpOpenDrum(mk,ti); });
   if(M.shape){
-    act('Shape', _sqShapeOf(tr) ? 'Shaped away from the kit — level, tune, decay, tone, drive, pan' : 'Level, tune, decay, tone, drive and pan for this drum',
+    act('Shape', modHas('synth') ? (_sqShapeOf(tr) ? 'Shaped away from the kit — level, tune, decay, tone, drive, pan' : 'Level, tune, decay, tone, drive and pan for this drum')
+                                 : 'Hear decay, tone, drive and pan on this drum. Keeping a shape is part of the mõdSynth Engine',
       function(){ sqShapeSheet(ti); });
   }
   sec('Row');
@@ -61350,7 +61746,7 @@ window.sqLaneSheet = sqLaneSheet;
 function sqRowMenu(ti, anchor){
   var tr=(SQM[sqMach]||{tracks:[]}).tracks[ti]; if(!tr) return;
   gridClipMenu(anchor, tr.n||tr.s, sqRowItems(ti)
-    .concat((SQM[sqMach]||{}).shape ? [{label:'Shape…', title:'Tune, decay, tone, drive and pan for this drum', fn:function(){ sqShapeSheet(ti); }}] : []));
+    .concat((SQM[sqMach]||{}).shape ? [{label:modHas('synth') ? 'Shape…' : 'Shape… (hear only)', title:modHas('synth') ? 'Tune, decay, tone, drive and pan for this drum' : 'Hear decay, tone, drive and pan on this drum. Keeping a shape is part of the mõdSynth Engine', fn:function(){ sqShapeSheet(ti); }}] : []));
 }
 // A drum drawn, for the Shape sheet: the lane's voice built into an offline
 // context with the lane's current Shape and rendered, so the picture is the
@@ -61421,6 +61817,10 @@ function sqShapeSheet(ti){
  var put=function(k,v){ var m=sqShapes[key]||(sqShapes[key]={}); var sh=cur(); sh[k]=v; m[ti]=sh; };
  var hear=function(){ try{ sqInitFX(); sqEnsureNoise(); var c=sqCtx(); sqHitTrack(tr, c?c.currentTime+0.02:0, sqGv(key,ti), false, sqGp(key,ti), sqFocus===1 ? 'auxperc' : undefined); }catch(e){} };
  var box=_sbSheet(tr.n+' · shape');
+ // Free hears every setting but keeps none: what the lane had when the sheet opened (nothing, or a shape that arrived with a
+ // song) is put back on close. Said at the top, before any of the work, and at the door (the lane sheet and the row menu).
+ var hearOnly = !modHas('synth');
+ var snap = (sqShapes[key] && sqShapes[key][ti]) ? Object.assign({}, sqShapes[key][ti]) : null;
  var rows=[
   // Level and Pitch are the lane's own (the volume and PCH controls on the
   // grid), shown here so every way to change the drum is in one place.
@@ -61444,6 +61844,14 @@ function sqShapeSheet(ti){
  var getV=function(k){ return k==='p' ? sqGp(key,ti) : k==='v' ? sqGv(key,ti) : cur()[k]; };
  var setV=function(k,v){ if(k==='p') sqSp(key,ti,v); else if(k==='v') sqSv(key,ti,v); else put(k,v); };
  var wrap=document.createElement('div'); wrap.className='sq-shape';
+ if(hearOnly){
+  var nt=document.createElement('div'); nt.className='sq-shape-note'; nt.setAttribute('data-shape-note','1');
+  nt.appendChild(document.createTextNode('You can hear every setting. Keeping a shape is part of the mõdSynth Engine, so the drum goes back to the kit’s when you close this. '));
+  var nb=document.createElement('button'); nb.type='button'; nb.className='sq-shape-see'; nb.textContent='See pack';
+  nb.addEventListener('click', function(){ proSheet('Drum shaping','synth'); });
+  nt.appendChild(nb);
+  wrap.appendChild(nt);
+ }
  // The drum, drawn. Redrawn a beat after the last slider movement, not on
  // every input event: each one is an offline render.
  var pv=document.createElement('canvas'); pv.className='sq-shape-pv'; pv.setAttribute('aria-hidden','true');
@@ -61487,7 +61895,10 @@ function sqShapeSheet(ti){
  box.body.appendChild(wrap); box.body.appendChild(act);
  box.addCancel('Done');
  // The lane's PCH knob and its Shape button both show what was changed here.
- box.onClose=function(){ try{ sqRenderGrid(); }catch(e){} };
+ box.onClose=function(){
+  if(hearOnly){ var m=sqShapes[key]; if(snap){ (m||(sqShapes[key]={}))[ti]=snap; } else if(m) delete m[ti]; }
+  try{ sqRenderGrid(); }catch(e){}
+ };
 }
 window.sqShapeSheet = sqShapeSheet;
 function sqColMenu(step, anchor){
@@ -70292,7 +70703,7 @@ function _mixBuildPan(ch){
  // A mouse's double-click arrives as one press with a click count, not two
  // quick presses, so it needs its own way to centre.
  el.addEventListener('dblclick',function(e){ e.preventDefault(); center(); });
- el.addEventListener('wheel',function(e){ e.preventDefault(); set(raw+(e.deltaY<0?0.05:-0.05)); },{passive:false});
+ el.addEventListener('wheel',function(e){ if(!wheelEdits(e)) return; e.preventDefault(); set(raw+(e.deltaY<0?0.05:-0.05)); },{passive:false});
  el.addEventListener('keydown',function(e){
   var step=e.shiftKey?0.2:0.05;
   if(e.key==='ArrowRight'||e.key==='ArrowUp') set(val+step);
@@ -70926,6 +71337,8 @@ function gridPinchBind(el, kind){
 // the step count changes, and both of those already go through prLayout(), so
 // the measurement belongs there and the answer belongs in a cache.
 const _PR_COL_W_CACHE = {};
+// The Mac window and the desktop web page: wide enough (>= 1000 css px) that a bar of sixteen should fill the roll, not stop at a phone's 46 pt a step.
+function _prMacWide(){ try{ const c = document.documentElement.classList; return (c.contains('mac-app') || c.contains('desktop-web')) && (window.innerWidth||0) >= 1000; }catch(e){ return false; } }
 function _prMeasureColW(id, steps){
  // Measured off the roll, less the key gutter, rather than off .pr-scroll —
  // which is sized by its own canvas now that it no longer scrolls, and would
@@ -70943,7 +71356,7 @@ function _prMeasureColW(id, steps){
   short = window.matchMedia('(orientation:landscape) and (max-height:520px)').matches;
  }catch(e){}
  if(!avail || !steps) return 26;
- const fit = land ? Math.max(20, Math.min(short ? 64 : 46, Math.floor(avail / Math.min(steps, 16))))
+ const fit = land ? Math.max(20, Math.min(short ? 64 : (_prMacWide() ? 150 : 46), Math.floor(avail / Math.min(steps, 16))))
                   : Math.max(16, Math.min(46, Math.floor(avail / steps)));
  return Math.max(12, Math.min(160, Math.round(fit * Math.max(1, gridZoom()))));
 }
@@ -71098,10 +71511,14 @@ function prLayout(id){
  const z = gridZoom(), H = window.innerHeight || 700;
  let short = false; try{ short = window.matchMedia('(orientation:landscape) and (max-height:520px)').matches; }catch(e){}
  const up = Math.max(0, Math.min(1, (z - 1) / 0.7));
- const capPx = Math.round(Math.min((short ? 0.58 : 0.40) * H + up * 0.14 * H, 340 + up * 140));
+ // A Mac window is wide and has the height to match: the box takes what is left under the page's header and above the transport
+ // (about 400 pt of chrome: the strip, the tabs, the pick row, the roll's own toolbar and the transport), and the rows grow 26% so the steps and the rows stay in proportion once the steps have the width.
+ const macWide = _prMacWide();
+ let capPx = Math.round(Math.min((short ? 0.58 : 0.40) * H + up * 0.14 * H, 340 + up * 140));
+ if(macWide) capPx = Math.max(capPx, Math.min(Math.round(H - 400), 760));
  PR_RULER_H = z >= 1.5 ? 30 : 14;
  const rowFit = Math.max(4, Math.floor((capPx - PR_RULER_H - 2) / rows));
- PR_ROW_H = Math.max(rowFit, Math.min(88, Math.round(22 * z)));
+ PR_ROW_H = Math.max(rowFit, Math.min(88, Math.round(22 * z * (macWide ? 1.26 : 1))));
  const roll = document.getElementById(id+'-pr'); if(roll){ roll.style.maxHeight = capPx + 'px'; roll.classList.toggle('pr-zoomed', z > 1); }
  const rh = document.getElementById(id+'-pr-ruler'); if(rh && rh.parentNode) rh.parentNode.style.height = PR_RULER_H + 'px';
  prZoomSync();
@@ -75272,7 +75689,8 @@ function _fxIsSamplePatch(p){
 // says what is missing, with the way to fix it one tap away.
 function fxPickPreset(i){
  const p=fxAllPresets()[i]; if(!p) return;
- if(_fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)','synth'); return; }
+ if(_fxFreeLocked(p)){ if(!fxPreviewTap(i)) freeBlocked(p.name+' (mõdFX)','synth'); return; }
+ _fxPreviewEnd(false);
  fxApplyPreset(i);
  if(_fxIsSamplePatch(p) && !(typeof fxSmpLoaded==='function' && fxSmpLoaded())){
   showToast(p.name+' needs a clip on the pad', {
@@ -75281,9 +75699,44 @@ function fxPickPreset(i){
  }
 }
 window.fxPickPreset=fxPickPreset;
-function fxApplyPreset(i){
+// ── Hearing a locked patch ──────────────────────────────────────────────────
+// A patch is a gesture on a pad, so it is heard by wearing it: a locked patch loads for FX_PREVIEW_SEC, twice per
+// patch (the same two as a pad or a voice, counted in modo-previews), and the pad goes back to the patch it was on,
+// axes and targets, when the time is up, when a free patch is picked, or when a take starts. It is never saved:
+// the pack is for keeping one. var: read from far away (CLAUDE.md).
+var FX_PREVIEW_SEC = 20;
+var _fxPrev = null;
+function _fxPreviewEnd(announce){
+ if(!_fxPrev) return;
+ var o=_fxPrev; _fxPrev=null; clearTimeout(o.timer);
+ if(modHas('synth')) return;                       // bought while it was on: it stays
+ fxPadX=o.x; fxPadY=o.y; fxTargets=o.t.slice();
+ try{ modParamsFlush(); fxSyncUI(); }catch(e){}
+ if(announce) showToast('Back to '+o.name+'. Keeping a mõdFX patch is part of the mõdSynth Engine.');
+}
+function fxPreviewTap(i){
+ var p=fxAllPresets()[i];
+ if(!p || p.user || !_fxFreeLocked(p)) return false;
+ if(typeof _isRecording!=='undefined' && _isRecording) return false;
+ var seen=_prevLoad(), k='fx:'+p.name;
+ if((seen[k]||0) >= FREE_NUMBERS.previewsPerItem) return false;   // heard twice: the sheet
+ // A patch with nothing playing under it is not heard, so it is not counted either.
+ if(!isAnythingPlaying()){ showToast('Start the band, then tap a patch to hear it'); return true; }
+ seen[k]=(seen[k]||0)+1;
+ try{ modStore.setItem('modo-previews', JSON.stringify(seen)); }catch(e){}
+ if(!_fxPrev){
+  var all=fxAllPresets(), cur=all.find(function(x){ return x.x===fxPadX && x.y===fxPadY; });
+  _fxPrev={ x:fxPadX, y:fxPadY, t:fxTargets.slice(), name: cur ? cur.name : (FX_PARAMS[fxPadX].label+' × '+FX_PARAMS[fxPadY].label), timer:null };
+ }
+ clearTimeout(_fxPrev.timer);
+ _fxPrev.timer=setTimeout(function(){ _fxPreviewEnd(true); }, FX_PREVIEW_SEC*1000);
+ fxApplyPreset(i, true);
+ majorToast(p.name+' (mõdFX): hear it for '+FX_PREVIEW_SEC+' seconds. Keeping it is part of the mõdSynth Engine.', {actionLabel:'See pack', onAction:function(){ proSheet(p.name+' (mõdFX)','synth'); }});
+ return true;
+}
+function fxApplyPreset(i, preview){
  const p=fxAllPresets()[i]; if(!p) return;
- if(_fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)','synth'); return; }
+ if(!preview && _fxFreeLocked(p)){ freeBlocked(p.name+' (mõdFX)','synth'); return; }
  if(FX_PARAMS[p.x]) fxPadX=p.x;
  if(FX_PARAMS[p.y]) fxPadY=p.y;
  // In ADVANCED this deliberately does NOT touch fxTargets. A patch is a pair
@@ -76107,7 +76560,7 @@ function fxSyncUI(){
    const smp=_fxIsSamplePatch(x);
    return '<button class="fx-preset'+(i===cur?' on':'')+(_fxFreeLocked(x)?' tier-locked':'')+(x.user?' user':'')+(smp?' smp':'')+(smp&&!hasClip?' noclip':'')+'"'
     +' data-mod="synth" onclick="fxPickPreset('+i+')"'
-    +' title="'+FX_PARAMS[x.x].label+' × '+FX_PARAMS[x.y].label+(smp&&!hasClip?' — needs a clip on the pad':'')+'"'
+    +' title="'+FX_PARAMS[x.x].label+' × '+FX_PARAMS[x.y].label+(smp&&!hasClip?' — needs a clip on the pad':'')+(_fxFreeLocked(x)&&!x.user?' — hear it for '+FX_PREVIEW_SEC+' seconds; keeping it is part of the mõdSynth Engine':'')+'"'
     +' aria-label="Preset '+x.name+': '+FX_PARAMS[x.x].label+' on X, '+FX_PARAMS[x.y].label+' on Y">'
     +(smp?'<span class="fx-smp-mark" aria-hidden="true">◈</span>':'')+x.name
     +(x.user?'<span class="fx-preset-x" onclick="event.stopPropagation();fxDeleteUserPreset('+i+')" '
@@ -76120,7 +76573,8 @@ function fxSyncUI(){
   const lbl=document.getElementById('fx-patch-cur');
   if(lbl) lbl.textContent = cur>=0 ? all[cur].name : (FX_PARAMS[fxPadX].label+' × '+FX_PARAMS[fxPadY].label);
   pr.innerHTML=
-    '<div class="fx-pgroup"><div class="fx-pgroup-lbl">Effects<span>shape the parts that are playing</span></div>'
+    (!modHas('synth') ? '<div class="fx-prev-note">Tap a locked patch to hear it for '+FX_PREVIEW_SEC+' seconds, twice each. Keeping a patch is part of the mõdSynth Engine.</div>' : '')
+   +'<div class="fx-pgroup"><div class="fx-pgroup-lbl">Effects<span>shape the parts that are playing</span></div>'
    +'<div class="fx-pgroup-row">'+fx.map(i=>chip(all[i],i)).join('')+'</div></div>'
    +'<div class="fx-pgroup smp"><div class="fx-pgroup-lbl">◈ Sample pad<span>'
    +(hasClip ? 'play the clip loaded on the pad' : 'play a clip — load one with ◈ Sample')+'</span></div>'
@@ -76413,10 +76867,10 @@ const MODULE_COPY = {
  sampler:  { name:'Sampler Engine', line:'Pro sampler: your samples, kits, loop slicing',
   bullets:['Play the pads: every bank, all 16','Sampled melodic instruments','Every sample kit','Load your own samples onto the pads','Slice a loop across the pads'] },
  synth:    { name:'mõdSynth Engine', line:'Wavetable power synth + the full mõdFX rack',
-  bullets:['All mõdSynth sound sets','The full mõdFX library on the XY pad'] },
+  bullets:['All mõdSynth sound sets','The full mõdFX library on the XY pad','Drum shaping: decay, sweep, body, tone, drive and pan for every drum, kept'] },
  groove:   { name:'Groove Pack', line:'World grooves, odd meters, extra kits, aux',
   bullets:['More grooves, including Latin and world rhythms','Extra drum kits and the aux channel','More bass and melody styles',
-           'Odd meters','More than 16 steps','Separate step length per generator'] },
+           'Odd meters','More than 16 steps','Separate step length per generator','Every tempo, 1 bpm nudges and tap tempo (free has six tempos)'] },
  theory:   { name:'Theory Pack', line:'Every mode, chord and voicing, neo-soul ready',
   bullets:['All modes, harmonic and melodic minor, and exotic scales','Every chord type','Drop 2, Drop 3, Soul and Neo-soul voicings',
            'Circle-of-fifths key colours','Pure tuning for chords, bass, melody and arp'] },
@@ -76425,7 +76879,7 @@ const MODULE_COPY = {
            'Timeline: chords and words on the beats','Stage: the song full screen, big enough to read from a stand'] },
  studio:   { name:'Studio Pack', line:'EQ, sound shaping, Play in, Arrange, stems',
   bullets:['EQ on every part and the master: five bands, filters at 12 or 24 dB','Sound shaping: filter, attack, release, reverb and voice tone','Play in: write a part with your keys or a MIDI keyboard','Arrange: a different line for every chord',
-           'Capture and export stems','Full-length MIDI export','Unlimited saved songs','Full Live mode: more modules, rearrange your layout'] }
+           'Capture and export stems','Bounce takes of any length: free stops at 30 seconds','Full-length MIDI export','Unlimited saved songs and sections','Full Live mode: more modules, rearrange your layout'] }
 };
 const BUNDLE_COPY = {
  full:     { name:'Full Studio', line:'Every pack, in one purchase',
@@ -76493,6 +76947,15 @@ const FREE_LIMITS = {
   // Three meters, and the step counts are derived from them: a whole number of
   // bars of any of these, up to FREE_NUMBERS.stepMax. See freeAllowsSteps.
   meters:       ['4/4','3/4','12/8'],
+  // Tempo, by hand: the six stops. The slider, the nudges and a drag land on the nearest (or next) one; the whole
+  // 40-220 dial, 1 bpm nudges and tap tempo are the Groove Pack's. A tempo that ARRIVES (a load, the demo, a shared
+  // link, Keep fitting the band to what you played, the practice trainer, Ableton Link) is never moved: only a hand is.
+  tempoStops:   [70,88,100,110,128,150],
+  tapTempo:     false,
+  // The drum Shape sheet's six (decay, sweep, body, tone, drive, pan) are the mõdSynth Engine's to KEEP. A free install can open the
+  // sheet and hear every setting, then the lane goes back to the kit's drum when the sheet closes. A shape that ARRIVES (a song,
+  // a setup, a shared link) keeps sounding, as a saved EQ does. Level and Tune are the lane's own controls and stay free.
+  drumShape:    false,
   // None: the whole sampler is the Sampler Engine's (6.9.9.9.5). Free sees the
   // grid, the first FREE_NUMBERS.padCount pads of the preset bank on show, drawn
   // locked, and a tap plays that pad's sample softly twice (psPreviewTap); it is
@@ -76502,13 +76965,13 @@ const FREE_LIMITS = {
 // Which module owns each row above. Every row has exactly one; the test fails
 // on a row with none, which would be a lock nothing could ever open.
 const FEATURE_MODULE = {
-  modfx:'synth', fxPatches:'synth', modsynth:'synth',
+  modfx:'synth', fxPatches:'synth', modsynth:'synth', drumShape:'synth',
   freeModes:'theory', chordExtensions:'theory', outsideChords:'theory', voicings:'theory', keyColours:'theory', pureTuning:'theory', chordHold:'theory',
   samples:'sampler', sampler:'sampler', padBanks:'sampler',
   stemExport:'studio', fullMidiExport:'studio', liveLayout:'studio', liveMixer:'studio',
   liveRolls:'groove', liveSynth:'synth',
   arrange:'studio', playIn:'studio', soundShaping:'studio', eq:'studio', stepsUnlinked:'groove', auxLayer:'groove', drumKits:'groove', drumGrooves:'groove',
-  bassStyles:'groove', melodyStyles:'groove', arpRates:'groove', meters:'groove',
+  bassStyles:'groove', melodyStyles:'groove', arpRates:'groove', meters:'groove', tempoStops:'groove', tapTempo:'groove',
   iRealBatch:'practice', practiceTrainer:'practice', timeline:'practice', stage:'practice'
 };
 // The voices the Sounds Pack holds: the electric piano, organ and pad, the
@@ -76535,11 +76998,13 @@ const EMBED_LIMITS = {
 const FREE_NUMBERS = {
   stepMax:            16,   // the app's own maximum is 64
   saveSlots:          5,    // setlist songs, and iReal charts without the Practice Pack; Setups are not counted
+  sections:           2,    // sections a song may be ADDED up to (loading one with more is never refused)
+  bounceSeconds:      30,   // a Bounce stops itself here; the file adds the recorder's usual 8 s tail
   midiExportBars:     4,
   padCount:           9,    // pads SHOWN (locked) on a free install: a 3x3
   previewsPerItem:    2     // taps that sound on a locked pad or voice; then a tap only opens the sheet
 };
-const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', midiExportBars:'studio', padCount:'sampler', previewsPerItem:'sampler' };
+const NUMBER_MODULE = { stepMax:'groove', saveSlots:'studio', sections:'studio', bounceSeconds:'studio', midiExportBars:'studio', padCount:'sampler', previewsPerItem:'sampler' };
 
 // The "Hear it" demo in a pack's sheet (6.9.9.9.6), as data so it can be changed
 // here and nowhere else. A locked kit or groove never plays under the user's own
@@ -76628,6 +77093,15 @@ function modProducts(){
 // landing page, which has the same buttons. Chromebooks and Windows have no
 // store to go to, so they get the landing page either way.
 var WEB_STORE = { appleId:'', landing:'https://modriff.com' };
+// The Studio Pack's two caps on what a song and a take may be (FREE_NUMBERS.sections and
+// bounceSeconds). One rule for the free app and the free web page alike: neither holds a
+// pack, so modHas('studio') is false on both. Only ADDING a section is stopped: a setup,
+// shared link, demo or chart that arrives with more still loads and plays whole, so the
+// page never refuses something it was handed.
+function freeSectionRoom(){ return modHas('studio') ? Infinity : Math.max(0, FREE_NUMBERS.sections - sections.length); }
+function freeSectionsFull(){ return freeBlocked('More than '+FREE_NUMBERS.sections+' sections', 'studio'); }
+// Seconds a take may run before it stops itself; 0 means no cap.
+function freeBounceCap(){ return modHas('studio') ? 0 : FREE_NUMBERS.bounceSeconds; }
 function webStoreInfo(){
  var ua = String(navigator.userAgent||'');
  var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints||0)>1);
@@ -76731,6 +77205,44 @@ function freeAllowsVoice(w){
  if(_modOwned===undefined) return true;      // voiceModule reads consts declared above this line in file order only
  const m=voiceModule(w);
  return !m || modHas(m);
+}
+// ── Tempo by hand ───────────────────────────────────────────────────────────
+// Ableton Link is never sold (its licence: free for everyone, outside every pack), so while it is on the tempo is
+// unrestricted, including the user's own moves, which then go out to the session.
+function freeTempoLocked(){ return !modHas('groove') && !(window._link && window._link.on); }
+function freeTempoNearest(v){
+ var st=FREE_LIMITS.tempoStops, best=st[0];
+ st.forEach(function(x){ if(Math.abs(x-v)<Math.abs(best-v)) best=x; });
+ return best;
+}
+// dir +1 / -1: the next stop above or below where the tempo is now (a nudge); stays put at the end of the list.
+function freeTempoStep(dir){
+ var st=FREE_LIMITS.tempoStops, cur=_bpmNow(), i;
+ if(dir>0){ for(i=0;i<st.length;i++) if(st[i]>cur) return st[i]; return st[st.length-1]; }
+ for(i=st.length-1;i>=0;i--) if(st[i]<cur) return st[i];
+ return st[0];
+}
+var _tempoToldFree=false;
+// Every tempo a person sets goes through here: the slider, the nudges, the arrow keys, a drag, a MIDI knob.
+// `dir` is given by a nudge (a step is a step, not a distance). Free is told once, on the first move that lands
+// somewhere other than where it was asked to; the note in the tempo popover says it before anyone tries.
+function bpmByHand(v, dir){
+ v=_clampBpm(v);
+ if(freeTempoLocked()){
+  var t = dir ? freeTempoStep(dir) : freeTempoNearest(v);
+  if(!_tempoToldFree && t!==v){
+   _tempoToldFree=true;
+   majorToast('Free sets the tempo from six stops. The Groove Pack opens the whole dial.', {actionLabel:'See pack', onAction:function(){ proSheet('Every tempo', 'groove'); }});
+  }
+  v=t;
+ }
+ if(v!==_bpmNow() || String(document.getElementById('ft-bpm-sl') && document.getElementById('ft-bpm-sl').value)!==String(v)) onBpmInput(v);
+}
+function freeTempoSync(){
+ var n=document.getElementById('ft-bpm-note'); if(!n) return;
+ var lock=freeTempoLocked();
+ n.hidden=!lock;
+ if(lock) n.textContent='Free: '+FREE_LIMITS.tempoStops.join(', ')+'. The Groove Pack opens every tempo and tap tempo.';
 }
 function freeAllowsArpRate(label){
  if(modHas('groove')) return true;
@@ -77887,6 +78399,8 @@ function proSyncRow(){
   // A Sounds Pack voice button plays the chord instead (two per voice).
   const vw=el.dataset.wave||el.dataset.arpwave||el.dataset.melwave||el.dataset.mlwave||((/setBlWave\('([^']+)'\)/.exec(el.getAttribute('onclick')||''))||[])[1];
   if(vw && voiceHearable(vw)){ voiceHearTap(vw, nameOf(el)); return; }
+  // A locked mõdFX patch is worn for a few seconds first (fxPreviewTap), twice; then this opens the sheet.
+  if(el.classList.contains('fx-preset')){ const fm=/fxPickPreset\((\d+)\)/.exec(el.getAttribute('onclick')||''); if(fm && fxPreviewTap(+fm[1])) return; }
   proSheet(nameOf(el), el.getAttribute('data-mod')||'', { kit:(el.dataset.mach||'').trim()||null, groove:el.dataset.groove||null });
  }, true);
 })();
@@ -77930,6 +78444,7 @@ function freeApplyLimits(){
   // The meter steps through the three free ones itself (see meterNudge), so
   // the base buttons, which can only make others, are locked.
   document.querySelectorAll('.ft-meter-base').forEach(b=>modLockEl(b, !modHas('groove'), 'groove'));
+  try{ freeTempoSync(); }catch(e){}
   // Bass and melody generator styles.
   document.querySelectorAll('[data-blstyle]').forEach(b=>{
    modLockEl(b, !freeAllowsStyle(b.dataset.blstyle), 'groove');

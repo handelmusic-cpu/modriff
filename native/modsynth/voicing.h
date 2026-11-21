@@ -114,7 +114,7 @@ class VoiceLead {
   }
 
   // chordVoicing(rootM, relIntvs) with the voicing this strike is under: `voicing` is the slot's own or the setting.
-  std::vector<int> chordVoicing(int rootM, const std::vector<int> &rel, int voicing, const VoicingConfig &c) {
+  std::vector<int> chordVoicing(int rootM, const std::vector<int> &rel, int voicing, const VoicingConfig &c, int bass = INT_MIN) {
     int style = voicing, vk = 0;
     if (c.vary) {
       const int step = vvStep(rootM, rel, c);
@@ -129,7 +129,21 @@ class VoiceLead {
     if (style == kVoiceRnb || style == kVoiceNeo) haveStyled = styledVoicing(rootM, rel, style, vk, c, styled);
     else if (style == kVoiceDrop2 || style == kVoiceDrop3) haveStyled = jazzVoicing(rootM, rel, style == kVoiceDrop3 ? 3 : 2, vk, c, styled);
     if (haveStyled) return styled;
-    return voiceIntervals(rel, style);
+    return spreadFit(rootM, rel, voiceIntervals(rel, style), style, bass);
+  }
+
+  // The page's spreadFit: Spread raises voices an octave on top of a chord voice leading has already seated in C3-G5, so the whole chord comes down an
+  // octave while its top is over G5 (79), as far as C3 and, for a slash chord, never to or under its bass note (`bass`, INT_MIN for none).
+  static std::vector<int> spreadFit(int rootM, const std::vector<int> &rel, const std::vector<int> &out, int style, int bass) {
+    if (style == kVoiceClose || out.empty() || rel.empty()) return out;
+    const int low = bass != INT_MIN ? std::max(48, bass + 1) : 48;
+    const int lo = rootM + *std::min_element(out.begin(), out.end());
+    const int top = rootM + *std::max_element(out.begin(), out.end());
+    int sh = 0;
+    while (top + sh > 79 && lo + sh - 12 >= low) sh -= 12;
+    if (!sh) return out;
+    std::vector<int> r = out; for (int &x : r) x += sh;
+    return r;
   }
 
   // voiceIntervals, without the guitar's shape: Close, and the Spread arrangement for everything else.
