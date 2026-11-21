@@ -38,7 +38,12 @@ class ModRiffViewController: CAPBridgeViewController {
     /// maths of every popover stay in one coordinate system. CSS zoom on the root left getBoundingClientRect in screen pixels and
     /// `style.left` in zoomed ones, which moved every list the page places from a measured button. SceneDelegate raises the
     /// window's minimum size by the same factor so the page never gets less than the 768 pt it is laid out for.
-    static let macPageZoom: CGFloat = 1.15
+    ///
+    /// OFF (1.0) until it is shown to lay out correctly. On the owner's Mac (macOS 27) pageZoom 1.15 scaled the picture but left the
+    /// page laid out for the whole window, so the right edge and the bottom of it (the nav bar and transport) were cut off the window,
+    /// the column sat right of centre, and the 1 px patterns banded. The window capture showed the layout 1.15x the window in both
+    /// directions. It had only been checked in a browser at the zoomed size, never in the app.
+    static let macPageZoom: CGFloat = 1.0
 
     override func viewDidLoad() {
         super.viewDidLoad()

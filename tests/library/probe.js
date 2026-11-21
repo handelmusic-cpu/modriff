@@ -57,12 +57,16 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(400);
   };
+  // The Song header picker (1.9.9.9u) replaced the wide Build | Perform | Library switch, which is still in the page, hidden.
+  const goSong = async (m) => { await tap('#songs-cur'); await tap('#songs-pick [data-m=' + m + ']'); };
   const vis = (sel) => page.evaluate(sel => { const e = document.querySelector(sel); if (!e) return false; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; }, sel);
 
   // ── 1. The sub-nav and the Library.
   const nav = await page.evaluate(() => [...document.querySelectorAll('#songs-subnav .subnav-btn')].map(b => b.textContent.trim()));
-  check(nav.join() === 'Build,Perform,Library', 'the sub-nav is Build, Perform, Library', nav.join());
-  await tap('#songs-library-btn');
+  check(nav.join() === 'Build,Perform,Library', 'the (hidden) sub-nav is still Build, Perform, Library', nav.join());
+  const chipNames = await page.evaluate(() => [...document.querySelectorAll('#songs-pick .ss-chip')].map(b => b.textContent.trim()));
+  check(chipNames.join() === 'Build,Perform,Library', 'the header picker offers Build, Perform, Library', chipNames.join());
+  await goSong('library');
   const lib = await page.evaluate(() => {
     const P = document.getElementById('songs-library-panel');
     return { panel: P.style.display !== 'none',
@@ -95,13 +99,13 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   const landed = await page.evaluate(() => ({ ok: sections.length === 2 && document.getElementById('chart-title').value === 'Grace', build: document.getElementById('songs-build-panel').style.display !== 'none', lib: document.getElementById('songs-library-panel').style.display })); 
   check(landed.ok && landed.build && landed.lib === 'none', 'a touch on a saved song loads it and lands on Build', JSON.stringify(landed));
   // a progression, added as a section
-  await tap('#songs-library-btn');
+  await goSong('library');
   const nSec = await page.evaluate(() => sections.length);
   await tap('#lib-sec-common .lib-row');
   await tap('.ll-act:not(.primary):not(#lib-imp-ireal):not(#lib-imp-sheet)');
   check(await page.evaluate(n => sections.length === n + 1 && songsMode === 'build', nSec), 'a common progression added from the page becomes a section on Build');
   // the importers
-  await tap('#songs-library-btn');
+  await goSong('library');
   await tap('#lib-imp-ireal');
   const ir = await page.evaluate(() => ({ sheet: !!document.querySelector('.lib-sheet'), on: (document.querySelector('.lib-tabs button.on') || {}).textContent, box: !!document.querySelector('.lib-import-in') }));
   check(ir.sheet && ir.on === 'iReal Pro' && ir.box, 'iReal Pro import opens the importer on its tab', JSON.stringify(ir));
@@ -113,7 +117,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   check(await page.evaluate(() => songsMode === 'library'), 'cancelling leaves you on the Library');
 
   // ── 1b. Build has both a tap away, in the card view and the timeline view.
-  await tap('#songs-build-btn');
+  await goSong('build');
   for (const tl of [false, true]) {
     await page.evaluate(tl => document.body.classList.toggle('bt-timeline', tl), tl);
     const v = await page.evaluate(() => [...document.querySelectorAll('#sb-start button')].map(b => { const r = b.getBoundingClientRect(); return { t: b.textContent.replace('›', '').trim(), w: r.width, h: r.height }; }));
@@ -131,7 +135,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
   // ── 1c. The setlist is under Perform, with the song in it, and a touch loads it.
   await page.evaluate(() => { sections = [{ name: 'X', follow: 'repeat', plays: 1, slots: [] }]; curSetlistIdx = -1; });
-  await tap('#songs-perform-btn');
+  await goSong('perform');
   check(await vis('#setlist-items-perform .sl-item'), 'Perform shows the setlist');
   await tap('#setlist-items-perform .sl-item .sl-name');
   check(await page.evaluate(() => sections.length === 2 && document.getElementById('chart-title').value === 'Grace'), 'a touch on a setlist song loads it');
@@ -145,7 +149,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
 
   // ── 2. Chart is a view of Perform.
   await page.evaluate(() => { switchTab('songs'); });
-  await tap('#songs-perform-btn');
+  await goSong('perform');
   const sw = await page.evaluate(() => [...document.querySelectorAll('#pv-switch .tb')].map(b => b.textContent.trim()));
   check(sw.join() === 'Tiles,Chart,Timeline', 'Perform has Tiles | Chart | Timeline', sw.join());
   await tap('#pv-chart');
@@ -155,7 +159,7 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await tap('#pv-tiles');
   check((await page.evaluate(() => [document.getElementById('songs-chart-panel').style.display, getComputedStyle(document.getElementById('songs-full-chart')).display])).join() === 'none,block', 'Tiles brings the tiles back and hides the chart');
   await page.evaluate(() => { setSongsMode('chart'); });
-  const old = await page.evaluate(() => ({ perf: document.getElementById('songs-perform-panel').style.display !== 'none', view: songsPerformViewGet(), active: document.getElementById('songs-perform-btn').classList.contains('active') }));
+  const old = await page.evaluate(() => ({ perf: document.getElementById('songs-perform-panel').style.display !== 'none', view: songsPerformViewGet(), active: document.getElementById('songs-cur-n').textContent === 'Perform' }));   // the header names the page (the hidden switch's .active is not what a person sees)
   check(old.perf && old.view === 'chart' && old.active, 'setSongsMode(\'chart\') (Find, an old link) lands on Perform’s Chart view', JSON.stringify(old));
 
   // ── 3. The sheet's Setups.

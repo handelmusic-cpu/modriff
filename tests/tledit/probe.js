@@ -5,10 +5,10 @@
      - the switch is there for the Practice Pack and not without it; the strip is hidden while
        the timeline is up; it shows only the section being edited, one column per chord;
      - a touch on a column selects that chord and the strip's own controls open under it;
-     - a JOIN between two chords on a card is a handle you can drag: it snaps to a beat, the
+     - a JOIN between two chords on a card is a handle you can drag: it snaps to an eighth, the
        two chords keep their sum, neither goes to nothing, the panel says where the second
        one lands while you drag ("bar 1, beat 4") and the edit is one Undo;
-     - a drag that does not reach the next beat changes nothing and leaves no toast;
+     - a drag that does not reach the next eighth changes nothing and leaves no toast;
      - Even shares a line out equally, 1 / 2 / 4 bars makes the line that long with its
        chords in proportion, Split cuts a chord in two (the words stay on the first half),
        and each is one Undo;
@@ -104,17 +104,17 @@ const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what +
   await undo();
   const d2 = await durs();
   check(JSON.stringify(d2) === JSON.stringify(d0), 'one Undo puts it back', JSON.stringify(d2));
-  // no change for a nudge that does not reach the next beat
+  // no change for a nudge that does not reach the next eighth (a join snaps to an eighth, 1.9.9.9t)
   await page.evaluate(() => { const t = document.getElementById('_toast'); if (t) t.textContent = ''; });
   const t0 = await page.evaluate(() => (document.getElementById('_toast') || {}).textContent || '');
-  await drag('#chart-timeline .tl-join[data-ci="0"]', beatPx * 0.3);
+  await drag('#chart-timeline .tl-join[data-ci="0"]', beatPx * 0.2);
   const d3 = await durs();
   const t1 = await page.evaluate(() => (document.getElementById('_toast') || {}).textContent || '');
-  check(JSON.stringify(d3) === JSON.stringify(d0) && t1 === t0, 'a drag short of the next beat changes nothing and makes no toast', JSON.stringify([d3.slice(0, 2), t1]));
+  check(JSON.stringify(d3) === JSON.stringify(d0) && t1 === t0, 'a drag short of the next eighth changes nothing and makes no toast', JSON.stringify([d3.slice(0, 2), t1]));
   // clamp: far left cannot take the first chord to nothing
   await drag('#chart-timeline .tl-join[data-ci="0"]', -beatPx * 8);
   const d4 = await durs();
-  check(d4[0] >= 2 && d4[0] + d4[1] === d0[0] + d0[1], 'dragged all the way left it stops at a beat (the first chord keeps one)', JSON.stringify(d4.slice(0, 2)));
+  check(d4[0] >= 1 && d4[0] + d4[1] === d0[0] + d0[1], 'dragged all the way left it stops at an eighth (the first chord keeps one)', JSON.stringify(d4.slice(0, 2)));
   await undo();
 
   // ── 4. Even, 1 / 2 / 4 bars, Split.
