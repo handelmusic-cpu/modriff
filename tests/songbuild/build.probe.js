@@ -22,6 +22,24 @@ const click = (page, sel, i) => page.evaluate(([s, n]) => { const e = document.q
 const overflowing = (page, root) => page.evaluate(r => [...document.querySelectorAll(r + ' button')]
   .filter(b => b.offsetParent && b.scrollWidth > b.clientWidth + 1).map(b => (b.textContent || '').trim().slice(0, 20) + ' ' + b.scrollWidth + '>' + b.clientWidth), root || '#songs-build-panel');
 
+// The join-drag helpers: eighths of every chord in the section, the toast text, pixels a beat on the first card, and a real mouse drag
+// of the join after chord `ci` by `dx` px (returns the readout text mid-drag).
+function joinTools(page) {
+  return {
+    eighths: () => page.evaluate(() => sections[curSection].slots.map(x => _slotE(x))),
+    toast: () => page.evaluate(() => (document.getElementById('_toast') || {}).textContent || ''),
+    beatPx: () => page.evaluate(() => { const r = document.querySelector('#chart-timeline .tl-card .tl-row').getBoundingClientRect();
+      const n = sections[curSection].slots.reduce((a, x) => a + _slotBeats(x), 0); return r.width / n; }),
+    dragJoin: async (ci, dx) => {
+      const b = await page.evaluate(i => { const e = document.querySelector('#chart-timeline .tl-join[data-ci="' + i + '"]'); e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, ci);
+      await page.mouse.move(b.x, b.y); await page.mouse.down();
+      for (let i = 1; i <= 8; i++) await page.mouse.move(b.x + dx * i / 8, b.y);
+      const mid = await page.evaluate(() => (document.getElementById('tl-where') || {}).textContent || '');
+      await page.mouse.up(); await page.waitForTimeout(150); return mid;
+    },
+  };
+}
+
 (async () => {
   const h = await L.start(), R = L.reporter();
   try {
@@ -156,17 +174,7 @@ const overflowing = (page, root) => page.evaluate(r => [...document.querySelecto
     // ── Task 6: a chord can change on any eighth (dragging a join on the timeline snaps to an eighth) ──
     {
       const { page, ctx, errs } = await openBuild(h, 'p430');
-      const eighths = () => page.evaluate(() => sections[curSection].slots.map(x => _slotE(x)));
-      const toast = () => page.evaluate(() => (document.getElementById('_toast') || {}).textContent || '');
-      const beatPx = () => page.evaluate(() => { const r = document.querySelector('#chart-timeline .tl-card .tl-row').getBoundingClientRect();
-        const n = sections[curSection].slots.reduce((a, x) => a + _slotBeats(x), 0); return r.width / n; });
-      const dragJoin = async (ci, dx) => {
-        const b = await page.evaluate(i => { const e = document.querySelector('#chart-timeline .tl-join[data-ci="' + i + '"]'); e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, ci);
-        await page.mouse.move(b.x, b.y); await page.mouse.down();
-        for (let i = 1; i <= 8; i++) await page.mouse.move(b.x + dx * i / 8, b.y);
-        const mid = await page.evaluate(() => (document.getElementById('tl-where') || {}).textContent || '');
-        await page.mouse.up(); await page.waitForTimeout(150); return mid;
-      };
+      const { eighths, toast, beatPx, dragJoin } = joinTools(page);
       await page.evaluate(() => { sections[curSection].slots.forEach(x => { x.bars = 1; x.beats = 0; x.eighths = 0; }); tlRefresh(); });
       await page.waitForTimeout(300);
       let e0 = await eighths(), px = await beatPx();
@@ -194,6 +202,55 @@ const overflowing = (page, root) => page.evaluate(r => [...document.querySelecto
       const after = await eighths();
       R.check(after[0] >= 1 && after[1] >= 1 && after[0] + after[1] === before[0] + before[1], 'a pair that is one beat in all keeps at least an eighth each', JSON.stringify([before, after]));
       R.check(errs.length === 0, 'no page errors while dragging', errs.join('|'));
+      await ctx.close();
+    }
+
+    // ── Review fixes: odd meters, the shut Length row, and a wobble on a long card ──
+    {
+      // A shut Length row says what the length is, including the lengths no button matches.
+      const { page, ctx } = await openBuild(h, 'se375');
+      await click(page, '#chart-inspector .ci-nudge button', 1);
+      await page.evaluate(() => [...document.querySelectorAll('#chart-inspector .ci-lbl')].filter(l => l.textContent === 'Length')[0].click());
+      const sum = await page.evaluate(() => [...document.querySelectorAll('#chart-inspector .ci-row.ci-rshut')].filter(r => r.querySelector('.ci-lbl').textContent === 'Length').map(r => r.querySelector('.ci-sum').textContent)[0]);
+      R.check(sum === '1 bar + \u00bd beat', 'a shut Length row shows its length even when no button is lit', JSON.stringify(sum));
+      await ctx.close();
+    }
+    {
+      // A wobble on a long card (eight bars, about 12 px a beat) is not an edit; a deliberate drag is.
+      const { page, ctx } = await openBuild(h, 'p430');
+      await page.evaluate(() => { const p = document.getElementById('chart-chord-picker'); for (let i = 0; i < 5; i++) p.children[0].querySelector('.cpick-tri').click();
+        sections[curSection].slots.forEach(x => { x.bars = 1; x.beats = 0; x.eighths = 0; }); sections[curSection].slots[0].ln = true; tlRefresh(); });   // a marked line may run to eight bars
+      await page.waitForTimeout(300);
+      const { eighths, toast, dragJoin, beatPx } = joinTools(page);
+      const px = await beatPx(), t0 = await toast();
+      await dragJoin(0, 4);
+      R.check(JSON.stringify((await eighths()).slice(0, 2)) === '[8,8]' && await toast() === t0, 'a 4 px wobble on an eight-bar card changes nothing and makes no toast', px.toFixed(1) + ' px a beat');
+      await dragJoin(0, 8);
+      R.check(JSON.stringify((await eighths()).slice(0, 2)) === '[9,7]', 'an 8 px drag on the same card moves the join an eighth', JSON.stringify((await eighths()).slice(0, 2)));
+      await ctx.close();
+    }
+    {
+      // 7/8: a bar is seven eighths. The nudge steps through every eighth and a drag keeps the pair's sum.
+      const { page, ctx, errs } = await openBuild(h, 'p430', () => setMeter(7, 8));
+      const { eighths, dragJoin } = joinTools(page);
+      await page.evaluate(() => { sections[curSection].slots.forEach(x => { x.bars = 1; x.beats = 0; x.eighths = 0; }); renderChartSeq(); });
+      await page.waitForTimeout(300);
+      R.check(JSON.stringify((await eighths())) === '[7,7,7]', '7/8: a bar is seven eighths', JSON.stringify(await eighths()));
+      await click(page, '#chart-inspector .ci-nudge button', 1);
+      const up1 = [await read(page), JSON.stringify(await slotOf(page))];
+      await click(page, '#chart-inspector .ci-nudge button', 1);
+      const up2 = [await read(page), JSON.stringify(await slotOf(page))];
+      R.check(up1[0] === '1 bar + \u00bd beat' && up1[1] === '[1,0,1]', '7/8: +1/8 from a bar is a bar and an eighth', JSON.stringify(up1));
+      R.check(up2[0] === '1 bar + 1 beat' && up2[1] === '[1,1,0]', '7/8: +1/8 again is a bar and a beat', JSON.stringify(up2));
+      await click(page, '#chart-inspector .ci-nudge button', 0); await click(page, '#chart-inspector .ci-nudge button', 0);
+      R.check(await read(page) === '1 bar' && JSON.stringify(await slotOf(page)) === '[1,0,0]', '7/8: -1/8 twice comes back to a bar', await read(page));
+      await page.evaluate(() => tlRefresh()); await page.waitForTimeout(300);
+      const px = await page.evaluate(() => { const r = document.querySelector('#chart-timeline .tl-card .tl-row').getBoundingClientRect(); return r.width / sections[curSection].slots.reduce((a, x) => a + _slotBeats(x), 0); });
+      const before = await eighths();
+      await dragJoin(0, px * 0.5);
+      const after = await eighths();
+      R.check(after[0] + after[1] === before[0] + before[1] && after[0] === before[0] + 1, '7/8: dragging a join an eighth keeps the pair at fourteen eighths', JSON.stringify([before.slice(0, 2), after.slice(0, 2)]));
+      R.check(errs.length === 0, '7/8: no page errors', errs.join('|'));
       await ctx.close();
     }
   } finally { await h.close(); }

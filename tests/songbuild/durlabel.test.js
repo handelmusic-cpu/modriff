@@ -17,11 +17,14 @@ const rowSrc = grab(/\nvar SB_LEN_ROW\s*=\s*\[[\s\S]*?\n\];/);
 ok(fnSrc !== '', '_slotDurLabel is in index.html');
 ok(rowSrc !== '', 'SB_LEN_ROW is in index.html');
 
-// The page's own _slotBeats (a bar is _songBarSteps() sixteenths; zero means "a bar"), with the bar length as a variable.
+// The page's own _slotBeats and _tlWhere, lifted (not copied: a copy would keep passing if the real one changed), with the bar length
+// as a variable.
+const beatsSrc = grab(/\nfunction _slotBeats\([\s\S]*?\n\}\n/);
+const whereSrc = grab(/\nfunction _tlWhere\([\s\S]*?\n\}\n/);
+ok(beatsSrc !== '' && whereSrc !== '', '_slotBeats and _tlWhere are in index.html');
 const make = steps => vm.runInNewContext(
   'var _steps=' + steps + ';function _songBarSteps(){return _steps;}' +
-  'function _slotBeats(slot){var s=_songBarSteps();var q=((slot.bars||0)*s+(slot.beats||0)*4+(slot.eighths||0)*2)/4;return q>0?q:s/4;}' +
-  fnSrc + rowSrc + ';({_slotDurLabel:typeof _slotDurLabel==="function"?_slotDurLabel:null, SB_LEN_ROW:typeof SB_LEN_ROW!=="undefined"?SB_LEN_ROW:null});', {});
+  beatsSrc + whereSrc + fnSrc + rowSrc + ';({_slotDurLabel:typeof _slotDurLabel==="function"?_slotDurLabel:null, SB_LEN_ROW:typeof SB_LEN_ROW!=="undefined"?SB_LEN_ROW:null, _tlWhere:_tlWhere});', {});
 const four = make(16), three = make(12);
 const lab = (M, s) => M._slotDurLabel ? M._slotDurLabel(Object.assign({ bars: 0, beats: 0, eighths: 0 }, s)) : '(missing)';
 
@@ -48,6 +51,14 @@ ok(four.SB_LEN_ROW && four.SB_LEN_ROW.every(p => typeof p.title === 'string' && 
   'every Length option has a title (its tooltip)');
 if (four.SB_LEN_ROW) eq(four.SB_LEN_ROW.map(p => [p.bars, p.beats, p.eighths]),
   [[0, 0, 1], [0, 1, 0], [0, 2, 0], [1, 0, 0], [2, 0, 0], [4, 0, 0]], 'what each option stores (bars, beats, eighths)');
+
+// The drag readout: "and a half" is a half beat INTO the bar, so in a 7/8 bar (3.5 beats) the downbeat of bar 2 is not one.
+const seven = make(14);
+eq(four._tlWhere(4.5), 'bar 2, beat 1 and a half', '4/4: half a beat into bar 2');
+eq(four._tlWhere(4), 'bar 2, beat 1', '4/4: the downbeat of bar 2');
+eq(seven._tlWhere(3.5), 'bar 2, beat 1', '7/8: 3.5 beats is the downbeat of bar 2');
+eq(seven._tlWhere(4), 'bar 2, beat 1 and a half', '7/8: half a beat into bar 2');
+eq(seven._tlWhere(3), 'bar 1, beat 4', '7/8: beat 4 of bar 1');
 
 console.log(fail ? fail + ' failed, ' + pass + ' passed' : 'ok ' + pass + ' passed');
 process.exit(fail ? 1 : 0);

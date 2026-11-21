@@ -16425,7 +16425,11 @@ function slotFromChordSymbol(sym, keyRoot, keyMode, nearM){
 // eighths (8 in 4/4, 6 in 3/4); the grid a chord is cut to is the beat, which is two.
 function slotDurFromEighths(e, barE){
  e = Math.max(1, Math.round(e));
- return {bars: Math.floor(e / barE), beats: Math.floor((e % barE) / 2), eighths: e % 2};
+ // What is left after the whole bars is split into beats and an eighth. The eighth is the bar's own remainder being odd, not the
+ // total: with e % 2 a bar of seven eighths (7/8) plus one stored as a bare bar, so the eighth nudge sat still and a dragged join
+ // lost an eighth of the song.
+ const r = e % barE;
+ return {bars: Math.floor(e / barE), beats: Math.floor(r / 2), eighths: r % 2};
 }
 // n shares of `units` beats, in proportion to `weights`, each at least one beat,
 // handed out by largest remainder so the shares add up to exactly `units`.
@@ -43629,7 +43633,7 @@ function _ciFoldWire(ins, tools, body){
    lb.title=(shut?'Show ':'Hide ')+key.toLowerCase();
    if(shut){
     var on=row.querySelector('.ci-seg .on') || (key==='Bass' ? row.querySelector('.ci-seg button') : null), inp=row.querySelector('input');
-    sum.textContent = on ? on.textContent : (inp ? (inp.value || 'none') : '');
+    sum.textContent = key==='Length' ? ((row.querySelector('.ci-nudge-read')||{}).textContent || '') : (on ? on.textContent : (inp ? (inp.value || 'none') : ''));
    }
   };
   var flip=function(){ if(F.rows[key]) delete F.rows[key]; else F.rows[key]=1; _ciFoldSave(); paintRow(); };
@@ -49067,8 +49071,9 @@ function _tlLineAt(si, ci){
 }
 // "bar 2, beat 3" for a position in beats from the start of the section.
 function _tlWhere(beatsFromStart){
- var per = _songBarSteps()/4, b = Math.floor(beatsFromStart / per) + 1, n = Math.floor(beatsFromStart % per) + 1;
- return 'bar '+b+', beat '+n+((beatsFromStart % 1) >= 0.5 ? ' and a half' : '');
+ var per = _songBarSteps()/4, b = Math.floor(beatsFromStart / per) + 1, inBar = beatsFromStart % per, n = Math.floor(inBar) + 1;
+ // "and a half" is half a beat INTO the bar: a 7/8 bar is 3.5 beats, so 3.5 from the start is the downbeat of bar 2, not a half.
+ return 'bar '+b+', beat '+n+((inBar % 1) >= 0.5 ? ' and a half' : '');
 }
 function _tlSecBefore(si, ci){ var t=0; for(var i=0; i<ci; i++) t+=_slotBeats(sections[si].slots[i]); return t; }
 function tlRefresh(){
@@ -49100,7 +49105,7 @@ function tlJoinDown(ev, si, ci, row){
  jn.classList.add('drag');
  var info = document.getElementById('tl-where');
  var move = function(e){
-  var dx = e.clientX - x0; if(Math.abs(dx) > 3) moved = true;
+  var dx = e.clientX - x0; if(Math.abs(dx) > 6) moved = true;   // 6 px, not 3: an eighth is a few px on a long card, and a finger wobbles more than that
   // Where the join would be, in beats after the start of A, snapped to an eighth and kept
   // clear of both ends so neither chord goes to nothing.
   a1 = Math.max(unit, Math.min(sum - unit, Math.round((a0 + dx/px) / unit) * unit));
