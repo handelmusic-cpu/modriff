@@ -112,6 +112,63 @@ const same = a => a.every(x => x !== null && Math.abs(x - a[0]) <= 2);
       R.check(errs.length === 0, 'no song loaded: Play, Next and Prev throw nothing', errs.join('|'));
       await ctx.close();
     }
+
+    // ── Task 3: widgets, and the switch that hides them ───────────────────────
+    const WIDGET_SEL = { endings: '#songs-ending-row', practice: '#songs-practice-row', key: '.pf-w-key', setlist: '#songs-perform-panel > .panel' };
+    const shown = (page, sel) => page.evaluate(s => [...document.querySelectorAll(s)].some(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).display !== 'none'; }), sel);
+    const allShown = async page => { for (const w of Object.keys(WIDGET_SEL)) if (!await shown(page, WIDGET_SEL[w])) return false; return true; };
+    const checks = page => page.evaluate(() => [...document.querySelectorAll('#pf-wsheet input[data-w]')].map(c => c.dataset.w + ':' + c.checked).join());
+    const stored = page => page.evaluate(() => localStorage.getItem('modo-perform-widgets'));
+    {
+      const { page, ctx, errs } = await openSong(h, 'se375');
+      await loadSong(page); await page.waitForTimeout(300);
+      R.check(await allShown(page), 'widgets: Endings, Practice, key controls and the Setlist are all shown by default');
+      const wb = await box(page, '#pf-widgets-btn');
+      R.check(wb && wb.shown && wb.h >= 44 && !(await box(page, '#pf-wsheet')).shown && await attr(page, '#pf-widgets-btn', 'aria-expanded') === 'false', 'widgets: the switch is a 44 pt button with its sheet closed', JSON.stringify(wb));
+      await click(page, '#pf-widgets-btn'); await page.waitForTimeout(100);
+      const labels = await page.evaluate(() => [...document.querySelectorAll('#pf-wsheet label')].map(l => l.textContent.trim().replace(/\s+/g, ' ')));
+      R.check(labels.length === 4 && /^Endings/.test(labels[0]) && /^Practice/.test(labels[1]) && /^Key and saved settings/.test(labels[2]) && /^Setlist/.test(labels[3]) && await checks(page) === 'endings:true,practice:true,key:true,setlist:true' && await attr(page, '#pf-widgets-btn', 'aria-expanded') === 'true',
+        'widgets: the sheet lists Endings, Practice, Key and saved settings, Setlist, all checked', JSON.stringify(labels));
+      const rows = await page.evaluate(() => [...document.querySelectorAll('#pf-wsheet label')].map(l => Math.round(l.getBoundingClientRect().height)));
+      R.check(rows.every(x => x >= 44), 'widgets: each checklist row is 44 pt tall', rows.join());
+      await page.evaluate(() => { const c = document.querySelector('#pf-wsheet input[data-w=endings]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); });
+      R.check(!await shown(page, '#songs-ending-row') && await stored(page) === '["endings"]' && await shown(page, '#songs-practice-row'), 'widgets: unchecking Endings hides it, stores ["endings"], and leaves the others', await stored(page));
+      await page.evaluate(() => { const c = document.querySelector('#pf-wsheet input[data-w=endings]'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); });
+      R.check(await shown(page, '#songs-ending-row') && await stored(page) === '[]', 'widgets: checking it brings it back');
+      // A hidden widget keeps its state: an armed ending is still armed when Endings is hidden and shown again.
+      await page.evaluate(() => { songEnding = 'ritard'; _updateEndingUI(); const c = document.querySelector('#pf-wsheet input[data-w=endings]'); c.checked = false;   // armed directly: armEnding lands at once when nothing is playing
+         c.dispatchEvent(new Event('change', { bubbles: true })); });
+      const hiddenArmed = await page.evaluate(() => songEnding);
+      await page.evaluate(() => { const c = document.querySelector('#pf-wsheet input[data-w=endings]'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); });
+      R.check(hiddenArmed === 'ritard' && await page.evaluate(() => songEnding === 'ritard' && document.querySelector('#songs-ending-row [data-ending=ritard]').classList.contains('armed')), 'widgets: an armed ending stays armed while its widget is hidden, and shows armed again');
+      await page.evaluate(() => { songEnding = null; _updateEndingUI(); });
+      // The choice survives a reload.
+      await page.evaluate(() => { const c = document.querySelector('#pf-wsheet input[data-w=practice]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); });
+      await page.reload(); await page.waitForTimeout(1500);
+      await page.evaluate(() => { const b = document.querySelector('#unlock-choices button'); if (b) b.click(); }); await page.waitForTimeout(500);
+      await page.evaluate(() => { switchTab('songs'); setSongsMode('perform'); }); await page.waitForTimeout(300);
+      R.check(!await shown(page, '#songs-practice-row') && await shown(page, '#songs-ending-row') && await checks(page) === 'endings:true,practice:false,key:true,setlist:true', 'widgets: the choice survives a reload', await checks(page));
+      R.check(errs.length === 0, 'widgets: no page errors', errs.join('|'));
+      await ctx.close();
+    }
+    // Hostile storage: never a throw, never a widget stuck hidden with no way back.
+    for (const [name, val] of [['not json', 'not json'], ['an object', '{"a":1}'], ['a number', '7'], ['unknown names', '["bogus"]'], ['500 names', JSON.stringify(Array.from({ length: 500 }, (_, i) => 'x' + i))], ['non-strings', '[1,null,{"a":1}]']]) {
+      const { page, ctx, errs } = await openSong(h, 'se375', () => localStorage.setItem('modo-perform-widgets', 'x'));
+      await page.evaluate(v => { localStorage.setItem('modo-perform-widgets', v); setSongsMode('perform'); }, val); await page.waitForTimeout(300);
+      R.check(await allShown(page) && await checks(page) === 'endings:true,practice:true,key:true,setlist:true' && errs.length === 0, 'storage ' + name + ': every widget is shown, every checkbox is checked, no page error', errs.join('|'));
+      await ctx.close();
+    }
+    {
+      // At a small phone: five endings on one line, the key stepper not clipped.
+      const { page, ctx } = await openSong(h, 'se375');
+      await loadSong(page); await page.waitForTimeout(300);
+      const endTops = await page.evaluate(() => [...document.querySelectorAll('#songs-ending-row .end-btn')].map(b => Math.round(b.getBoundingClientRect().top)));
+      R.check(endTops.length === 5 && new Set(endTops).size === 1, 'widgets: the five endings share one line at 375 pt', endTops.join());
+      const key = await page.evaluate(() => { const g = document.querySelector('.tg.pf-w-key'); if (!g) return null; const gr = g.getBoundingClientRect(); return { clipped: g.scrollWidth > g.clientWidth + 1,
+        inside: [...g.children].every(c => { const r = c.getBoundingClientRect(); return r.left >= gr.left - 1 && r.right <= gr.right + 1; }) }; });
+      R.check(key && !key.clipped && key.inside, 'widgets: the key stepper (minus, key name, plus) sits inside its box without clipping', JSON.stringify(key));
+      await ctx.close();
+    }
   } finally { await h.close(); }
   R.done();
 })().catch(e => { console.error(e); process.exitCode = 1; });
