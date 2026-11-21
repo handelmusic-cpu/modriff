@@ -7107,6 +7107,17 @@ body.hide-church-modes .church-mode-btn { display:none !important; }
   #bm-bass-panel, #bm-melody-panel, #bm-bass-panel .bl-page-wrap, #bm-melody-panel .bl-page-wrap, #ac-drums-panel, #ac-drums-panel > .sq-wrap { max-width:none; }
 }
 
+/* The Mac window (about 1100 pt of page after the zoom) left the Bass and Melody rolls in a 700 pt column with 200 pt of nothing
+   either side. They take the width, and the rolls size their steps to it (_prMeasureColW) and their rows and height to the window
+   (prLayout, `macWide`). */
+@media (min-width:1000px){
+  html.mac-app #bm-bass-panel, html.mac-app #bm-melody-panel,
+  html.mac-app #bm-bass-panel .bl-page-wrap, html.mac-app #bm-melody-panel .bl-page-wrap { max-width:none; }
+  /* 90%, not all of it: a roll to the very edges has nowhere to put the pointer that scrolls the page, and the wheel over a roll
+     scrolls the roll, so the whole page seemed to be the roll. The 5% gutters either side are page. */
+  html.mac-app #bm-bass-panel .bl-page-wrap, html.mac-app #bm-melody-panel .bl-page-wrap { max-width:90%; margin-left:auto; margin-right:auto; }
+}
+
 /* ── Accomp: one vertical order for every part ──────────────────────────────
    The four panels were built at different times and drifted apart, so a control
    that exists on more than one of them was in a different place depending on
@@ -10284,7 +10295,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9x</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9y</span></div>
  </div>
 </div>
 
@@ -11765,7 +11776,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9x</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9y</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12984,7 +12995,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9x';
+const MODRIFF_VERSION = '1.9.9.9y';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -71140,6 +71151,8 @@ function gridPinchBind(el, kind){
 // the step count changes, and both of those already go through prLayout(), so
 // the measurement belongs there and the answer belongs in a cache.
 const _PR_COL_W_CACHE = {};
+// The Mac window: wide enough (>= 1000 css px after its zoom) that a bar of sixteen should fill the roll, not stop at a phone's 46 pt a step.
+function _prMacWide(){ try{ return document.documentElement.classList.contains('mac-app') && (window.innerWidth||0) >= 1000; }catch(e){ return false; } }
 function _prMeasureColW(id, steps){
  // Measured off the roll, less the key gutter, rather than off .pr-scroll —
  // which is sized by its own canvas now that it no longer scrolls, and would
@@ -71157,7 +71170,7 @@ function _prMeasureColW(id, steps){
   short = window.matchMedia('(orientation:landscape) and (max-height:520px)').matches;
  }catch(e){}
  if(!avail || !steps) return 26;
- const fit = land ? Math.max(20, Math.min(short ? 64 : 46, Math.floor(avail / Math.min(steps, 16))))
+ const fit = land ? Math.max(20, Math.min(short ? 64 : (_prMacWide() ? 150 : 46), Math.floor(avail / Math.min(steps, 16))))
                   : Math.max(16, Math.min(46, Math.floor(avail / steps)));
  return Math.max(12, Math.min(160, Math.round(fit * Math.max(1, gridZoom()))));
 }
@@ -71312,10 +71325,14 @@ function prLayout(id){
  const z = gridZoom(), H = window.innerHeight || 700;
  let short = false; try{ short = window.matchMedia('(orientation:landscape) and (max-height:520px)').matches; }catch(e){}
  const up = Math.max(0, Math.min(1, (z - 1) / 0.7));
- const capPx = Math.round(Math.min((short ? 0.58 : 0.40) * H + up * 0.14 * H, 340 + up * 140));
+ // A Mac window is wide and has the height to match: the box takes what is left under the page's header and above the transport
+ // (about 400 pt of chrome: the strip, the tabs, the pick row, the roll's own toolbar and the transport), and the rows grow 26% so the steps and the rows stay in proportion once the steps have the width.
+ const macWide = _prMacWide();
+ let capPx = Math.round(Math.min((short ? 0.58 : 0.40) * H + up * 0.14 * H, 340 + up * 140));
+ if(macWide) capPx = Math.max(capPx, Math.min(Math.round(H - 400), 760));
  PR_RULER_H = z >= 1.5 ? 30 : 14;
  const rowFit = Math.max(4, Math.floor((capPx - PR_RULER_H - 2) / rows));
- PR_ROW_H = Math.max(rowFit, Math.min(88, Math.round(22 * z)));
+ PR_ROW_H = Math.max(rowFit, Math.min(88, Math.round(22 * z * (macWide ? 1.26 : 1))));
  const roll = document.getElementById(id+'-pr'); if(roll){ roll.style.maxHeight = capPx + 'px'; roll.classList.toggle('pr-zoomed', z > 1); }
  const rh = document.getElementById(id+'-pr-ruler'); if(rh && rh.parentNode) rh.parentNode.style.height = PR_RULER_H + 'px';
  prZoomSync();
