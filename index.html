@@ -10225,7 +10225,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9t</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9u</span></div>
  </div>
 </div>
 
@@ -11706,7 +11706,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9t</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9u</span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12906,7 +12906,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 // hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
 // Not the only release number in the repo: sw.js has its own VERSION, which is
 // a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9t';
+const MODRIFF_VERSION = '1.9.9.9u';
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -21608,7 +21608,7 @@ function psRollKnob(){
  // A tap steps on and wraps back to the slowest after the fastest.
  var up=function(){ if(y0!=null && !moved){ var n=(PS.roll+1)%PS_ROLLS.length; PS.roll=n; psSavePrefs(); paint(); } y0=null; };
  k.addEventListener('pointerup', up); k.addEventListener('pointercancel', function(){ y0=null; });
- k.addEventListener('wheel', function(e){ e.preventDefault(); set(PS.roll+(e.deltaY<0?1:-1)); }, {passive:false});
+ k.addEventListener('wheel', function(e){ if(!wheelEdits(e)) return; e.preventDefault(); set(PS.roll+(e.deltaY<0?1:-1)); }, {passive:false});
  k.addEventListener('keydown', function(e){
   if(e.key==='ArrowUp'||e.key==='ArrowRight'){ e.preventDefault(); set(PS.roll+1); }
   else if(e.key==='ArrowDown'||e.key==='ArrowLeft'){ e.preventDefault(); set(PS.roll-1); }
@@ -22200,7 +22200,7 @@ function psKnob(k){
   var end=function(){ drag=false; };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
   cv.addEventListener('dblclick', function(){ put(k.def); });
-  cv.addEventListener('wheel', function(e){ e.preventDefault(); put(v + (e.deltaY<0?1:-1)*Math.max(1,(k.max-k.min)/50)); }, {passive:false});
+  cv.addEventListener('wheel', function(e){ if(!wheelEdits(e)) return; e.preventDefault(); put(v + (e.deltaY<0?1:-1)*Math.max(1,(k.max-k.min)/50)); }, {passive:false});
   cv.addEventListener('keydown', function(e){
    var st=Math.max(1,(k.max-k.min)/50);
    if(e.key==='ArrowUp'||e.key==='ArrowRight'){ e.preventDefault(); put(v+st); }
@@ -47534,6 +47534,13 @@ const midiChordTokens = {};
 //
 // One delegated listener, so this reaches all of them — including any added
 // later — and none of them need their markup or their oninput touched.
+// The wheel only edits a control when Option (Alt) is held. Every control that
+// took the wheel used to cancel the scroll and step itself on each event, so
+// scrolling Settings with a trackpad turned whatever knob the pointer was over
+// and stopped the page moving under it: the Drive slider went to 100% (the
+// whole mix distorted) with nobody having touched it, as did Width, Reso and
+// Sweep. A plain scroll now scrolls the page.
+function wheelEdits(e){ return !!e.altKey; }
 const SLIDER_FINE_ZONES = [
  {beyond:70, scale:1/12, label:'fine ×12'},
  {beyond:26, scale:1/4,  label:'fine ×4'},
@@ -47716,6 +47723,7 @@ function _slZone(dy){
   const t=e.target;
   if(!t || t.tagName!=='INPUT' || (t.type||'').toLowerCase()!=='range') return;
   if(t.disabled || t.readOnly) return;
+  if(!wheelEdits(e)) return;
   e.preventDefault();
   const st=stepOf(t);
   const mult = e.shiftKey ? 10 : 1;
@@ -55442,7 +55450,7 @@ function _bpmPopIsOpen(){ return !!document.getElementById('ft-bpm-pop')?.classL
  };
  el.addEventListener('pointerup', end);
  el.addEventListener('pointercancel', end);
- el.addEventListener('wheel', e=>{ e.preventDefault(); nudgeBpm(e.deltaY<0?1:-1); }, {passive:false});
+ el.addEventListener('wheel', e=>{ if(!wheelEdits(e)) return; e.preventDefault(); nudgeBpm(e.deltaY<0?1:-1); }, {passive:false});
  // The readout reports itself as a slider, so it has to behave like one for
  // the keyboard too. stopPropagation matters: these are document-level keys
  // elsewhere (arrows drive key nav, Space is play/stop) and a focused tempo
@@ -59003,6 +59011,7 @@ function sqAttachKnob(cvs, valEl, initVal, min, max, type, onChange){
 
   // Scroll wheel fine-tune
   cvs.addEventListener('wheel', function(e){
+    if(!wheelEdits(e)) return;
     e.preventDefault();
     var step = type==='pitch' ? 1 : 2;
     setVal(val + (e.deltaY < 0 ? step : -step));
@@ -59105,6 +59114,7 @@ function knobify(inp){
   var now = Date.now(); if(now - lastTap < 300) put(parseFloat(inp.defaultValue), true); lastTap = now;
  });
  wrap.addEventListener('wheel', function(e){
+  if(!wheelEdits(e)) return;
   e.preventDefault(); var r = rng(); put(cur() + (e.deltaY < 0 ? 1 : -1) * r.step * (e.shiftKey ? 1 : Math.max(1, Math.round((r.max-r.min)/r.step/50))), true);
  }, {passive:false});
  wrap.addEventListener('keydown', function(e){
@@ -70370,7 +70380,7 @@ function _mixBuildPan(ch){
  // A mouse's double-click arrives as one press with a click count, not two
  // quick presses, so it needs its own way to centre.
  el.addEventListener('dblclick',function(e){ e.preventDefault(); center(); });
- el.addEventListener('wheel',function(e){ e.preventDefault(); set(raw+(e.deltaY<0?0.05:-0.05)); },{passive:false});
+ el.addEventListener('wheel',function(e){ if(!wheelEdits(e)) return; e.preventDefault(); set(raw+(e.deltaY<0?0.05:-0.05)); },{passive:false});
  el.addEventListener('keydown',function(e){
   var step=e.shiftKey?0.2:0.05;
   if(e.key==='ArrowRight'||e.key==='ArrowUp') set(val+step);
