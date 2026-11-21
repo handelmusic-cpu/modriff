@@ -189,7 +189,7 @@ const same = a => a.every(x => x !== null && Math.abs(x - a[0]) <= 2);
       await loadSong(page);
       await page.evaluate(l => { if (l) document.body.classList.add('light-mode'); songsPickToggle(true); }, light); await page.waitForTimeout(300);
       const t = (light ? 'Light: ' : 'dark: ');
-      const targets = ['#songs-cur', '#songs-pick .ss-chip.on', '#songs-pick .ss-chip:not(.on)', '#pv-tiles', '#pv-chart', '#pv-stage', '#songs-ending-row .ms-lbl', '#songs-ending-row .end-btn', '#pf-widgets-btn'];
+      const targets = ['#songs-cur', '#songs-pick .ss-chip.on', '#songs-pick .ss-chip:not(.on)', '#pv-tiles', '#pv-chart', '#pv-stage', '#songs-ending-row .ms-lbl', '#songs-ending-row .end-btn', '#pf-widgets-btn', '#songs-setlist-nav .pf-cap', '#prev-section-btn .pf-cap'];
       const got = await page.evaluate(([f, ts]) => { const fn = eval('(' + f + ')'); return ts.map(s => [s, fn(s)]); }, [CONTRAST.toString(), targets]);
       const low = got.filter(([s, c]) => c !== null && c < 4.5);
       R.check(got.every(([s, c]) => c !== null) && low.length === 0, t + 'text on the header, chips, tabs, Stage, captions, endings and the widgets switch is at least 4.5:1', JSON.stringify(low.length ? low : got.map(g => g[1])));
@@ -264,6 +264,29 @@ const same = a => a.every(x => x !== null && Math.abs(x - a[0]) <= 2);
       const { page, ctx, errs } = await openSong(h, 'se375');
       await page.evaluate(v => { localStorage.setItem('modo-perform-widgets', v); setSongsMode('perform'); }, val); await page.waitForTimeout(300);
       R.check(await allShown(page) && errs.length === 0, 'storage ' + name + ': every widget stays shown', errs.join('|'));
+      await ctx.close();
+    }
+
+    // ── Arrow captions: the setlist arrows and the section arrows look alike, so each pair says what it moves ──
+    for (const vp of ['se375', 'p430', 'phoneLand', 'ipad820']) {
+      const { page, ctx, errs } = await openSong(h, vp);
+      await loadSong(page); await page.waitForTimeout(300);
+      const arrows = await page.evaluate(() => {
+        const info = b => { const c = b.querySelector('.pf-cap'), r = b.getBoundingClientRect(), cr = c ? c.getBoundingClientRect() : null;
+          return { cap: c ? c.textContent.trim() : null, capHidden: c ? c.getAttribute('aria-hidden') : null, size: c ? parseFloat(getComputedStyle(c).fontSize) : 0,
+            inside: !!cr && cr.width > 0 && cr.left >= r.left - 1 && cr.right <= r.right + 1 && cr.top >= r.top - 1 && cr.bottom <= r.bottom + 1, over: b.scrollWidth > b.clientWidth + 1,
+            w: Math.round(r.width), h: Math.round(r.height), label: b.getAttribute('aria-label') }; };
+        return { song: [...document.querySelectorAll('#songs-setlist-nav .sn-btn')].map(info), sect: ['prev-section-btn', 'next-section-btn'].map(i => info(document.getElementById(i))) };
+      });
+      const t = vp + ': ';
+      R.check(arrows.song.length === 2 && arrows.song.every(a => a.cap === 'song'), t + 'the setlist arrows are captioned "song"', JSON.stringify(arrows.song.map(a => a.cap)));
+      R.check(arrows.sect.length === 2 && arrows.sect.every(a => a.cap === 'section'), t + 'the section arrows are captioned "section"', JSON.stringify(arrows.sect.map(a => a.cap)));
+      const all = arrows.song.concat(arrows.sect);
+      R.check(all.every(a => a.size >= 10.4 && a.inside && !a.over && a.capHidden === 'true' && a.w >= 44 && a.h >= 44), t + 'every caption is at least 10.5 px, sits inside its button, and the buttons stay 44 pt (captions are hidden from screen readers)', JSON.stringify(all.map(a => [a.size, a.inside, a.over, a.w, a.h])));
+      R.check(arrows.song.map(a => a.label).join() === 'Previous song,Next song' && arrows.sect.map(a => a.label).join() === 'Previous section,Next section', t + 'the accessible names are unchanged');
+      const trL = await tops(page, ['#prev-section-btn', '#slb-auto-btn', '#next-section-btn', '#slb-save-btn']);
+      R.check(same(trL), t + 'the transport row is still one line', trL.join());
+      R.check(errs.length === 0, t + 'no page errors', errs.join('|'));
       await ctx.close();
     }
   } finally { await h.close(); }
