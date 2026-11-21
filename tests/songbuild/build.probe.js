@@ -58,6 +58,8 @@ function joinTools(page) {
       R.check(await read(page) === '½ beat' && JSON.stringify(await slotOf(page)) === '[0,0,1]', vp + ': -1/8 from one eighth stays at one eighth', await read(page));
       await click(page, '#chart-inspector .ci-row.ci-len .ci-seg > button', 2);
       R.check(JSON.stringify(await slotOf(page)) === '[0,2,0]' && await read(page) === '2 beats', vp + ': 2 beats stores [0,2,0]', JSON.stringify(await slotOf(page)));
+      const nudgeBox = await page.evaluate(() => [...document.querySelectorAll('#chart-inspector .ci-nudge > button')].map(b => { const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
+      R.check(nudgeBox.length === 2 && nudgeBox.every(b => b[0] >= 44 && b[1] >= 44), vp + ': the eighth nudge buttons are 44 pt each way (tests/targets)', JSON.stringify(nudgeBox));
       const ov = await overflowing(page, '#chart-inspector .ci-row.ci-len');
       R.check(ov.length === 0, vp + ': no text in the Length row overflows its button', ov.join(' | '));
       R.check(errs.length === 0, vp + ': no page errors', errs.join('|'));
