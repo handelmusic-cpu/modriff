@@ -169,6 +169,51 @@ const same = a => a.every(x => x !== null && Math.abs(x - a[0]) <= 2);
       R.check(key && !key.clipped && key.inside, 'widgets: the key stepper (minus, key name, plus) sits inside its box without clipping', JSON.stringify(key));
       await ctx.close();
     }
+
+    // ── Task 4: Light, and every width ────────────────────────────────────────
+    // The contrast of a control's text against what it sits on: the first opaque background up its ancestors (a half-transparent one is
+    // blended over the page behind it).
+    const CONTRAST = sel => {
+      const num = c => { let m = c.match(/color\(srgb ([^)]+)\)/); if (m) { const p = m[1].split(/[ \/]+/).map(parseFloat); return { r: p[0] * 255, g: p[1] * 255, b: p[2] * 255, a: p.length > 3 ? p[3] : 1 }; }
+        m = c.match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(/[ ,\/]+/).map(parseFloat); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+      const lum = c => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }; return .2126 * f(c.r) + .7152 * f(c.g) + .0722 * f(c.b); };
+      const e = document.querySelector(sel); if (!e) return null;
+      let bg = { r: 255, g: 255, b: 255, a: 1 }; const chain = []; for (let x = e; x; x = x.parentElement) chain.push(x);
+      for (const x of chain.reverse()) { const c = num(getComputedStyle(x).backgroundColor); if (c && c.a > 0) bg = { r: bg.r * (1 - c.a) + c.r * c.a, g: bg.g * (1 - c.a) + c.g * c.a, b: bg.b * (1 - c.a) + c.b * c.a, a: 1 }; }
+      const fg = num(getComputedStyle(e).color); if (!fg) return null;
+      const f2 = { r: bg.r * (1 - fg.a) + fg.r * fg.a, g: bg.g * (1 - fg.a) + fg.g * fg.a, b: bg.b * (1 - fg.a) + fg.b * fg.a };
+      const a = lum(f2), b = lum(bg); return Math.round(((Math.max(a, b) + .05) / (Math.min(a, b) + .05)) * 100) / 100;
+    };
+    for (const light of [false, true]) {
+      const { page, ctx, errs } = await openSong(h, 'p430');
+      await loadSong(page);
+      await page.evaluate(l => { if (l) document.body.classList.add('light-mode'); songsPickToggle(true); }, light); await page.waitForTimeout(300);
+      const t = (light ? 'Light: ' : 'dark: ');
+      const targets = ['#songs-cur', '#songs-pick .ss-chip.on', '#songs-pick .ss-chip:not(.on)', '#pv-tiles', '#pv-chart', '#pv-stage', '#songs-ending-row .ms-lbl', '#songs-ending-row .end-btn', '#pf-widgets-btn'];
+      const got = await page.evaluate(([f, ts]) => { const fn = eval('(' + f + ')'); return ts.map(s => [s, fn(s)]); }, [CONTRAST.toString(), targets]);
+      const low = got.filter(([s, c]) => c !== null && c < 4.5);
+      R.check(got.every(([s, c]) => c !== null) && low.length === 0, t + 'text on the header, chips, tabs, Stage, captions, endings and the widgets switch is at least 4.5:1', JSON.stringify(low.length ? low : got.map(g => g[1])));
+      R.check(await page.evaluate(() => getComputedStyle(document.getElementById('pv-switch')).boxShadow === 'none'), t + 'the tab group draws no inset box (the .tg look is gone)');
+      R.check(errs.length === 0, t + 'no page errors', errs.join('|'));
+      await ctx.close();
+    }
+    for (const vp of ['ipad820', 'duoOpen', 'phoneLand']) {
+      const { page, ctx, errs } = await openSong(h, vp);
+      await loadSong(page); await page.waitForTimeout(300);
+      const w = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth, panel: Math.round(document.getElementById('songs-perform-panel').getBoundingClientRect().width) }));
+      R.check(w.doc <= w.win && w.panel <= 701, vp + ': Perform neither scrolls sideways nor runs wider than 700 pt', JSON.stringify(w));
+      const trT = await tops(page, ['#prev-section-btn', '#slb-auto-btn', '#next-section-btn', '#slb-save-btn']);
+      R.check(same(trT), vp + ': the transport row is one line', trT.join());
+      R.check(errs.length === 0, vp + ': no page errors', errs.join('|'));
+      await ctx.close();
+    }
+    {
+      const { page, ctx } = await openSong(h, 'ipad820', () => document.documentElement.classList.add('mac-app'));
+      await loadSong(page); await page.waitForTimeout(300);
+      const trM = await tops(page, ['#prev-section-btn', '#slb-auto-btn', '#next-section-btn', '#slb-save-btn']);
+      R.check(same(trM) && !(await box(page, '#songs-head')).shown && (await box(page, '#songs-subnav')).shown, 'Mac app: Perform keeps the old three-way switch, no header picker, and a one-line transport row', trM.join());
+      await ctx.close();
+    }
   } finally { await h.close(); }
   R.done();
 })().catch(e => { console.error(e); process.exitCode = 1; });
