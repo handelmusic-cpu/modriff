@@ -184,11 +184,9 @@ It is the only review note: the sandbox route to the packs is in it, so the IAP 
 **Owner must settle before resubmitting** (nothing here is in the note as settled, and the note does not
 claim it):
 
-- **Ableton Link on a device.** The licence needs no approval, but the `com.apple.developer.networking.multicast`
-  entitlement has not been requested from Apple and is not in the iPhone build, so on an iPhone or iPad Link finds
-  no peers. If App Review tries it, it will look dead. Request it (`docs/link.md`, section 2) or tell Review in the
-  note. Also unasked: whether Ableton's licence ("iOS applications") covers the Mac Catalyst build (one email to
-  link-devs@ableton.com).
+- **Ableton Link on a device.** The licence needs no approval, and the `com.apple.developer.networking.multicast`
+  entitlement is granted and in `App.entitlements` (the owner saw an iPhone and a Mac sync). Still unasked: whether
+  Ableton's licence ("iOS applications") covers the Mac Catalyst build (one email to link-devs@ableton.com).
 - **iCloud.** The entitlement and `MODRIFF_CLOUDKIT` are in the project (1.9.9.3), so the note says sync is
   optional and off by default. Before uploading: CloudKit Dashboard > `iCloud.Handel.modRiff` > Deploy Schema
   Changes to Production (without it the shipped app cannot save a record); `docs/v5-architecture.md`, "iCloud sync".
