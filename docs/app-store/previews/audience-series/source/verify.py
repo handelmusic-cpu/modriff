@@ -33,4 +33,4 @@ for film in PLAN['films']:
   results.append(r)
  assert results[-1]['videoPacketHash']==results[-2]['videoPacketHash'],name
  print('VERIFIED',name,flush=True)
-(OUT/'verification.json').write_text(json.dumps(dict(files=results,notes=['All 8640 encoded frames decoded successfully.','Music is the original temporary app-engine score, not sound from the UI gestures.','No physical-phone listening or social-platform processing claimed.']),indent=2)+'\n')
+(OUT/'verification.json').write_text(json.dumps(dict(files=results,notes=['All 8640 encoded frames decoded successfully.','Music previews use the original temporary app-engine background score.','Physical-phone playback and social-platform transcoding remain unverified.']),indent=2)+'\n')

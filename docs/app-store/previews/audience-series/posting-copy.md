@@ -6,7 +6,7 @@ Use the matching video. Each is a standalone ad; no competitor reference or voic
 Your next ii–V–I deserves more than another run-through. See the voicings, loop the tricky bars, raise the tempo and take it through another key. Explore mõdRïff at modriff.com. Free to start; some features require one-time packs.
 
 **02 · Groovebox fans**  
-Start with a beat. Add a bass line that follows your chords. Make a sample your own. mõdRïff puts the next groove under your thumb. Explore at modriff.com. Free to start; some features require one-time packs.
+Start with a beat. Add a bass line that follows your chords. Load a sound and play it from the pads. mõdRïff puts the next groove under your thumb. Explore at modriff.com. Free to start; some features require one-time packs.
 
 **03 · Beginning piano players**  
 What does that chord actually look like on the keys? See the chord tones, try the next shape, then play along. Make a little more sense of harmony with mõdRïff. Explore at modriff.com. Free to start; some features require one-time packs.
