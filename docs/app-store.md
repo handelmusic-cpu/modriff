@@ -280,10 +280,11 @@ StoreKit. Audio and bounce saving work on the Mac (owner-tested).
 
 The current **iPhone app previews** are the three `store-*.mp4` files in `docs/app-store/previews/layout-overhaul/`: Live and Mix, landscape instruments, then Song and learning. They were retaken from the native Simulator for 1.9.4a–1.9.4c; the instruments film shows the larger two-row Studio selector and Aux, and Mix has Mixer and Voices only. Each is 27.1 seconds at constant 30 fps, H.264 High Level 4.0 and stereo AAC; portrait is 886 × 1920 and landscape 1920 × 886. The README lists coverage and rebuild commands, and `verification.json` records decoding, frame counts, loudness, true peak and hashes. Not uploaded or processed by App Store Connect; not heard on a physical iPhone. iPad and Mac need their own footage. `previews/feature-series/`, `high-impact/` and `2026-11-13/` retain the earlier films and their original editable sources; do not upload those earlier selections for this layout.
 
-Six separate **social audience ads** are in `previews/audience-series/`: jazz, grooveboxes,
-piano, guitar, wind/brass students and producers. Each is 24 seconds at 1080 × 1920,
-with a temporary music preview, a silent replacement master, posters, a review gallery
-and a 124 BPM soundtrack cue sheet. See its README; these are campaign assets.
+The six **social audience ads** in `previews/audience-series/` were recut from native
+iPhone Simulator footage of v1.9.9.9.6. The jazz, groovebox, piano, guitar, wind/brass
+and producer edits are each 24 seconds at 1080 × 1920. The folder includes temporary
+music previews, silent masters, posters, a review gallery and a 124 BPM soundtrack
+cue sheet. See its README for the capture build and verification.
 
 The Duo draws its clock and status pill down the right edge and reports a right inset of 84pt (measured in the simulator:
 top 0, right 84, bottom 34, left 0). 1398 x 2034 is not one of the sizes App Store Connect lists, so the Duo set is a
