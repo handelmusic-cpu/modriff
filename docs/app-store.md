@@ -185,11 +185,13 @@ It is the only review note: the sandbox route to the packs is in it, so the IAP 
 claim it):
 
 - **Ableton Link on a device.** The licence needs no approval, and the `com.apple.developer.networking.multicast`
-  entitlement is granted and in `App.entitlements` (the owner saw an iPhone and a Mac sync). Still unasked: whether
-  Ableton's licence ("iOS applications") covers the Mac Catalyst build (one email to link-devs@ableton.com).
+  entitlement is granted and in `App.entitlements` (the owner saw an iPhone and a Mac sync). The owner signed a Link
+  license agreement with Ableton on 2026-11-23; get Ableton's countersignature, and ask whether it covers the Mac
+  Catalyst build (`docs/link.md`). Its terms are confidential: nothing from it goes in a note or this repo.
 - **iCloud.** The entitlement and `MODRIFF_CLOUDKIT` are in the project (1.9.9.3), so the note says sync is
-  optional and off by default. Before uploading: CloudKit Dashboard > `iCloud.Handel.modRiff` > Deploy Schema
-  Changes to Production (without it the shipped app cannot save a record); `docs/v5-architecture.md`, "iCloud sync".
+  optional and off by default. The schema is deployed to Production (2026-11-21: `Doc` with `modified`, `payload`,
+  `v`; checked in the Dashboard 2026-11-23). A new field or record type needs a new deploy before that build ships;
+  `docs/v5-architecture.md`, "iCloud sync".
 - **Mac `network.server` message (automated, from App Store Connect).** The entitlement is used: Ableton Link
   receives UDP from other apps on the local network (`AppMac.entitlements`). Reply to the message with the text
   below and keep section 4 of the note as it is; do not remove the entitlement (Link on the Mac would go silent).
@@ -222,7 +224,7 @@ Apple's StoreKit 2 for the purchases, and Apple's on-device text recognition (Vi
 It behaves the same in every region. Only the prices differ, as the App Store sets them per storefront. English only.
 
 6. THIRD-PARTY MATERIAL
-Each bundled sound, font and code library is logged with its source, author and licence. Almost all sounds are CC0 (public domain). The rest are MIT, CC BY 3.0 (credited), SIL Open Font Licence fonts, and the developer's own work (icon, two sound effects). The synthesis models in the mõdSynth Macro Osc patches are MIT-licensed code from Emilie Gillet (Mutable Instruments). Ableton Link is used under the free Ableton Link SDK License, which needs no approval. Credits and licence links for all of it are in Settings > Help & about > Credits. The app names no third-party product.
+Each bundled sound, font and code library is logged with its source, author and licence. Almost all sounds are CC0 (public domain). The rest are MIT, CC BY 3.0 (credited), SIL Open Font Licence fonts, and the developer's own work (icon, two sound effects). The synthesis models in the mõdSynth Macro Osc patches are MIT-licensed code from Emilie Gillet (Mutable Instruments). Ableton Link is used under license from Ableton AG. Credits and licence links for all of it are in Settings > Help & about > Credits. The app names no third-party product.
 Contact: support@modriff.com
 ```
 
