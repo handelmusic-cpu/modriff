@@ -1,6 +1,6 @@
 # Ableton Link: design
 
-Status: **built and merged in v6.9.9.9.9.9.9.9.1** (tempo, beat and bar-line start; no Start Stop Sync). On an iPhone it finds no peers until Apple grants the multicast entitlement (section 2). Run `npm run ios:frameworks` on a fresh clone: it fetches the SDK.
+Status: **built and merged in v6.9.9.9.9.9.9.9.1** (tempo, beat and bar-line start; no Start Stop Sync). Apple's multicast entitlement is enabled on the App ID and in `ios/App/App/App.entitlements`; the owner saw an iPhone and a Mac sync. Run `npm run ios:frameworks` on a fresh clone: it fetches the SDK.
 Researched 2026-11-13 against the sources in section 8; check them again if this is picked up much later.
 
 ## 1. What was found
@@ -62,11 +62,8 @@ Decided by the owner on 2026-11-13 ("make it work, adjust whatever we need"):
 
 Still the owner's to do (nobody else can):
 
-- **Ask Apple for the multicast entitlement** (developer.apple.com/contact/request/networking-multicast, account
-  holder only). Suggested text: "Ableton Link, tempo sync between music apps on the local network, multicast UDP
-  to 224.76.78.75:20808, see ableton.github.io/linkkit". Until it is granted and added
-  (`com.apple.developer.networking.multicast` in an iPhone entitlements file, and the provisioning profile
-  regenerated), **Link on an iPhone or iPad shows no peers.** The Simulator and the Mac app do not need it.
+- **Multicast entitlement: done.** Granted on the App ID and added to `App.entitlements`. Without the key in the
+  signed app **Link on an iPhone or iPad shows no peers.** The Simulator and the Mac app do not need it.
 - **Mac wording.** One line to link-devs@ableton.com: the licence says "iOS applications"; is a Mac Catalyst build
   of the same app covered?
 - **Never an In-App Purchase**, and the SDK is never committed (the licence; the repository is public).
