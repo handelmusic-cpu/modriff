@@ -735,6 +735,16 @@ sustained chords (pads, organ, strings); on drums and short samples it does
 nothing. A cheap first spike: pad, organ and chord voices on the web build with
 an Equal/Pure switch, to hear it before touching the native engine.
 
+### Ringtone / alarm-sound export
+
+Owner's idea (2026-11-22), after a quick bounce ended up as a ringtone by accident.
+A "Ringtone" button on a finished take: pick a start and a length (30 s at most), fade,
+level, encode `.m4r`, then the share sheet. On the Mac app it writes the `.m4r` to the
+Bounces folder and reveals it in Finder, ready to drag onto the iPhone (the old iTunes
+route). iOS cannot install a ringtone from an app, so on a phone the last step is
+GarageBand (Share > Ringtone), which is untested. Alarms use the same tone list.
+Design, not built: `docs/superpowers/specs/2026-11-22-ringtone-export-design.md`.
+
 ---
 
 ## Where to start
