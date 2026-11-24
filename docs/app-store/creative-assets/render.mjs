@@ -51,8 +51,21 @@ try{
     }
     if(!ready)throw Error('Artwork did not load');
     await ev('document.fonts.ready.then(()=>Promise.all([...document.images].map(i=>i.decode())))');
-    const fit=await ev(`(()=>{const safe=${JSON.stringify(safe)};return [...document.querySelectorAll('.wordmark,.line,.sub,.steps,.interface')].map(e=>{const r=e.getBoundingClientRect();return {element:e.className,inside:r.x>=safe[0]&&r.y>=safe[1]&&r.right<=safe[0]+safe[2]&&r.bottom<=safe[1]+safe[3]};});})()`);
-    if(fit.some(f=>!f.inside))throw Error('Outside safe area: '+JSON.stringify(fit));
+    const fit=await ev(`(() => {
+      const [left, top, width, height] = ${JSON.stringify(safe)};
+      return [...document.querySelectorAll('.wordmark, .line, .interface')].map(element => {
+        // Check the rendered headline too, since nowrap text can overflow its box.
+        const contents = document.createRange();
+        contents.selectNodeContents(element);
+        const bounds = element.matches('.line') ? contents.getBoundingClientRect() : element.getBoundingClientRect();
+        return {
+          element: element.className,
+          clearance: Math.floor(Math.min(bounds.left - left, bounds.top - top,
+            left + width - bounds.right, top + height - bounds.bottom))
+        };
+      });
+    })()`);
+    if(fit.some(f=>f.clearance<0))throw Error('Outside safe area: '+JSON.stringify(fit));
     const shot=await send('Page.captureScreenshot',{format:'png',clip:{x:0,y:0,width:3840,height,scale:1}});
     await writeFile(path.join(out,`modriff-${placement}.png`),Buffer.from(shot.data,'base64'));
     console.log(placement,`3840 x ${height}`,JSON.stringify(fit));

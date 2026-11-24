@@ -43,7 +43,7 @@ Limits are Apple's; counts are characters.
 
 Characters outside plain ASCII are allowed.
 
-**Subtitle** (30): `Every part, always in key` (25)
+**Subtitle** (30): `Make Music Without Limits` (25)
 
 **Promotional text** (170, editable any time without a new build):
 
@@ -54,11 +54,11 @@ Characters outside plain ASCII are allowed.
 **Keywords** (100, comma-separated, no spaces after commas):
 
 ```
-drum machine,synth,music theory,midi,sampler,songwriting,backing track,looper,piano,guitar,practice
+drum machine,synth,theory,midi,sampler,songwriting,backing track,looper,piano,guitar,practice
 ```
 
-(99.) "groovebox" and "chord" left for the name; "sequencer", "beat maker" and "jam" went to make room for "backing track", "looper", "piano", "guitar" and "practice" (the five do not fit in the room the two freed alone). Do not repeat words already in the name or subtitle ("key", "every", "chord", "groovebox", "part", "always"), do not use the category
-name, and do not use another product's name: an `iReal` keyword would be a trademark rejection.
+(93.) The name covers “chord” and “groovebox,” and the subtitle covers “music.”
+Keep keywords distinct from the name, subtitle and category, and omit other products’ names.
 
 **Description** (2174 of 4000). One line per paragraph on purpose: App Store Connect keeps every line
 break you paste, so a description wrapped to 85 columns shows a break mid-sentence. It names no other product
@@ -240,6 +240,12 @@ Contact: support@modriff.com
 8. Tap another locked control: the "Complete Your Studio" offer shows.
 9. Settings > Help & about > Store, then Restore Purchases.
 10. Sampler: tap Record; the microphone permission prompt appears; allow it, record a second, play it back.
+
+## Header and search results
+
+Upload the two PNGs in [creative-assets](app-store/creative-assets/README.md)
+under the English version’s **Header and Search Results** tab. Both use the
+listing subtitle, “Make Music Without Limits.”
 
 ## Screenshots
 
