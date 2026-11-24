@@ -10427,7 +10427,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver">v1.9.9.9.9a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.0</span></div>
  </div>
 </div>
 
@@ -11899,8 +11899,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
   <!-- About — the version, who made it and where to write. It was the foot of
        the transport sheet, which meant opening the sheet to find the version
        number; it lives here so it can be read without leaving Settings.
-       #ft-ver keeps its id and a bare "v…" text node: build/build.mjs checks
-       it against MODRIFF_VERSION, and the boot code paints it by id. -->
+       build/build.mjs checks the static #ft-ver text against MODRIFF_VERSION. -->
   <div class="settings-section ss-about" id="ss-about">
    <div class="ss-hdr" onclick="toggleSS('about')">
     <span>Help &amp; about</span>
@@ -11908,7 +11907,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff version">v1.9.9.9.9a</span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.0</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13119,15 +13118,18 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 <script>
 'use strict';
 
-// The release label, and the first thing in this script because the init code
-// several thousand lines below paints it into #unlock-ver and #ft-ver while
-// this same block is still executing. Declared at the bottom, as it was, that
-// read sat in the const's temporal dead zone and threw — into a try/catch that
-// swallowed it — so both labels silently kept whatever the markup had been
-// hardcoded with and the app had been showing v2.8.0 while claiming 2.8.1.
-// Not the only release number in the repo: sw.js has its own VERSION, which is
-// a cache key rather than a label. Read the note there before bumping it.
-const MODRIFF_VERSION = '1.9.9.9.9a';
+// The internal release label is also used by the build stamp and service
+// worker update notices. The native App Store version comes from the bundle.
+const MODRIFF_VERSION = '2.0';
+{
+ const splashVersion = document.getElementById('unlock-ver');
+ if(window.__modMarketingVersion){
+  splashVersion.textContent = '· '+window.__modMarketingVersion;
+  document.getElementById('ft-ver').textContent = 'Internal '+MODRIFF_VERSION;
+ }
+ // Avoid flashing the internal fallback while the native page is parsing.
+ splashVersion.hidden = false;
+}
 
 // ══════════════════════════════════════════════════════════════════
 // PLATFORM LAYER — everything that differs between the browser and a native
@@ -46707,7 +46709,7 @@ function syncSSPreviews(){
       + ' · Vel '+Math.round((parseFloat(document.getElementById('vel-sense')?.value)||.5)*100)+'%');
   set('ss-sync-preview', ((document.querySelector('[data-steplock]')||{}).classList && document.querySelector('[data-steplock]').classList.contains('active') ? 'Steps linked' : 'Steps free') + ' · ' + ((document.querySelector('[data-ratelock]')||{}).classList && document.querySelector('[data-ratelock]').classList.contains('active') ? 'Rate linked' : 'Rate free') + ' · Humanize ' + ((document.getElementById('bl-human-val')||{}).textContent || 'off'));
   set('ss-recording-preview', (alwaysStems ? 'Stems on every Bounce' : 'Mix') + (bounceMidi ? ' and MIDI' : ', no MIDI'));
-  set('ss-about-preview', 'Version ' + ((document.getElementById('ft-ver')||{}).textContent||'').replace(/^v/,'')); // read from the page: MODRIFF_VERSION is a const this runs before
+  set('ss-about-preview', (window.__modMarketingVersion ? 'Internal ' : 'Version ') + MODRIFF_VERSION);
   set('ss-ui-preview', (document.body.classList.contains('light-mode') ? 'Light' : 'Dark') + (window.modColourway && window.modColourway() === 'mono' ? ' · Monotone' : ''));
   set('ss-samples-preview', (typeof SMP_LIB!=='undefined' && SMP_LIB.length) ? SMP_LIB.length + (SMP_LIB.length===1 ? ' sample' : ' samples') : 'None yet');
   var _sy=document.querySelector('[data-sync]'); set('ss-cloud-preview', !_sy ? '' : /ON/.test(_sy.textContent) ? 'iCloud sync on' : /iPhone app/.test(_sy.textContent) ? 'iPhone app only' : 'iCloud sync off');
@@ -58228,12 +58230,6 @@ setMasterTune(440);
 tuningSync();   // a saved 'pure' lights its button; the table is a var, so it is here by now
 syncFixedTransport();
 updateFtRateDisp();
-// Both in-app version labels come from MODRIFF_VERSION. It is not the only
-// place a release number is written down — sw.js has its own VERSION, which is
-// a cache key rather than a label. See the note there before bumping it.
-try{
- document.querySelectorAll('#unlock-ver,#ft-ver').forEach(e=>{ e.textContent='v'+MODRIFF_VERSION; });
-}catch(e){}
 // The commit the app was built from (build/stamp.mjs writes build-info.json). It shows in About so
 // "is this the build from main?" can be answered on the phone: the version label only changes once
 // per batch. A source checkout and the free web page have no such file, and stay blank.
