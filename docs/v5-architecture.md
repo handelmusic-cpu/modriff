@@ -54,6 +54,8 @@ The free web page keeps its browser's output controls. Physical Bluetooth/USB sw
 
 **Solo layout (1.9.7).** Live and Studio share 128 pt Solo keys. The Live three-dot sheet exposes the existing saved key width as AUTO / S / M / L / XL (automatic or 26 / 44 / 64 / 96 pt); pinched widths keep their stored numeric value. Glide, Mod and Slide Depth / Speed share one row, followed by the effect and its static knobs. On landscape phones up to 520 pt high, Live uses the safe-area width instead of the portrait 640 pt column, and the chord pads occupy one row. `tests/livefixes/solo-layout.test.js` measures the built page at eight phone sizes and checks width persistence, Live/Studio remounting and real touch modulation. Physical rotation and playing feel remain on the phone checklist.
 
+**More chords (1.9.9.9.9).** Live's eighth grid position opens the shared anchored picker with Off, Borrowed, Dominants and Mine. The selected shelf reuses the Studio pads and is labelled on the Live surface. The existing `modo-live-more` values restore the choice across launches. Physical iPhone touch and sound are on the phone checklist.
+
 **Versioning, as decided:** the numbering restarts at 5.0 with the first build
 after `4.9.9.9.9.9.9f`: `major.minor` and an optional trailing letter for a
 follow-up, no third dotted part (the rule is in CLAUDE.md, "Numbering"). "5.0.0 is

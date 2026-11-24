@@ -1,133 +1,133 @@
-/* The More row on Live (5.4): one chip in the Chords heading brings in one shelf of
-   chords as a single row under the seven.
-
-   Driven on the real window with real touch (CDP):
-     - it starts on Modal: eight pads in one row, straight under the seven, 64 pt tall
-       and no narrower than 44 pt; the Studio shelf's own label is not repeated;
-     - the chip steps Modal, Dominants, Mine, Off and round, naming each; the choice is
-       kept across a reload (modo-live-more);
-     - Dominants is five pads in one row, Off is none;
-     - a pad in the row plays the chord it names (the same builders as Studio);
-     - Mine is the pinned chords on a row of their own, and while it is not chosen they
-       stay inside the key's row, as before;
-     - Studio is as it was: no chip, the shelves where they were;
-     - it fits at every phone width.
-
-   Run (repo served; Chromium available; see CLAUDE.md):
-     python3 -m http.server 8777 --bind 127.0.0.1 &
-     node tests/more/probe.js
-   Env: URL, CHROMIUM, PLAYWRIGHT. */
+/* Live's More chords picker. Run with node tests/more/probe.js.
+   Set URL to a served dist/index.html to test the shipping bundle. */
 'use strict';
-let chromium;
-try { ({ chromium } = require('playwright')); }
-catch (e) {
-  try { ({ chromium } = require('playwright-core')); }
-  catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); }
-}
-const URL = process.env.URL || 'http://127.0.0.1:8777/index.html';
-let fails = 0;
-const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what + (got !== undefined && got !== '' ? '  (' + got + ')' : '')); if (!ok) fails++; };
+const assert = require('node:assert/strict');
+const layout = require('../layout/lib.js');
 
 (async () => {
-  const browser = await chromium.launch({
-    executablePath: process.env.CHROMIUM || undefined,
-    channel: process.env.CHROMIUM ? undefined : 'chrome',
-    args: ['--autoplay-policy=no-user-gesture-required', '--no-sandbox'],
-  });
-  const ctx = await browser.newContext({ viewport: { width: 430, height: 932 }, hasTouch: true, isMobile: true });
-  const page = await ctx.newPage();
-  const errs = []; page.on('pageerror', e => errs.push(String(e)));
-  const boot = async () => {
-    await page.goto(URL); await page.waitForTimeout(1500);
-    await page.evaluate(() => { const b = document.querySelector('#unlock-choices button'); if (b) b.click(); });
-    await page.waitForTimeout(900);
+  const app = await layout.start();
+  try {
+    const { page, ctx, errs } = await layout.boot(app, 'p430', 'live');
+    const cdp = await ctx.newCDPSession(page);
+    const trigger = page.locator('#live-more-pad');
+    const menu = page.locator('#live-more-menu');
+    const choice = row => menu.locator('button[value="' + row + '"]');
+    const borrowed = page.locator('#chords-borrowed');
+    const dominants = page.locator('#chords-secdom');
+    const mine = page.locator('#chords-user');
+    const tap = async locator => {
+      await locator.scrollIntoViewIfNeeded();
+      const rect = await locator.boundingBox();
+      const point = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, id: 1 };
+      const hit = await locator.evaluate((target, pt) => target.contains(document.elementFromPoint(pt.x, pt.y)), point);
+      assert.ok(hit, 'touch target is reachable: ' + locator);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [point] });
+    };
+    const current = () => page.evaluate(() => chordMoreGet());
+    const pick = async row => {
+      const before = await current();
+      await tap(trigger);
+      await menu.waitFor({ state: 'visible' });
+      assert.equal(await current(), before, 'opening leaves the chosen shelf alone');
+      assert.equal(await choice(before).getAttribute('aria-pressed'), 'true');
+      await tap(choice(row));
+      await menu.waitFor({ state: 'hidden' });
+      assert.equal(await trigger.getAttribute('aria-expanded'), 'false');
+      assert.equal(await trigger.textContent(), 'More chords');
+      assert.equal(await current(), row);
+    };
+
+    await page.evaluate(() => {
+      root = 0;
+      setMode('major');
+      window.moreChordAttacks = [];
+      const attack = _triggerChordImmediate;
+      _triggerChordImmediate = function(...args) {
+        window.moreChordAttacks.push({ pitch: args[0] % 12, quality: args[1] });
+        return attack.apply(this, args);
+      };
+    });
+    assert.equal(await current(), 'off');
+    assert.equal(await borrowed.isVisible(), false);
+    await pick('dom');
+    assert.equal(await dominants.locator(':scope > *').count(), 5);
+    assert.equal(await dominants.isVisible(), true);
+    await pick('modal');
+    assert.equal(await borrowed.locator(':scope > *').count(), 8);
+    assert.equal(await borrowed.isVisible(), true);
+    assert.equal(await dominants.isVisible(), false);
+    assert.equal(await page.locator('#chords-modal-wrap .chord-section-lbl').isVisible(), true);
+
+    await tap(trigger);
+    await menu.waitFor({ state: 'visible' });
+    await page.locator('#pf-chords-lbl').tap({ position: { x: 5, y: 10 } });
+    await menu.waitFor({ state: 'hidden' });
+    assert.equal(await current(), 'modal');
+    assert.equal(await trigger.getAttribute('aria-expanded'), 'false');
+
+    await trigger.press('Enter');
+    assert.equal(await choice('modal').evaluate(el => el === document.activeElement), true);
+    await page.keyboard.press('Escape');
+    assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+    assert.equal(await menu.isVisible(), false);
+
+    await page.evaluate(() => { cpToggle(cpDegChord(8)); cpToggle(cpDegChord(10)); });
+    assert.equal(await page.locator('#chords-diatonic .cp-inrow').count(), 2);
+    await pick('mine');
+    assert.equal(await page.locator('#chords-diatonic .cp-inrow').count(), 0);
+    assert.equal(await mine.locator(':scope > *').count(), 2);
+    assert.equal(await mine.isVisible(), true);
+    await pick('off');
+    assert.equal(await mine.isVisible(), false);
+    assert.equal(await page.locator('#chords-diatonic .cp-inrow').count(), 2);
+    await pick('modal');
+    assert.deepEqual(await page.evaluate(() => window.moreChordAttacks), [], 'picker interactions produce zero chord attacks');
+    await tap(borrowed.locator(':scope > :nth-child(2) .btn-tri'));
+    const attacks = await page.evaluate(() => window.moreChordAttacks);
+    assert.equal(attacks.length, 1);
+    assert.equal(attacks[0].pitch, 5, 'the iv pad still plays F minor');
+    console.log('Direct shelf selection, two pinned chords and dismissals work. Picker produced 0 attacks and the iv pad produced 1.');
+
+    await page.reload();
+    const splash = page.locator('#audio-unlock');
+    if (await splash.isVisible()) {
+      await page.locator('#unlock-choices button').first().tap();
+      await splash.waitFor({ state: 'hidden' });
+    }
     await page.evaluate(() => { setModTier('pro'); setViewMode('basic'); switchTab('perform'); });
-    await page.waitForTimeout(400);
-  };
-  await page.goto(URL); await page.evaluate(() => { localStorage.clear(); });
-  await boot();
-  const cdp = await ctx.newCDPSession(page);
-  const tap = async (sel) => {
-    const b = await page.evaluate(sel => { const e = document.querySelector(sel); e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, sel);
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x, y: b.y }] });
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await page.waitForTimeout(300);
-  };
-  // What is on screen as a row: the visible pads of each shelf.
-  const rows = () => page.evaluate(() => {
-    const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-    const info = id => { const el = document.getElementById(id); if (!el || !vis(el)) return null; const k = [...el.children].filter(vis).map(c => { const r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }); return { n: k.length, tops: [...new Set(k.map(x => x[1]))].length, minW: Math.min(...k.map(x => x[2]), 999), h: k.length ? k[0][3] : 0, top: k.length ? k[0][1] : 0, right: Math.max(...k.map(x => x[0] + x[2]), 0) }; };
-    const dia = document.getElementById('chords-diatonic').getBoundingClientRect();
-    const cr = document.getElementById('cr-bar').getBoundingClientRect();
-    return { chip: (document.getElementById('pf-more-chip') || {}).textContent, chipVisible: vis(document.getElementById('pf-more-chip')),
-             modal: info('chords-borrowed'), dom: info('chords-secdom'), mine: info('chords-user'), diaBottom: Math.round(dia.bottom), crTop: Math.round(cr.top), diaN: document.getElementById('chords-diatonic').children.length,
-             docW: document.documentElement.scrollWidth, innerW: innerWidth,
-             stored: localStorage.getItem('modo-live-more') };
-  });
+    assert.equal(await current(), 'modal');
+    assert.equal(await borrowed.isVisible(), true);
 
-  // ── 1. The default.
-  let r = await rows();
-  check(r.chipVisible && r.chip === '+ Modal', 'Live starts on Modal, and the chip says so', r.chip);
-  check(r.modal && r.modal.n === 8 && r.modal.tops === 1, 'eight pads in one row', JSON.stringify(r.modal));
-  check(r.modal && r.modal.h >= 60 && r.modal.minW >= 44, 'at 64 pt tall and no narrower than 44 (at 430; narrower phones see 39 to 44: a play surface, like the keys)', r.modal && (r.modal.h + 'x' + r.modal.minW));
-  check(r.modal && r.modal.top >= r.diaBottom && r.modal.top < r.crTop, 'straight under the seven, above the rhythm bar', JSON.stringify([r.diaBottom, r.modal && r.modal.top, r.crTop]));
-  check(!r.dom && !r.mine, 'and nothing else is showing');
+    for (const [width, height] of [[320,568], [375,667], [390,844], [430,932], [568,320], [844,390]]) {
+      await page.setViewportSize({ width, height });
+      await tap(trigger);
+      await menu.waitFor({ state: 'visible' });
+      const sizes = await menu.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        const bottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--botstack')) || 0;
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, limit: innerHeight - bottom,
+          choices: [...el.querySelectorAll('button')].map(button => button.getBoundingClientRect().height) };
+      });
+      assert.ok(sizes.left >= 0 && sizes.right <= width && sizes.top >= 0 && sizes.bottom <= sizes.limit + 1, JSON.stringify(sizes));
+      assert.ok(sizes.choices.every(height => height >= 44), JSON.stringify(sizes));
+      await page.keyboard.press('Escape');
+      assert.equal(await menu.isVisible(), false);
+      console.log(width + '×' + height + ': menu fits above the transport with four 44px choices.');
+    }
 
-  // ── 2. A pad plays its chord.
-  const before = await page.evaluate(() => [lastChordRoot, lastChordIntvs.join()]);
-  await page.evaluate(() => { document.getElementById('chords-borrowed').children[1].scrollIntoView({ block: 'center' }); });
-  const pad = await page.evaluate(() => { const c = document.getElementById('chords-borrowed').children[1]; return c.textContent.replace(/\s+/g, ' ').trim(); });
-  await tap('#chords-borrowed > :nth-child(2)');
-  const after = await page.evaluate(() => [lastChordRoot, lastChordIntvs.join(), lastChordFunc]);
-  check(after[0] % 12 === 5 && /^0,3,7/.test(after[1]), 'tapping the iv pad (' + pad.slice(0, 20) + ') plays F minor (a 7th, as the Studio pad does)', JSON.stringify([before, after]));
-
-  // ── 3. The chip steps.
-  await tap('#pf-more-chip'); r = await rows();
-  check(r.chip === '+ Dominants' && r.dom && r.dom.n === 5 && r.dom.tops === 1 && !r.modal, 'next: Dominants, five pads in a row, Modal gone', JSON.stringify([r.chip, r.dom, !!r.modal]));
-  await tap('#pf-more-chip'); r = await rows();
-  check(r.chip === '+ Mine' && !r.modal && !r.dom, 'next: Mine (nothing pinned, so no row)', JSON.stringify([r.chip, r.mine]));
-  await tap('#pf-more-chip'); r = await rows();
-  check(r.chip === '+ More' && !r.modal && !r.dom && !r.mine, 'next: Off, nothing shown, the chip says More', r.chip);
-  check(r.stored === 'off', 'the choice is stored', r.stored);
-  await tap('#pf-more-chip'); r = await rows();
-  check(r.chip === '+ Modal' && r.modal && r.modal.n === 8, 'and round to Modal again', r.chip);
-
-  // ── 4. Kept across a reload.
-  await tap('#pf-more-chip');            // Dominants
-  await boot(); r = await rows();
-  check(r.chip === '+ Dominants' && r.dom && r.dom.n === 5, 'a reload keeps it', r.chip);
-
-  // ── 5. Mine: pinned chords on a row of their own.
-  await page.evaluate(() => { cpToggle(cpDegChord(8)); cpToggle(cpDegChord(10)); });
-  r = await rows();
-  const inKeyRow = r.diaN;
-  check(inKeyRow === 9, 'while Mine is not chosen the two pinned chords sit in the key’s row, as before', inKeyRow + ' pads');
-  await page.evaluate(() => { chordMoreSet('mine'); }); r = await rows();
-  check(r.diaN === 7 && r.mine && r.mine.n === 2 && r.mine.tops === 1 && r.mine.top >= r.diaBottom, 'chosen, they leave it and take a row: seven in the key row, two in Mine', JSON.stringify([r.diaN, r.mine]));
-  await page.evaluate(() => { chordMoreSet('off'); }); r = await rows();
-  check(r.diaN === 9 && !r.mine, 'Off puts them back in the key’s row', r.diaN + ' pads');
-  await page.evaluate(() => { cpToggle(cpDegChord(8)); cpToggle(cpDegChord(10)); chordMoreSet('modal'); });
-
-  // ── 6. Studio is as it was.
-  await page.evaluate(() => { setViewMode('advanced'); switchTab('perform'); setPerformMode('chords'); }); await page.waitForTimeout(400);
-  // The shelves sit under caret rows on Studio's Chords page since 6.2b (closed until opened); open them.
-  await page.evaluate(() => document.querySelectorAll('.st-fold-h[aria-expanded="false"]').forEach(h => h.click())); await page.waitForTimeout(200);
-  r = await rows();
-  check(!r.chipVisible, 'Studio has no chip');
-  check(r.modal && r.dom && r.modal.n === 8 && r.dom.n === 5, 'and shows both shelves, as it always did', JSON.stringify([r.modal && r.modal.n, r.dom && r.dom.n]));
-  await page.evaluate(() => { setViewMode('basic'); switchTab('perform'); }); await page.waitForTimeout(300);
-
-  // ── 7. Every width.
-  for (const W of [360, 375, 390, 402, 430, 440]) {
-    await page.setViewportSize({ width: W, height: 900 }); await page.waitForTimeout(250);
-    await page.evaluate(() => { chordMoreSet('modal'); }); r = await rows();
-    check(r.modal && r.modal.right <= W && r.docW <= W && r.modal.minW >= 36, W + ' pt: the row fits, pads at least 36 wide', JSON.stringify([r.modal && r.modal.right, r.modal && r.modal.minW, r.docW]));
+    await tap(trigger);
+    await menu.waitFor({ state: 'visible' });
+    await page.evaluate(() => renderChords());
+    assert.equal(await menu.isVisible(), false, 'a key or mode rebuild closes the old anchor');
+    await tap(trigger);
+    await menu.waitFor({ state: 'visible' });
+    await page.evaluate(() => { setViewMode('advanced'); switchTab('perform'); setPerformMode('chords'); });
+    assert.equal(await trigger.isVisible(), false);
+    assert.equal(await menu.isVisible(), false);
+    assert.deepEqual(errs, []);
+    console.log('Saved choice survived reload. Rebuild and Studio close the picker. No page errors.');
+  } finally {
+    await app.close();
   }
-  const heading = await page.evaluate(() => { const l = document.getElementById('pf-chords-lbl'); const r = l.getBoundingClientRect(); const kids = [...l.children].filter(c => c.getBoundingClientRect().width).map(c => c.getBoundingClientRect()); return { wraps: new Set(kids.map(k => Math.round(k.top))).size, right: Math.max(...kids.map(k => k.right)), w: innerWidth }; });
-  check(heading.wraps === 1 && heading.right <= heading.w, 'the heading is one line at 440 pt', JSON.stringify(heading));
-
-  check(errs.length === 0, 'no page errors', errs.join(' | '));
-  await browser.close();
-  console.log(fails ? `\n${fails} FAILED` : '\nall passed');
-  process.exit(fails ? 1 : 0);
-})();
+})().catch(error => { console.error(error); process.exitCode = 1; });
