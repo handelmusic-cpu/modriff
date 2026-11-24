@@ -58,13 +58,11 @@ The free web page keeps its browser's output controls. Physical Bluetooth/USB sw
 
 **iPhone audio session (1.9.9.9.9a).** An inactive scene pauses the native engine and WebKit media before releasing the audio session unless the native transport has background playback permission. The active scene restores the session before resuming the page. An interruption without permission to resume leaves the session parked until the app is active. Sampler microphone takes end on actual backgrounding. The phone checklist covers coexistence with other audio apps.
 
-**Versioning, as decided:** the numbering restarts at 5.0 with the first build
-after `4.9.9.9.9.9.9f`: `major.minor` and an optional trailing letter for a
-follow-up, no third dotted part (the rule is in CLAUDE.md, "Numbering"). "5.0.0 is
-the native App Store release" is retired; the App Store build carries whatever
-label is current when it goes. The next piece of work, the screen layout (tabs,
-the Live and Studio split, parts as pages, lyrics and Stage), is planned in
-`docs/layout-5.0.md`.
+**Versioning (2.0).** The owner approved internal 2.0 for the redesigned app.
+Native builds display the bundle's App Store version (1.0) on the splash.
+About shows the internal version and the commit from `build-info.json`. The
+web page, update notices and build stamps use the internal release label.
+The internal numbering rules are in `AGENTS.md`.
 
 ---
 

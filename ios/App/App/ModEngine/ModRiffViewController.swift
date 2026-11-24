@@ -73,6 +73,10 @@ class ModRiffViewController: CAPBridgeViewController {
         //     setModOwned([...]) test switch on the iOS provider; a release
         //     build never defines it, so there is no switch to find.
         var boot = "window.__modOwnedCached=\(ModBilling.cachedOwnedJSON);"
+        if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+           let encoded = try? JSONEncoder().encode(version) {
+            boot += "window.__modMarketingVersion=\(String(decoding: encoded, as: UTF8.self));"
+        }
         #if targetEnvironment(macCatalyst)
         // Where takes are kept differs on a Mac (Downloads, not the Files app), so the page says so.
         boot += "window.__modMacApp=true;"
