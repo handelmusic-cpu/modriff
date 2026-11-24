@@ -37,7 +37,7 @@ const OUT  = WEB ? path.join(ROOT_OUT, 'play') : ROOT_OUT;
 // forbidden"). .DS_Store is Finder's, and the same kind of stray.
 const SKIP = new Set(['.git', '.github', '.vercel', '.claude', '.DS_Store', 'build', 'dist', 'dist-web', 'node_modules',
   'package.json', 'package-lock.json', 'vercel.json', 'check.sh', 'CLAUDE.md', 'AGENTS.md', '.gitignore',
-  'tests', 'docs', 'ios', 'capacitor.config.json',
+  'tests', 'docs', 'ios', 'outputs', 'capacitor.config.json',
   // The C++ engine is compiled into the native app, not served to the web one.
   'native']);
 // The free web page plays synthesized voices only (the free tier already does:
@@ -119,8 +119,8 @@ if (!ver) throw new Error('MODRIFF_VERSION missing from the built index.html');
 // end (4.9.9.9.9.7.4, then 4.9.9.9.9.7.4a for a follow-up). Nothing compares
 // versions with < or >: the service worker and the update toast only test them
 // for equality, so a letter costs nothing, but a stray "v" or a space would
-// ship as the label on every phone. The two labels people read have to say the
-// same thing as the constant, which is also checked here.
+// ship as the label on every phone. Both HTML fallbacks carry that internal
+// label. The native host supplies the public splash version at runtime.
 if (!/^\d+(\.\d+)*[a-z]?$/.test(ver[1])) throw new Error(`MODRIFF_VERSION "${ver[1]}" is not dotted numbers plus an optional lowercase letter`);
 for (const id of ['ft-ver', 'unlock-ver']) {
   const m = new RegExp(`id="${id}"[^>]*>v([^<]*)<`).exec(out);
