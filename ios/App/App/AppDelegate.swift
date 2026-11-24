@@ -8,12 +8,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // An instrument, not a web page: .playback is the audio category that
-        // keeps sounding with the ring/silent switch on silent. The default a
-        // web view gets (ambient) is muted by it, so on a phone left on silent
-        // — most of them — every pad tap was silence with no hint why.
-        //
-        // One owner for the session, here, before the web view exists.
+        // Set the shared category before WebKit exists so the instrument
+        // sounds on a phone with the silent switch on.
         //
         // The native engine used to set the category and call setActive from
         // inside the plugin, with the web view's AudioContext configuring the
@@ -49,7 +45,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             // and hearing it. 5 ms is a request, not a promise: iOS rounds it to what
             // the hardware does, and the Native sound line in Settings shows what it gave.
             try session.setPreferredIOBufferDuration(0.005)
-            // Activation can wait on audio hardware; never block the launch thread.
+            // Activation can wait on hardware. On iOS it shares the engine's queue
+            // so a delayed launch activation cannot undo a trip to the app switcher.
+            #if targetEnvironment(macCatalyst)
             if #available(iOS 27.0, *) {
                 Task {
                     do {
@@ -70,6 +68,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                     }
                 }
             }
+            #else
+            ModEngine.audioQueue.async {
+                do {
+                    try session.setActive(true)
+                } catch {
+                    NSLog("[ModRiff] audio session: %@", error.localizedDescription)
+                }
+            }
+            #endif
         } catch {
             NSLog("[ModRiff] audio session: %@", error.localizedDescription)
         }

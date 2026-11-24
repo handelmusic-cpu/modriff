@@ -257,7 +257,15 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     // Not the main queue: that is the page's and the app's, and it is the first
     // thing iOS stops running once the app is left, which would leave a fade
     // half done with the engine still sounding.
-    private let fadeQueue = DispatchQueue(label: "modriff.engine.fade", qos: .userInteractive)
+    static let audioQueue = DispatchQueue(label: "modriff.engine.fade", qos: .userInteractive)
+    private let fadeQueue = ModEngine.audioQueue
+    #if !targetEnvironment(macCatalyst)
+    private var sceneInactive = false
+    private var sceneInBackground = false
+    private var pendingMicStart: CAPPluginCall?
+    private var audioPauseEpoch = 0
+    private var releaseRequested = false
+    #endif
 
     /// The app went to the background: silence the engine from here, not from
     /// the page. The page pauses itself on the same signal, but that runs in
@@ -267,36 +275,137 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     /// mid-render, which is the sputter, the half-silent parts and the loose
     /// timing heard on leaving. A short fade first, because a hard stop of a
     /// sounding tone is itself a click.
-    func appLeft() {
-        guard started, !leftApp, let engine = engine else { return }
-        // The background-play test (6.9.4): the page said, before leaving, that it
-        // means to keep playing. Nothing is silenced; the engine is watched instead.
-        if keepPlaying { beginBackgroundWatch(); return }
+    func appLeft(inBackground: Bool = true) {
+        fadeQueue.async { [weak self] in
+            guard let self = self else { return }
+            #if !targetEnvironment(macCatalyst)
+            self.sceneInactive = true
+            if inBackground {
+                self.sceneInBackground = true
+                self.pendingMicStart?.reject("the microphone needs the active app")
+                self.pendingMicStart = nil
+                self.stopMic()
+            } else if self.micEngine != nil {
+                return
+            }
+            #else
+            guard self.started else { return }
+            #endif
+            guard !self.leftApp else { return }
+            // Background audio permission is sent only for a native transport.
+            if self.keepPlaying, self.engine?.isRunning == true {
+                if inBackground && !self.bgActive { self.beginBackgroundWatch() }
+                return
+            }
+            self.pauseForInactiveScene()
+        }
+    }
+
+    private func pauseForInactiveScene() {
+        guard !leftApp else { return }
         leftApp = true
-        NSLog("[ModEngine] leaving the app: fading out")
+        if bgActive { endBackgroundWatch() }
+        #if !targetEnvironment(macCatalyst)
+        audioPauseEpoch += 1
+        stopMic()
+        #endif
         for part in 0..<5 { _ = host?.post(["t": "panic", "part": part]) }   // the mõdSynth parts' voices; queued, applied at resume
+        guard let engine = engine, engine.isRunning else {
+            releaseInactiveSession()
+            return
+        }
         fade(engine, to: 0, steps: 6, interval: 0.006) { [weak self] in
             guard let self = self, self.leftApp else { return }
             engine.pause()
-            NSLog("[ModEngine] left the app: faded out, engine paused (running=%@)", engine.isRunning ? "yes" : "no")
+            self.releaseInactiveSession()
         }
+    }
+
+    private func releaseInactiveSession() {
+        #if !targetEnvironment(macCatalyst)
+        guard !releaseRequested else { return }
+        releaseRequested = true
+        let epoch = audioPauseEpoch
+        // Muting the output leaves two audio clients alive. Wait for WebKit to
+        // suspend its own media after the native engine and mic have stopped.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let release: () -> Void = { [weak self] in
+                self?.fadeQueue.async { [weak self] in
+                    guard let self = self, self.leftApp, self.audioPauseEpoch == epoch else { return }
+                    do {
+                        try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+                        self.lifeNote("inactive scene: audio session released")
+                    } catch {
+                        self.lifeNote("inactive scene: audio session deactivation: \(error.localizedDescription)")
+                    }
+                }
+            }
+            if let webView = self.bridge?.webView {
+                webView.setAllMediaPlaybackSuspended(true, completionHandler: release)
+            } else {
+                release()
+            }
+        }
+        #endif
     }
 
     /// Back in the app: restart the engine and bring the level up, rather than
     /// snapping, since the page is restarting the transport at the same moment.
-    func appReturned() {
-        if bgActive { endBackgroundWatch(); return }
-        guard leftApp else { return }
-        leftApp = false
-        guard let engine = engine else { return }
-        if !engine.isRunning {
-            do { try engine.start() } catch {
-                NSLog("[ModEngine] restart after background failed: %@", error.localizedDescription)
-                return
+    func appReturned(then: (() -> Void)? = nil) {
+        fadeQueue.async { [weak self] in
+            guard let self = self else { return }
+            #if !targetEnvironment(macCatalyst)
+            self.sceneInactive = false
+            self.sceneInBackground = false
+            defer {
+                // The permission result can arrive before the system sheet
+                // returns the scene to active.
+                if let call = self.pendingMicStart {
+                    self.pendingMicStart = nil
+                    self.startMic(call)
+                }
             }
+            #endif
+            if self.bgActive {
+                self.endBackgroundWatch()
+                if self.engine?.isRunning == false { self.tryRestart("return from the background", attempt: 0) }
+            }
+            if self.leftApp {
+                self.leftApp = false
+                self.fadeToken += 1
+                #if !targetEnvironment(macCatalyst)
+                self.audioPauseEpoch += 1
+                let restoreWebAudio = self.releaseRequested
+                self.releaseRequested = false
+                #endif
+                do {
+                    #if !targetEnvironment(macCatalyst)
+                    try AVAudioSession.sharedInstance().setActive(true)
+                    self.interrupted = false
+                    #endif
+                    if let engine = self.engine, !engine.isRunning { try engine.start() }
+                    self.lifeNote("active scene: audio ready")
+                } catch {
+                    self.lifeNote("restart after background failed: \(error.localizedDescription)")
+                    self.restartEngine("return from the background")
+                }
+                if let engine = self.engine { self.fade(engine, to: 1, steps: 10, interval: 0.012, then: nil) }
+                #if !targetEnvironment(macCatalyst)
+                if restoreWebAudio {
+                    DispatchQueue.main.async { [weak self] in
+                        if let webView = self?.bridge?.webView {
+                            webView.setAllMediaPlaybackSuspended(false, completionHandler: then)
+                        } else {
+                            then?()
+                        }
+                    }
+                    return
+                }
+                #endif
+            }
+            DispatchQueue.main.async { then?() }
         }
-        NSLog("[ModEngine] back in the app: engine running=%@", engine.isRunning ? "yes" : "no")
-        fade(engine, to: 1, steps: 10, interval: 0.012, then: nil)
     }
 
     /// The app became the active one. Normally appReturned has already run; this is for
@@ -304,10 +413,13 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     /// but can still stop the engine (or leave it paused and faded out from a leave that
     /// was never matched by a return). Idempotent, and a no-op on a running engine.
     func appBecameActive() {
-        if leftApp { appReturned(); return }
-        guard started, !bgActive, let engine = engine else { return }
-        if !engine.isRunning { restartEngine("app became active") }
-        if engine.mainMixerNode.outputVolume < 1 { fade(engine, to: 1, steps: 10, interval: 0.012, then: nil) }
+        fadeQueue.async { [weak self] in
+            guard let self = self else { return }
+            if self.leftApp { self.appReturned(); return }
+            guard self.started, !self.bgActive, let engine = self.engine else { return }
+            if !engine.isRunning { self.tryRestart("app became active", attempt: 0) }
+            if engine.mainMixerNode.outputVolume < 1 { self.fade(engine, to: 1, steps: 10, interval: 0.012, then: nil) }
+        }
     }
 
     /// A stepped ramp of the mixer's output volume. A newer fade (or a stop)
@@ -416,21 +528,30 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     private func sessionInterrupted(_ n: Notification) {
         guard let raw = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
-        switch type {
-        case .began:
-            interrupted = true
-            interruptions += 1
-            lifeNote("audio interrupted")
-        case .ended:
-            interrupted = false
-            let o = (n.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
-            lifeNote("interruption ended (shouldResume=\(AVAudioSession.InterruptionOptions(rawValue: o).contains(.shouldResume) ? "yes" : "no"))")
-            // Whether iOS asks for a resume or not: the engine is only the instrument. Nothing
-            // sounds until the page plays something, and an engine left stopped would swallow
-            // whatever it plays next.
-            restartEngine("interruption")
-        @unknown default:
-            break
+        let options = (n.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt) ?? 0
+        let shouldResume = AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume)
+        fadeQueue.async { [weak self] in
+            guard let self = self else { return }
+            switch type {
+            case .began:
+                // The scene already owns the pause and will reactivate itself.
+                if self.leftApp { return }
+                self.interrupted = true
+                self.interruptions += 1
+                self.lifeNote("audio interrupted")
+            case .ended:
+                self.interrupted = false
+                self.lifeNote("interruption ended (shouldResume=\(shouldResume ? "yes" : "no"))")
+                #if !targetEnvironment(macCatalyst)
+                if self.sceneInactive && !shouldResume {
+                    self.pauseForInactiveScene()
+                    return
+                }
+                #endif
+                self.tryRestart("interruption", attempt: 0)
+            @unknown default:
+                break
+            }
         }
     }
 
@@ -488,8 +609,15 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     private var bgReports: [[String: Any]] = []
 
     @objc func setBackgroundPlay(_ call: CAPPluginCall) {
-        keepPlaying = call.getBool("on") ?? false
-        call.resolve(["on": keepPlaying])
+        let on = call.getBool("on") ?? false
+        fadeQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.keepPlaying = on
+            #if !targetEnvironment(macCatalyst)
+            if !on && self.sceneInactive { self.pauseForInactiveScene() }
+            #endif
+            call.resolve(["on": on])
+        }
     }
 
     /// A call from the page into the engine (notes, voices, edits). Counted only while the
@@ -571,8 +699,6 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         if bgReports.count > 5 { bgReports.removeFirst() }
         bgLock.unlock()
         NSLog("[ModEngine] back in the app after %.1fs: %@", secs, "\(report)")
-        // iOS can stop the engine while the app is away (an interruption that never ended).
-        if let e = engine, !e.isRunning { restartEngine("return from the background") }
     }
 
 #if DEBUG
@@ -636,14 +762,20 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             self.appReturned()
             self.keepPlaying = false
         }
-        // The default path after it: leaving still fades and pauses.
-        q.asyncAfter(deadline: .now() + 13) { self.appLeft() }
+        // Opening the switcher can leave the app inactive with no background
+        // event. The engine still has to pause and hand back the audio session.
+        q.asyncAfter(deadline: .now() + 13) { self.appLeft(inBackground: false) }
         q.asyncAfter(deadline: .now() + 15) {
             NSLog("[BgSelfTest] default leave: running=%@", (self.engine?.isRunning ?? false) ? "yes (WRONG)" : "no (paused)")
             self.appReturned()
         }
         q.asyncAfter(deadline: .now() + 17) {
             NSLog("[BgSelfTest] back: running=%@", (self.engine?.isRunning ?? false) ? "yes" : "no (WRONG)")
+            self.appLeft(inBackground: false)
+            self.appReturned()
+        }
+        q.asyncAfter(deadline: .now() + 18) {
+            NSLog("[BgSelfTest] quick return: running=%@", (self.engine?.isRunning ?? false) ? "yes" : "no (WRONG)")
         }
     }
 #endif
@@ -696,12 +828,12 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["started": true, "sampleRate": host?.sampleRate ?? 0])
             return
         }
+        #if !targetEnvironment(macCatalyst)
+        guard !sceneInactive else { call.reject("audio is paused while the app is inactive"); return }
+        #endif
         do {
-            // The session is AppDelegate's, deliberately: it is configured
-            // once, before the web view exists, and this plugin never touches
-            // it. Setting the category or calling setActive from here is what
-            // made the engine and WebKit fight over one session, and the
-            // engine lose after 0.73 s.
+            // AppDelegate configures the shared category before WebKit starts.
+            // The scene handlers park and restore that same session.
             let session = AVAudioSession.sharedInstance()
             let sampleRate = session.sampleRate
             let engine = AVAudioEngine()
@@ -827,7 +959,9 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         #endif
         unwatchLife()
         bgTimer?.cancel(); bgTimer = nil; bgActive = false
+        #if targetEnvironment(macCatalyst)
         leftApp = false
+        #endif
         fadeToken += 1          // a fade in flight must not touch the next engine's volume
         engine?.stop()
         if let source = source { engine?.detach(source) }
@@ -835,9 +969,14 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
         engine = nil
         host = nil
         started = false
-        // Not setActive(false): the session belongs to AppDelegate and the
-        // web view is still using it. Deactivating here would silence the
-        // page's own audio as a side effect of stopping the native engine.
+        #if !targetEnvironment(macCatalyst)
+        if sceneInactive {
+            if leftApp { releaseInactiveSession() }
+            else { pauseForInactiveScene() }
+        }
+        #endif
+        // In the active scene the page can still use the session when the
+        // native engine stops, for example when switching to Web Audio.
         call.resolve(["started": false])
     }
 
@@ -1752,6 +1891,20 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func micStart(_ call: CAPPluginCall) {
+        fadeQueue.async { [weak self] in self?.startMic(call) }
+    }
+
+    private func startMic(_ call: CAPPluginCall) {
+        #if !targetEnvironment(macCatalyst)
+        if sceneInactive {
+            if sceneInBackground || pendingMicStart != nil {
+                call.reject("the microphone needs the active app")
+            } else {
+                pendingMicStart = call
+            }
+            return
+        }
+        #endif
         stopMic()
         let engine = AVAudioEngine()
         let input = engine.inputNode
@@ -1798,8 +1951,10 @@ public class ModEngine: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func micStop(_ call: CAPPluginCall) {
-        stopMic()
-        call.resolve()
+        fadeQueue.async { [weak self] in
+            self?.stopMic()
+            call.resolve()
+        }
     }
 
     private func stopMic() {

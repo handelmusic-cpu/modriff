@@ -56,6 +56,8 @@ The free web page keeps its browser's output controls. Physical Bluetooth/USB sw
 
 **More chords (1.9.9.9.9).** Live's eighth grid position opens the shared anchored picker with Off, Borrowed, Dominants and Mine. The selected shelf reuses the Studio pads and is labelled on the Live surface. The existing `modo-live-more` values restore the choice across launches. Physical iPhone touch and sound are on the phone checklist.
 
+**iPhone audio session (1.9.9.9.9a).** An inactive scene pauses the native engine and WebKit media before releasing the audio session unless the native transport has background playback permission. The active scene restores the session before resuming the page. An interruption without permission to resume leaves the session parked until the app is active. Sampler microphone takes end on actual backgrounding. The phone checklist covers coexistence with other audio apps.
+
 **Versioning, as decided:** the numbering restarts at 5.0 with the first build
 after `4.9.9.9.9.9.9f`: `major.minor` and an optional trailing letter for a
 follow-up, no third dotted part (the rule is in CLAUDE.md, "Numbering"). "5.0.0 is

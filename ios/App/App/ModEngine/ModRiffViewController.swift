@@ -53,7 +53,9 @@ class ModRiffViewController: CAPBridgeViewController {
 
     override func capacitorDidLoad() {
         let ok = bridge != nil
-        bridge?.registerPluginType(ModEngine.self)
+        // The scene can lose focus on the splash, before the page calls the
+        // engine. Make the session lifecycle available on that first switch.
+        bridge?.registerPluginInstance(ModEngine())
         bridge?.registerPluginType(ModMidi.self)
         bridge?.registerPluginType(ModBilling.self)
         bridge?.registerPluginType(ModHaptics.self)
@@ -93,6 +95,9 @@ class ModRiffViewController: CAPBridgeViewController {
         // without a Safari console: it is the page's own `modo-bgtest` switch.
         if ProcessInfo.processInfo.environment["MODRIFF_BGTEST"] != nil {
             boot += "try{localStorage.setItem('modo-bgtest','1')}catch(e){};"
+        }
+        if ProcessInfo.processInfo.environment["MODRIFF_BG_SELFTEST"] != nil {
+            boot += "window.addEventListener('load',()=>window.Capacitor.Plugins.ModEngine.start({}).catch(console.error),{once:true});"
         }
         #endif
         webView?.configuration.userContentController.addUserScript(
