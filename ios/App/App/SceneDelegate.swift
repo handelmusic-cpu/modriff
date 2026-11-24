@@ -27,11 +27,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
     }
 
-    // The page is told when the app is left and returned to, because its own
-    // visibilitychange is not reliable once the audio background mode is on and
-    // something is playing (index.html, "_bgAway"). The page pauses on the first
-    // and resumes on the second; with "Keep playing in background" on it ignores
-    // both.
+    // The app switcher can leave the scene inactive without backgrounding it.
+    // Park idle audio at that first transition. The page's transport still
+    // receives its background event only when the scene actually leaves.
+    #if !targetEnvironment(macCatalyst)
+    func sceneWillResignActive(_ scene: UIScene) {
+        ModEngine.shared?.appLeft(inBackground: false)
+    }
+    #endif
+
     func sceneDidEnterBackground(_ scene: UIScene) {
         // The engine is silenced here, first and without the page: the page's
         // own pause below is run by a web view WebKit has just started
@@ -40,12 +44,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         tellPage("modriff-background")
     }
 
+    #if targetEnvironment(macCatalyst)
     func sceneWillEnterForeground(_ scene: UIScene) {
-        ModEngine.shared?.appReturned()
-        tellPage("modriff-foreground")
+        if let engine = ModEngine.shared {
+            engine.appReturned { [weak self] in self?.tellPage("modriff-foreground") }
+        } else {
+            tellPage("modriff-foreground")
+        }
     }
 
-    #if targetEnvironment(macCatalyst)
     // Switching to another Mac app and back leaves the web view without keyboard
     // focus (document.hasFocus() stays false), so musical typing is dead on every
     // screen until a click, and the page's own recovery never runs: it waits for
@@ -60,6 +67,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Once more shortly after: the window can still be becoming key on the
         // first call, and a first responder asked for too early is refused.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { vc?.takeKeyboard() }
+    }
+    #else
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        guard let engine = ModEngine.shared else { return }
+        engine.appReturned { [weak self, weak scene] in
+            // A fast second swipe can happen while WebKit is still resuming.
+            guard scene?.activationState == .foregroundActive else { return }
+            self?.tellPage("modriff-foreground")
+        }
     }
     #endif
 
