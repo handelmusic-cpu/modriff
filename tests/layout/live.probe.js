@@ -81,10 +81,9 @@ const L = require('./lib.js');
     await page.evaluate(() => { ['chords', 'melody', 'pads', 'fx'].forEach(k => { const b = document.querySelector('#lv-slots .lv-slot[data-mod=' + k + '] .lv-qt'); if (b && b.getAttribute('aria-expanded') === 'true') b.click(); }); }); await page.waitForTimeout(250);
 
     if (vp === 'p430') {
-      const more0 = await page.evaluate(() => chordMoreGet());
-      await page.evaluate(() => document.getElementById('live-more-pad').click());
-      R.check((await page.evaluate(() => chordMoreGet())) !== more0, 'the eighth pad steps the More row');
-      await page.evaluate(() => chordMoreSet('modal'));
+      await page.locator('#live-more-pad').tap();
+      await page.locator('#live-more-menu button[value="modal"]').tap();
+      R.check(await page.evaluate(() => chordMoreGet() === 'modal'), 'the eighth position opens a picker for the More chords shelf');
     }
 
     // Every widget's sheet.

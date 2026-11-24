@@ -131,16 +131,11 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     into **the fifth slot of the tab bar**: a red caret pill in a 58 x 52 pt target.
     A swipe up on the transport row could open it too.
 
-11. **One switch adds a row of chords in Live.** A **More** switch in the Chords
-    header steps through Off, **Modal** (the borrowed chords: i, iv, ii°, v, ♭III,
-    ♭VI, ♭VII, ♭II, from `getAllBorrowed`), **Dominants** (V/ii to V/vi, from
-    `getSecDoms`) and **Mine** (the pinned My Chords and + Build). **It starts on Modal** (the owner's call). It puts one row
-    of existing pads under the seven diatonic ones, 64 pt tall (the diatonic pads
-    stay 124), and the choice is remembered. Today those rows are Studio only
-    (`body.mode-basic #page-perform .advanced-only { display:none !important }`);
-    this makes them one tap in Live. The pads, colours and taps are the existing
-    ones (`makeOutBtn`, `cpRenderAll`), so nothing is a second copy. A chord grid
-    (columns as degrees, all lanes at once) was drawn and rejected.
+11. **More chords in Live.** The eighth grid position opens a picker for
+    **Off**, **Borrowed**, **Dominants** and **Mine** (pinned My Chords). The
+    picker marks the selected choice and the corresponding shelf is labelled
+    under the in-key pads. A fresh install starts on Off. Live remembers the
+    choice and uses the same pads as Studio (`makeOutBtn`, `cpRenderAll`).
 
 12. **One ··· sheet per Live widget** (1.9; it was a caret on every title that folded the widget's extras, an "All controls" button
     at its foot and two eye buttons in the transport sheet). A Live widget shows what you play and a heading with its name, its
@@ -150,7 +145,7 @@ rhythm exists only on Play, so Studio has nothing for the chord part.
     axes, targets, motion and mixes), the instrument hidden, and under them **Arrange this widget**: Move up, Move down, Swap
     with…, Take off the Live page and Back to the standard layout. Changing a layout is the Studio Pack's: on a free install the
     rows are locked and say so, and Back to the standard layout is always open. Chords are two rows of four split pads, 96 pt
-    tall (each half at least 44), and an eighth pad steps the More row (Borrowed, Dominants, Mine, More); the melody keys are
+    tall (each half at least 44), with the More chords picker in the eighth position; the melody keys are
     380 pt tall; the Mixer widget is the Mix tab's rows. `tests/layout/live.probe.js` measures all of it.
 
 13. **Settings becomes a short list that opens pages.** It stops being a tab and
