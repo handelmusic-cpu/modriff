@@ -371,7 +371,7 @@ never opens it on its own.
 | Live page | the standard layout | **Studio**: adding, swapping, moving, removing widgets |
 | Studio part pages: how a part is written | Generate (and the pickers, steps, rate, octave) | **Studio**: Arrange (a line per chord) and Play in (keys, MIDI or the home row into a roll or the grid; `noteInputArm`). Both show locked, not hidden (7.4) |
 | Studio part pages: sound shaping | the voice as picked, at its defaults | **Studio** (`soundShaping`): each part's Filter, Attack, Release, Reverb and the five voice-tone knobs (Tone, Reso, Sweep, Width, Drift). The sliders lock; a saved song or link that carries a value still plays it. Picking a voice, Sub, Strum, Glide, Drive and the mixer stay free (`soundShapingSync`) |
-| Audio / MIDI export | a take stops at 30 seconds (plus the recorder's 8 s tail) / first 4 bars of MIDI | **Studio**: takes of any length, the whole MIDI; stems |
+| Audio / MIDI export | a take stops at 30 seconds (plus the tail, which ends once the output is silent, 8 s at most) / first 4 bars of MIDI | **Studio**: takes of any length, the whole MIDI; stems |
 | Sections in a song | 2 may be added (a song that arrives with more loads whole) | **Studio**: unlimited |
 | Saved songs | 5 (iReal charts count against them) | **Studio**: unlimited |
 | iReal import | one chart per import, counted against the slots | **Practice**: whole playlists, in a library outside the slots |

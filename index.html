@@ -10427,7 +10427,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.0a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.0b</span></div>
  </div>
 </div>
 
@@ -10540,6 +10540,8 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
   <div class="kb-sc-row"><span class="kb-key">⌥ ↑ / ↓</span><span class="kb-desc">Tempo up / down 1 BPM; with Shift, 5.</span></div>
   <div class="kb-sc-row"><span class="kb-key">⌥ L</span><span class="kb-desc">Switch Live ⇄ Studio.</span></div>
   <div class="kb-sc-row"><span class="kb-key">⌥ R · ⌥ M · ⌥ B · ⌥ P</span><span class="kb-desc">Chord capture (into the song) · melody capture · bass capture · sampler pad capture, on and off.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">⌥ K</span><span class="kb-desc">Keep what you just played, with nothing armed first: the chords, the Solo strip or the pads, whichever you played last.</span></div>
+  <div class="kb-sc-row"><span class="kb-key">⌥ E</span><span class="kb-desc">Start and stop a Bounce: a .wav of what you hear and a .mid of what you played. It ends once the sound has died away.</span></div>
  </div>
 
  <div class="kb-sc-group">
@@ -11907,7 +11909,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.0a</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.0b</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13120,7 +13122,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.0a';
+const MODRIFF_VERSION = '2.0b';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -46471,7 +46473,7 @@ const HELP_SECTIONS=[
  {icon:'',text:'Five tabs along the bottom: <strong>Live</strong> is the stage — big targets, only what you play. <strong>Studio</strong> is the whole rig, with a page for every part. <strong>Song</strong> is charts and sections. <strong>Mix</strong> is the mixer and the voices. Each Studio part page opens its own mõdSynth editor. <strong>More</strong> opens a sheet of everything else.'},
  {icon:'',text:'The <strong>part switches</strong> — Drums, Bass, Melody, Arp, Chords and the rest — sit in the bar on every tab. <strong>Tap</strong> one to bring that part in or out; that is all they do. In Studio the <strong>name at the top of the page</strong> (Bass ▾, say) opens a picker of all nine pages: Drums, Aux, Bass, Melody, Arp, Chords, Solo, Sampler and mõdFX.'},
  {icon:'',text:'<strong>Settings</strong> is in the More sheet. It is a list of rows — Playing, Gear, App — each showing what it is set to; tap a row to open it, or type in <strong>Find a setting</strong> at the top.'},
- {icon:'',text:'On a keyboard, <strong>Alt/Option + 1–5</strong> jumps to Live, Studio, Song, Mix and Settings, <strong>Tab</strong> cycles the main tabs, and <strong>Alt/Option + L</strong> swaps Live and Studio. <strong>Keys</strong> in the More sheet lists every shortcut.'},
+ {icon:'',text:'On a keyboard, <strong>Alt/Option + 1–5</strong> jumps to Live, Studio, Song, Mix and Settings, <strong>Tab</strong> cycles the main tabs, <strong>Alt/Option + L</strong> swaps Live and Studio, <strong>Alt/Option + K</strong> keeps what you just played and <strong>Alt/Option + E</strong> starts and stops a Bounce. <strong>Keys</strong> in the More sheet lists every shortcut.'},
  {icon:'',text:'The app is free to play, and some things are one-time <strong>packs</strong>. A locked control opens a sheet that names the pack, what it adds and its price, and Settings › Packs &amp; purchases lists them all. The free web page has no packs.'},
  ]},
  {title:'▶ Transport — one button, five layers', tips:[
@@ -47662,6 +47664,8 @@ document.addEventListener('keydown', function(e){
   if(code==='KeyM'){ claim(); if(typeof melCaptureToggle==='function') melCaptureToggle(); return; }
   if(code==='KeyB'){ claim(); if(typeof blCaptureToggle==='function') blCaptureToggle(); return; }
   if(code==='KeyP'){ claim(); if(typeof window.psCaptureToggle==='function') window.psCaptureToggle(); return; }
+  if(code==='KeyK'){ claim(); keepJustPlayed(); return; }
+  if(code==='KeyE'){ claim(); if(typeof toggleRecording==='function') toggleRecording(); return; }
  }
  if(e.metaKey || e.ctrlKey || e.altKey) return;
  if(code==='Escape' && !_kbAnyModalOpen()){
@@ -51496,6 +51500,17 @@ function _chordRingRun(){
  return _chordRing.slice(start);
 }
 
+// Keep, from the keyboard: whichever of the chords, the Solo strip or the sampler pads you played last. Each has its own
+// Keep button in the More sheet; a key cannot ask which, so the most recent run wins and says what it kept.
+function keepJustPlayed(){
+ var c=[], last=function(a){ return a.length ? a[a.length-1].t : -1; };
+ try{ if(!songRecActive){ var rc=_chordRingRun(); if(rc.length) c.push({t:last(rc), f:captureBack}); } }catch(e){}
+ try{ if(!melCapActive){ var rm=_melRingRun(); if(rm.length) c.push({t:last(rm), f:melCaptureBack}); } }catch(e){}
+ try{ if(!PS.cap){ var rp=psRingRun(); if(rp.length) c.push({t:last(rp), f:psCaptureBack}); } }catch(e){}
+ if(!c.length){ showToast('Nothing to keep yet — play something first'); return; }
+ c.sort(function(a,b){ return b.t-a.t; })[0].f();
+}
+window.keepJustPlayed = keepJustPlayed;
 // Turn the run into a section, the same shape the forward path writes.
 function captureBack(){
  if(songRecActive){ showToast('Already capturing — stop first'); return; }
@@ -56969,7 +56984,24 @@ async function _finishSinkTaps(written, taps, base, sr, tags, span, folder){
 // Keep mix, stem and native taps open after the transport stops. The old
 // 150 ms flush captured buffers already rendered, never the remaining sound.
 var _recFinishing=false;
-var REC_TAIL_MS=8000;
+// A take used to run a fixed 8 s past Stop, whatever was left to ring. Now it ends when the master output has been
+// silent for REC_SILENT_HOLD_MS (the same master the mixer's meter reads, host engine included), and REC_TAIL_MS is only
+// the ceiling for a tail that never dies (a self-oscillating delay) or a meter that cannot be read. The hold is longer
+// than the gap between two echoes at a normal delay time, so a repeat is not cut off between its predecessors; a
+// delay set to several seconds can still be cut in a gap, which is the price of not waiting 8 s for every take.
+var REC_TAIL_MS=8000, REC_SILENT_RMS=0.0004, REC_SILENT_HOLD_MS=800, REC_TAIL_MIN_MS=250;
+function _recWhenSilent(done){
+  var an=null; try{ an=_mixMasterAnalyserGet(); }catch(e){}
+  if(!an){ setTimeout(done, REC_TAIL_MS); return; }
+  var t0=Date.now(), quiet=0, last=t0;
+  var iv=setInterval(function(){
+    var now=Date.now(), lvl=1;
+    try{ lvl=_mixLevel(an); }catch(e){}
+    if(lvl<REC_SILENT_RMS) quiet+=now-last; else quiet=0;
+    last=now;
+    if((quiet>=REC_SILENT_HOLD_MS && now-t0>=REC_TAIL_MIN_MS) || now-t0>=REC_TAIL_MS){ clearInterval(iv); done(); }
+  }, 50);
+}
 async function _stopRecording(transportStopped){
   if(!_isRecording || _recFinishing) return;
   clearTimeout(_recCapTimer); _recCapTimer=null;
@@ -56981,7 +57013,7 @@ async function _stopRecording(transportStopped){
   if(!transportStopped) stopEverything();
   _updateRecBtn();
   showToast('Finishing notes and effects…');
-  setTimeout(function(){ _finishRecording(midiFile); }, REC_TAIL_MS);
+  _recWhenSilent(function(){ _finishRecording(midiFile); });
 }
 function _finishRecording(midiFile){
   // Taken now, not 150ms from now: a take started inside that window sets its own.
@@ -77085,7 +77117,7 @@ const FREE_NUMBERS = {
   stepMax:            16,   // the app's own maximum is 64
   saveSlots:          5,    // setlist songs, and iReal charts without the Practice Pack; Setups are not counted
   sections:           2,    // sections a song may be ADDED up to (loading one with more is never refused)
-  bounceSeconds:      30,   // a Bounce stops itself here; the file adds the recorder's usual 8 s tail
+  bounceSeconds:      30,   // a Bounce stops itself here; the file adds the tail, up to 8 s, ending once the output has been silent for 0.8 s
   midiExportBars:     4,
   padCount:           9,    // pads SHOWN (locked) on a free install: a 3x3
   previewsPerItem:    2     // taps that sound on a locked pad or voice; then a tap only opens the sheet
