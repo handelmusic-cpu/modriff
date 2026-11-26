@@ -27,6 +27,12 @@ function serve() {
 // ── in the page: put cells on the 808 (lanes 0, 1) and hear one bar of them on a fake clock ──────────
 function installHarness() {
   window.T = {
+    // The live cells (the page hands its own grids to the autosave), and the lanes as drawn.
+    c: (ti, s) => window._sqCaptureState().grid[ti][s],
+    aux: (ti, s) => window._sqCaptureState().aux.grid[ti][s],
+    lane: ti => document.querySelector(`#sq-gInner .sq-grow[data-ti="${ti}"]`),
+    sel() { const e = [...document.querySelectorAll('#sq-gInner .sq-step.sel')]; if (e.length !== 1) return 'marked ' + e.length;
+      const box = e[0].parentNode; return box.classList.contains('sq-tup') ? [box.dataset.ti, box.dataset.s, e[0].dataset.hi].join() : 'a step'; },
     cell: o => Object.assign({ v: 1, r: 1, rs: 1, orn: 0, vel: 100 }, o),
     row: (cells, n) => Array.from({ length: n || 16 }, (_, s) => cells[s] ? T.cell(cells[s]) : T.cell({ v: 0 })),
     load(lanes, steps) {
@@ -71,6 +77,9 @@ function installHarness() {
   await page.evaluate(installHarness);
 
   await playback(page);
+
+  const d = await drumPage(browser, url, errs);
+  await grid(d);
 
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
   await browser.close(); if (srv) srv.close();
@@ -127,4 +136,113 @@ async function playback(page) {
   ok(JSON.stringify(r.typed) === JSON.stringify({ r: 7, rs: 4, n: 7, h0: 0, h2: 60, h2v: 1 }), 'another type keeps hit 1 and rebuilds the rest', JSON.stringify(r.typed));
   ok(JSON.stringify(r.removed) === JSON.stringify({ v: 0, r: 1, rs: 1, hits: true, p: 3 }), 'removing leaves the step with hit 1\'s settings', JSON.stringify(r.removed));
   ok(JSON.stringify(r.typedPlain) === JSON.stringify({ r: 3, rs: 2, hits: true, vel: 80 }), 'without a list only the type changes', JSON.stringify(r.typedPlain));
+}
+
+// ── the drum page on a phone, with real touch ─────────────────────────────────────────────
+async function drumPage(browser, url, errs) {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e)));
+  await page.goto(url); await page.evaluate(() => { localStorage.clear(); }); await page.reload(); await page.waitForTimeout(1500);
+  await page.evaluate(() => { const b = document.querySelector('#unlock-choices button'); if (b) b.click(); }); await page.waitForTimeout(900);
+  await page.evaluate(() => { setModTier('pro'); setViewMode('studio'); switchTab('accomp'); setAccompMode('drums'); }); await page.waitForTimeout(700);
+  await page.evaluate(installHarness);
+  const cdp = await ctx.newCDPSession(page);
+  // A finger on the middle of one element. `wait` after it: past the double-tap window unless the next tap is the pair's.
+  const tap = async (sel, wait) => {
+    const b = await page.evaluate(sel => { const e = document.querySelector(sel); if (!e) return null;
+      e.scrollIntoView({ block: 'center', inline: 'center' }); const r = e.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, hit: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === e }; }, sel);
+    if (!b) return { missing: sel };
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x, y: b.y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(wait == null ? 450 : wait);
+    return b;
+  };
+  const show = (lanes, steps) => page.evaluate(([lanes, steps]) => { sqClearSelForTest(); T.load(lanes, steps); window._sqRenderGrid(); }, [lanes, steps]);
+  await page.evaluate(() => { window.sqClearSelForTest = () => { if (window._sqClearSel) window._sqClearSel(); }; });
+  return { page, ctx, tap, show };
+}
+const hit = (ti, s, i) => `#sq-gInner .sq-tup[data-ti="${ti}"][data-s="${s}"] .sq-hit[data-hi="${i}"]`;
+
+// ── Task 4: the switches ─────────────────────────────────────────────────────────────
+async function grid(d) {
+  console.log('grid:');
+  const { page, tap, show } = d, five = { 0: { v: 1, r: 5, rs: 4 } };
+  await show({ 0: five });
+  const widths = () => page.evaluate(() => [0, 1].map(ti => { const lane = T.lane(ti), last = lane.lastElementChild, row = lane.getBoundingClientRect();
+    return Math.round((last.getBoundingClientRect().right - row.left) * 10) / 10; }));
+  const n = await page.evaluate(() => ({ hits: document.querySelectorAll('#sq-gInner .sq-tup .sq-hit').length,
+    nums: [].map.call(document.querySelectorAll('#sq-gInner .sq-tup .sq-hn'), e => e.textContent).join(''),
+    lit: [].map.call(document.querySelectorAll('#sq-gInner .sq-tup .sq-hit'), e => e.classList.contains('on') ? 1 : 0).join('') }));
+  ok(n.hits === 5 && n.nums === '12345' && n.lit === '11111', 'a 5:4 is five numbered switches, all on', JSON.stringify(n));
+  if (!n.hits) return;
+  let w = await widths();
+  ok(Math.abs(w[0] - w[1]) <= 1, 'its row is as wide as a row of steps', w.join(' / '));
+  await page.evaluate(() => gridZoomSet(2, { kind: 'sq' })); await page.waitForTimeout(300);
+  w = await widths();
+  const sizes = await page.evaluate(() => ({ hit: document.querySelector('#sq-gInner .sq-hit').getBoundingClientRect().width, step: T.lane(1).firstElementChild.getBoundingClientRect().width }));
+  ok(Math.abs(w[0] - w[1]) <= 1 && Math.abs(sizes.hit / sizes.step - .8) < .06, 'and still is pinched wider, each switch four fifths of a step', JSON.stringify([w, sizes]));
+  await page.evaluate(() => gridZoomSet(1, { kind: 'sq' })); await page.waitForTimeout(300);
+
+  const geo = await page.evaluate(() => {
+    const A = window._sqTup, row = T.row({ 12: { v: 1, r: 5, rs: 8 } }), five = T.row({ 0: { v: 1, r: 5, rs: 4 } });
+    return { span: A.layout(row, 16).filter(x => x.tup).map(x => x.s + ':' + x.span).join(), at: [0, .9, 3.99, 4].map(p => { const h = A.hitAt(five, p); return h ? h.hi : null; }) };
+  });
+  ok(geo.span === '12:4', 'a tuplet past the end takes the room there is', geo.span);
+  ok(JSON.stringify(geo.at) === '[0,1,4,null]', 'the hit sounding at a moment', JSON.stringify(geo.at));
+
+  const vs = (ti, s) => page.evaluate(([ti, s]) => { const c = T.c(ti, s); return { v: c.v, list: c.hits ? c.hits.map(h => h.v).join('') : null, sel: T.sel() }; }, [ti, s]);
+  await show({ 0: { 0: { v: 1, r: 7, rs: 4 } } });
+  const t1 = await tap(hit(0, 0, 1)); const a1 = await vs(0, 0);
+  ok(t1.hit && a1.list === '1011111', 'a finger on hit 2 of a 7:4 switches off that hit only', JSON.stringify([t1, a1]));
+  await tap(hit(0, 0, 1)); ok((await vs(0, 0)).list === '1111111', 'and back on', JSON.stringify(await vs(0, 0)));
+
+  await show({ 0: five });
+  await tap(hit(0, 0, 2), 80); await tap(hit(0, 0, 2));
+  const a2 = await vs(0, 0);
+  ok(a2.list === null && a2.v === 1 && a2.sel === '0,0,2', 'a double tap on a lit hit selects it and changes nothing, no list left behind', JSON.stringify(a2));
+  await tap(hit(0, 0, 4)); await tap(hit(0, 0, 4), 80); await tap(hit(0, 0, 4));
+  const a3 = await vs(0, 0);
+  ok(a3.list === '11111' && a3.sel === '0,0,4', 'a double tap on a dark hit lights and selects it', JSON.stringify(a3));
+
+  await page.evaluate(() => { _tapEdit = true; });
+  await show({ 0: five });
+  await tap(hit(0, 0, 3)); const e1 = await vs(0, 0); await tap(hit(0, 0, 3)); const e2 = await vs(0, 0);
+  await page.evaluate(() => { _tapEdit = false; });
+  ok(e1.list === null && e1.sel === '0,0,3' && e2.list === '11101', 'Tap: Edit selects first and switches off on the second touch', JSON.stringify([e1, e2]));
+
+  await show({ 0: { 0: { v: 1, r: 5, rs: 4 }, 2: { v: 1, r: 3, rs: 2 } } });
+  const tups = () => page.evaluate(() => [].map.call(document.querySelectorAll('#sq-gInner .sq-tup[data-ti="0"]'), e => e.dataset.s).join());
+  const c1 = await tups();
+  await page.evaluate(() => { window._sqTup.remove(T.c(0, 0)); window._sqTup.sync(); });
+  const c2 = await tups();
+  ok(c1 === '0' && c2 === '2', 'a tuplet under another draws nothing until the first is removed', c1 + ' then ' + c2);
+
+  await show({ 0: five, 1: { 4: { v: 1, r: 7, rs: 4 } } });
+  await page.evaluate(() => { document.dispatchEvent(new CustomEvent('sq-start-request')); }); await page.waitForTimeout(900);
+  const sample = () => page.evaluate(() => [0, 1, 2].map(ti => { const row = T.lane(ti); const l = row.querySelectorAll('.sq-step.head');
+    return { n: l.length, boxes: row.querySelectorAll('.sq-tup.head').length, hit: l.length && l[0].dataset.hi != null ? +l[0].dataset.hi : -1 }; }));
+  const seen = new Set(); let worst = null;
+  for (let k = 0; k < 70; k++) {
+    if (k === 30) await page.evaluate(() => { window._sqTup.setType(T.c(0, 0), 3, 2); window._sqTup.sync(); });
+    await page.waitForTimeout(47);
+    const s = await sample();
+    s.forEach(x => { if (x.n > 1 || x.boxes) worst = s; });
+    if (k !== 30 && s.some(x => x.n !== 1)) worst = worst || s;
+    if (s[0].hit >= 0) seen.add(s[0].hit);
+  }
+  await page.evaluate(() => { document.dispatchEvent(new CustomEvent('sq-stop-request')); }); await page.waitForTimeout(300);
+  const left = await page.evaluate(() => document.querySelectorAll('#sq-gInner .sq-step.head').length);
+  ok(!worst, 'while playing, one lit element a lane, never a tuplet\'s box, through a change of type', JSON.stringify(worst));
+  ok(seen.size >= 3 && left === 0, 'the playhead walks the hits and is put out on stop', JSON.stringify([[...seen], left]));
+
+  const x = await page.evaluate(async () => {
+    let host = document.getElementById('sq-xstrip'); if (!host) { host = document.createElement('div'); host.id = 'sq-xstrip'; document.body.appendChild(host); }
+    window._sqRestoreState({ steps: 16, mach: '808', grid: {}, aux: { mach: 'PERC', grid: { 0: T.row({ 0: { v: 1, r: 5, rs: 4 } }) }, on: true } });
+    window._sqEnsureGrid(); window._sqRenderGrid();
+    const q = () => host.querySelectorAll('.sq-xtup .sq-xhit'), n = q().length, seq = [];
+    for (let k = 0; k < 3 && n; k++) { q()[2].dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); seq.push(T.aux(0, 0).hits[2].v); }
+    return { n, seq: seq.join() };
+  });
+  ok(x.n === 5 && x.seq === '2,0,1', 'the Live Aux roll shows the same switches; a tap steps one hit on, accent, off', JSON.stringify(x));
 }

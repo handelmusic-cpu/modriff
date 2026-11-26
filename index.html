@@ -1475,6 +1475,7 @@ body.mode-basic .lv-off { display:none !important; }
 .sq-xc.on { background:var(--sq-tc,#888); border-color:var(--sq-tc,#888); }
 .sq-xc.accent { background:var(--sq-tc,#888); border-color:#fff; }
 .sq-xc.head { outline:1px solid rgba(255,255,255,.7); outline-offset:-1px; }
+.sq-xtup { display:flex; gap:1px; min-width:0; }
 /* The widget manager sheet. */
 .lv-w-sheet { max-height:82vh; overflow-y:auto; padding-bottom:24px; }
 .lv-w-h { margin:14px 0 6px; font-size:.54rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
@@ -6417,7 +6418,15 @@ body.map-on .kb-wrap:has(.map-armed) { outline:2px solid var(--accent); outline-
 /* A tuplet (a ratchet spread over more than its step) draws its hits as dashes. */
 .sq-step .rd.tp i { width:4px; height:2px; border-radius:1px; }
 /* The steps an earlier tuplet in the lane spans: still there, not sounding. */
-.sq-step.covered { opacity:.28; background-image:repeating-linear-gradient(135deg, transparent 0 4px, rgba(255,255,255,.08) 4px 5px); cursor:not-allowed; }
+/* A tuplet in the grid: one switch a hit, side by side across the width of the steps it spans (the width is set inline from
+   --sq-w, so the zoom carries it). The number says which hit; the size says it is a tuplet. */
+.sq-tup { display:flex; gap:1px; flex-shrink:0; }
+.sq-tup.b4 { scroll-snap-align:start; }
+.sq-tup.sq-cursor { outline:2px solid rgba(239,68,68,.95); outline-offset:-1px; border-radius:5px; }
+.sq-step.sq-hit { width:auto; flex:1 1 0; min-width:0; border-radius:4px; }
+.sq-step.sq-hit .fi { inset:2px; }
+.sq-step .sq-hn { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); text-align:center; font-size:max(.3rem,10.5px); font-weight:700; line-height:1; color:rgba(214,222,245,.78); pointer-events:none; }
+.sq-step.on .sq-hn, .sq-step.accent .sq-hn { color:#07080f; }
 /* The stretch picked on the ruler for a fill. */
 .sq-rcell.fillsel { background:var(--accent); color:#07080f; border-radius:3px; }
 .sq-step .ob { position:absolute; top:1px; left:2px; font-size:max(.3rem,10.5px); color:rgba(255,220,80,.9); font-weight:700; pointer-events:none; line-height:1; }
@@ -10438,7 +10447,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.1b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.1c</span></div>
  </div>
 </div>
 
@@ -11920,7 +11929,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.1b</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.1c</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13132,7 +13141,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.1b';
+const MODRIFF_VERSION = '2.1c';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -61712,11 +61721,27 @@ function _sqTupAt(row,s){
   for(var k=0;k<8 && s-k>=0;k++){ var c=row[s-k]; if(_sqIsTup(c) && c.rs>k && !_sqIsCovered(row,s-k)) return s-k; }
   return -1;
 }
+// What a lane draws: each step, or a tuplet over the steps it takes (as many as there are before the end).
+function _sqLayout(row, steps){
+  var out=[];
+  for(var s=0;s<steps;){
+    var c=row&&row[s], tup=_sqIsTup(c), span=tup?Math.min(c.rs, steps-s):1;
+    out.push({s:s, span:span, tup:tup}); s+=span;
+  }
+  return out;
+}
+// The tuplet hit sounding at `pos`, a step and a fraction, or null.
+function _sqHitAt(row, pos){
+  var head=_sqTupAt(row, Math.floor(pos)); if(head<0) return null;
+  var c=row[head];
+  return {s:head, hi:Math.max(0, Math.min(c.r-1, Math.floor((pos-head)*c.r/c.rs+1e-9)))};
+}
 function _sqCellSounds(c){
   if(!c || !(c.v>0)) return false;
   return !(c.hits && _sqIsTup(c)) || _sqTupHits(c).some(function(h){ return h.v>0; });
 }
 window._sqTup = {hits:_sqTupHits, make:_sqTupMake, remove:_sqTupRemove, setType:_sqTupSet, at:_sqTupAt, sounds:_sqCellSounds,
+  layout:_sqLayout, hitAt:_sqHitAt, sync:function(){ sqSyncRows(); sqMarkSel(); sqSyncInsp(); },
   clone:function(c){ return sqCellClone(c); }, sig:function(g,n){ return sqCellsSig(g,n); }};
 // The first other tuplet that a tuplet starting at step s and spanning rs steps
 // would run into, or -1. Used to refuse the clash rather than paint it grey.
@@ -61724,13 +61749,68 @@ function _sqTupClash(row, s, rs){
   for(var k=1;k<rs && s+k<row.length;k++) if(_sqIsTup(row[s+k])) return s+k;
   return -1;
 }
-function sqPaintCover(){
-  for(var ti in sqStepEls){
-    var row=sqGrid[ti], els=sqStepEls[ti]; if(!row || !els) continue;
-    for(var s=0;s<row.length;s++){
-      var el=els[s]; if(el) el.classList.toggle('covered', _sqIsCovered(row, s));
+// ── The lanes, and keeping them the right shape ──
+// A lane's elements depend on where its tuplets are. Each row remembers the shape it was drawn with; anything that edits a
+// cell goes through sqRefreshStepEl, which redraws the rows whose shape has changed and leaves the rest alone, so a tap's
+// own element (and its double-tap timing) survives unless the edit really replaced it.
+var sqRowEls={}, sqHitEls={}, sqXRowEls={}, sqXHitEls={}, _sqLit={};
+function sqRowShape(row){
+  return _sqLayout(row, sqSteps).map(function(x){ return x.tup ? x.s+'t'+x.span+'x'+row[x.s].r : x.s; }).join(',');
+}
+function sqTupBox(row, x, color){
+  var bw=(typeof meterBeatSteps==='function') ? meterBeatSteps() : 4;
+  var box=document.createElement('div');
+  box.className='sq-tup'+(x.s%4===0?' b4':'');
+  box.dataset.s=x.s;
+  box.style.width='calc('+x.span+' * (var(--sq-w, var(--sq-sz)) + 2px) - 2px)';
+  var hits=_sqTupHits(row[x.s]);
+  hits.forEach(function(h,i){
+    var el=sqMakeStepEl(h, color, x.s);
+    el.classList.add('sq-hit'); el.dataset.hi=i;
+    // Only the first switch carries the bar and beat edge the head step had.
+    if(i) el.classList.remove('b4','b1');
+    var n=document.createElement('span'); n.className='sq-hn'; n.textContent=i+1; el.appendChild(n);
+    box.appendChild(el);
+  });
+  return box;
+}
+function sqRenderRow(ti){
+  var gr=sqRowEls[ti], M=SQM[sqMach], tr=M&&M.tracks[ti], row=sqGrid[ti];
+  if(!gr||!tr||!row) return;
+  gr.innerHTML=''; gr.dataset.ti=ti; sqStepEls[ti]={}; sqHitEls[ti]={}; delete _sqLit[ti];
+  _sqLayout(row, sqSteps).forEach(function(x){
+    if(!x.tup){
+      var el=sqMakeStepEl(row[x.s], tr.c, x.s);
+      sqAttachStep(el, ti, x.s, tr); gr.appendChild(el); sqStepEls[ti][x.s]=el;
+      if(sqPlaying && sqDispStep===x.s) el.classList.add('head');
+      return;
     }
+    var box=sqTupBox(row, x, tr.c); box.dataset.ti=ti;
+    sqHitEls[ti][x.s]=[].slice.call(box.children);
+    sqHitEls[ti][x.s].forEach(function(el,hi){ sqAttachHit(el, ti, x.s, hi, tr); });
+    gr.appendChild(box);
+    for(var k=0;k<x.span;k++) sqStepEls[ti][x.s+k]=box;
+  });
+  gr.dataset.shape=sqRowShape(row);
+  if(_sqCursorAt>=0 && sqStepEls[ti][_sqCursorAt]) sqStepEls[ti][_sqCursorAt].classList.add('sq-cursor');
+}
+function sqSyncRows(){
+  for(var ti in sqRowEls){ if(sqGrid[ti] && sqRowEls[ti].dataset.shape!==sqRowShape(sqGrid[ti])) sqRenderRow(+ti); }
+  var L=sqLayers[1];
+  for(var xi in sqXRowEls){ if(L.grid && L.grid[xi] && sqXRowEls[xi].dataset.shape!==sqRowShape(L.grid[xi])) sqRenderXRow(+xi); }
+}
+// Which switch of each tuplet is sounding. Every frame, since a hit starts between steps; only a change is written.
+function sqTupLight(pos){
+  function lane(key, hits, row){
+    var at=(pos==null||!row) ? null : _sqHitAt(row, pos);
+    var el=(at && hits && hits[at.s]) ? hits[at.s][at.hi] : null;
+    if(_sqLit[key]===el) return;
+    if(_sqLit[key]) _sqLit[key].classList.remove('head');
+    if(el) el.classList.add('head');
+    _sqLit[key]=el;
   }
+  for(var ti in sqHitEls) lane(ti, sqHitEls[ti], sqGrid[ti]);
+  for(var xi in sqXHitEls) lane('x'+xi, sqXHitEls[xi], sqLayers[1].grid && sqLayers[1].grid[xi]);
 }
 
 // ── Duplicate to extend ──
@@ -62822,6 +62902,10 @@ function sqDraw(){
   var _ahead=Math.ceil((sqNextT-_heard)/_sd);
   if(!isFinite(_ahead)||_ahead<1) _ahead=1;
   var ds=((sqSeqStep-_ahead)%sqSteps+sqSteps)%sqSteps;
+  if(sqGridOn()){
+    var _pos=sqSeqStep-(sqNextT-_heard)/_sd;
+    sqTupLight(isFinite(_pos) ? ((_pos%sqSteps)+sqSteps)%sqSteps : null);
+  }
   if(ds!==sqDispStep){
     // The grid, the playhead and the step/bar readouts all live inside the drum
     // panel, so none of it is worth a single DOM write when that panel is not
@@ -62829,7 +62913,7 @@ function sqDraw(){
     // they are in the transport bar, which follows you across every tab.
     if(sqGridOn()){
       if(sqDispStep>=0){var k=Object.keys(sqStepEls);for(var i=0;i<k.length;i++){var e=sqStepEls[k[i]][sqDispStep];if(e)e.classList.remove('head');}}
-      var k2=Object.keys(sqStepEls);for(var j=0;j<k2.length;j++){var e2=sqStepEls[k2[j]][ds];if(e2)e2.classList.add('head');}
+      var k2=Object.keys(sqStepEls);for(var j=0;j<k2.length;j++){var e2=sqStepEls[k2[j]][ds];if(e2&&!e2.classList.contains('sq-tup'))e2.classList.add('head');}
       sqPosPlayhead(ds);
       sqXHead(sqDispStep, ds);
       var sp=document.getElementById('sq-sStep');if(sp)sp.textContent=(ds+1)+'/'+sqSteps;
@@ -62983,6 +63067,7 @@ function sqStop(){
   // …and back on the way out, so the cursor returns where you left it.
   _sqCursorTransportChanged();
   if(sqDispStep>=0){var k=Object.keys(sqStepEls);for(var i=0;i<k.length;i++){var e=sqStepEls[k[i]][sqDispStep];if(e)e.classList.remove('head');}}
+  sqTupLight(null);
   var pb=document.getElementById('sq-playBtn');
   if(pb){pb.textContent='▶ Play';pb.classList.remove('active');}
   sqPosPlayhead(0);
@@ -63084,7 +63169,9 @@ function sqRenderGrid(){
   var gRight=document.getElementById('sq-gRight');
   if(!gLeft||!gInner||!gRight)return;
   gLeft.innerHTML='';gInner.innerHTML='';gRight.innerHTML='';
-  sqStepEls={};
+  sqStepEls={}; sqRowEls={}; sqHitEls={}; _sqLit={};
+  // Cleared before the lanes are built: a cursor drawn on the old cells is not put on the new ones here.
+  _sqCursorAt = -1;
   // Beat ruler. One row in each of the three columns so they stay aligned —
   // gLeft/gInner/gRight are independent stacks, and a row added to one only.
   var rlbl=document.createElement('div');rlbl.className='sq-gruler-lbl';rlbl.innerHTML='<span class="sq-gh-l">VOL</span>BEAT';
@@ -63154,12 +63241,7 @@ function sqRenderGrid(){
     gLeft.appendChild(lr);
     // grid row
     var gr=document.createElement('div');gr.className='sq-grow';
-    var track=tr;
-    for(var s=0;s<sqSteps;s++){
-      var el=sqMakeStepEl(sqGrid[ti][s],color,s);
-      (function(t2,s2,e2,tr2){sqAttachStep(e2,t2,s2,tr2);})(ti,s,el,track);
-      gr.appendChild(el);sqStepEls[ti][s]=el;
-    }
+    sqRowEls[ti]=gr; sqRenderRow(ti);
     gInner.appendChild(gr);
     // right: pitch slider
     var rr=document.createElement('div');rr.className='sq-gright-row';
@@ -63184,7 +63266,6 @@ function sqRenderGrid(){
   if(typeof window.smpSyncBadges==='function') window.smpSyncBadges();
   // Every cell is new, so a cursor drawn before this is gone with the old
   // ones. Changing kit or step count while armed should not lose your place.
-  _sqCursorAt = -1;
   if(typeof noteInputCursorStep==='function' && typeof window._sqMarkCursor==='function'){
     window._sqMarkCursor(noteInputCursorStep('sq'));
   }
@@ -63194,7 +63275,6 @@ function sqRenderGrid(){
   if(sqSelTi >= sqTc() || sqSelS >= sqSteps){ sqSelTi=-1; sqSelS=-1; }
   sqMarkSel(); sqSyncInsp();
   sqRenderXStrip();
-  sqPaintCover();
   if(_sqFillPick) _sqFillPaint(_sqFillPick.a);
 }
 
@@ -63215,7 +63295,7 @@ function sqRenderGrid(){
 var sqXEls = {};
 function sqRenderXStrip(){
   var host = document.getElementById('sq-xstrip'); if(!host) return;
-  host.innerHTML = ''; sqXEls = {};
+  host.innerHTML = ''; sqXEls = {}; sqXRowEls = {}; sqXHitEls = {};
   sqStashFocused();
   var o = 1, L = sqLayers[o], M = SQM[L.mach];
   if(!M) return;
@@ -63260,37 +63340,69 @@ function sqRenderXStrip(){
     var lb = document.createElement('span'); lb.className = 'sq-xl'; lb.textContent = tr.s;
     lb.style.color = uiTextColor(tr.c); lane.appendChild(lb);
     var row = document.createElement('div'); row.className = 'sq-xrow';
-    for(var s=0; s<sqSteps; s++){
-      var el = document.createElement('div');
-      el.className = 'sq-xc' + (s%bw===0 ? ' b4' : '');
-      el.style.setProperty('--sq-tc', tr.c);
-      var cell = L.grid[ti][s];
-      if(cell.v===2) el.classList.add('accent'); else if(cell.v>0) el.classList.add('on');
-      (function(t2, s2, e2, tr2){
-        e2.addEventListener('pointerup', function(){
-          var c = L.grid[t2][s2];
-          // Off, on, accent, off: no press-and-hold or timing to learn, and an accent
-          // is one more tap on a cell that is already lit.
-          c.v = ((c.v||0) + 1) % 3;
-          e2.classList.toggle('on', c.v===1); e2.classList.toggle('accent', c.v===2);
-          sqAuxSwitchSync();
-          if(sqAudition && c.v>0){
-            try{ sqInitFX(); sqEnsureNoise(); sqPlayCell(tr2, c, sqCtx()?sqCtx().currentTime:0, sqGv(lk,t2), sqGp(lk,t2), ch); }catch(e){}
-          }
-        });
-      })(ti, s, el, tr);
-      row.appendChild(el); sqXEls[ti][s] = el;
-    }
+    sqXRowEls[ti] = row; sqRenderXRow(ti);
     lane.appendChild(row);
     host.appendChild(lane);
   });
+}
+function sqRenderXRow(ti){
+  var row = sqXRowEls[ti], L = sqLayers[1], M = SQM[L.mach], tr = M && M.tracks[ti];
+  if(!row || !tr || !L.grid || !L.grid[ti]) return;
+  var ch = SQ_LAYER_CH[1], lk = sqLK(L.mach, 1), bw = (typeof meterBeatSteps==='function') ? meterBeatSteps() : 4;
+  row.innerHTML = ''; sqXEls[ti] = {}; sqXHitEls[ti] = {}; delete _sqLit['x'+ti];
+  function sw(cell, s){
+    var el = document.createElement('div');
+    el.className = 'sq-xc';
+    el.style.setProperty('--sq-tc', tr.c);
+    if(cell.v===2) el.classList.add('accent'); else if(cell.v>0) el.classList.add('on');
+    return el;
+  }
+  // Off, on, accent, off: no press-and-hold or timing to learn, and an accent is one more tap on a cell that is already lit.
+  function step(el, c){
+    c.v = ((c.v||0) + 1) % 3;
+    el.classList.toggle('on', c.v===1); el.classList.toggle('accent', c.v===2);
+    sqAuxSwitchSync();
+  }
+  _sqLayout(L.grid[ti], sqSteps).forEach(function(x){
+    if(!x.tup){
+      var el = sw(L.grid[ti][x.s], x.s);
+      if(x.s%bw===0) el.classList.add('b4');
+      el.addEventListener('pointerup', function(){
+        var c = L.grid[ti][x.s]; step(el, c);
+        if(sqAudition && c.v>0){
+          try{ sqInitFX(); sqEnsureNoise(); sqPlayCell(tr, c, sqCtx()?sqCtx().currentTime:0, sqGv(lk,ti), sqGp(lk,ti), ch); }catch(e){}
+        }
+      });
+      row.appendChild(el); sqXEls[ti][x.s] = el;
+      return;
+    }
+    // As wide as the steps it takes: their share of the row, the 1px gaps between them, and the beat margins inside it.
+    var box = document.createElement('div'); box.className = 'sq-xtup' + (x.s%bw===0 ? ' b4' : '');
+    var inner = x.span-1;
+    for(var k=1;k<x.span;k++) if((x.s+k)%bw===0) inner += 2;
+    box.style.flex = x.span+' 1 '+inner+'px';
+    if(x.s%bw===0) box.style.marginLeft = '2px';
+    sqXHitEls[ti][x.s] = _sqTupHits(L.grid[ti][x.s]).map(function(h, hi){
+      var el = sw(h, x.s); el.classList.add('sq-xhit');
+      el.addEventListener('pointerup', function(){
+        var c = _sqTupMake(L.grid[ti][x.s]).hits[hi]; step(el, c);
+        if(sqAudition && c.v>0){
+          try{ sqInitFX(); sqEnsureNoise(); sqPlayOne(tr, c, sqCtx()?sqCtx().currentTime:0, sqSd()*L.grid[ti][x.s].rs/L.grid[ti][x.s].r, sqGv(lk,ti), sqGp(lk,ti), ch); }catch(e){}
+        }
+      });
+      box.appendChild(el); return el;
+    });
+    row.appendChild(box);
+    for(var j=0;j<x.span;j++) sqXEls[ti][x.s+j] = box;
+  });
+  row.dataset.shape = sqRowShape(L.grid[ti]);
 }
 function sqXHead(prev, ds){
   var k = Object.keys(sqXEls);
   for(var i=0;i<k.length;i++){
     var r = sqXEls[k[i]];
     if(prev>=0 && r[prev]) r[prev].classList.remove('head');
-    if(r[ds]) r[ds].classList.add('head');
+    if(r[ds] && !r[ds].classList.contains('sq-xtup')) r[ds].classList.add('head');
   }
 }
 
@@ -63348,8 +63460,15 @@ function sqMakeStepEl(cell,color,s){
   el.classList.toggle('prob', cell.v>0 && cell.pr>0 && cell.pr<100);
   return el;
 }
+// Repaint after an edit. `el` may be a step, or a tuplet's box (its switches are repainted from the head cell); a row whose
+// shape the edit changed is redrawn.
 function sqRefreshStepEl(el,cell,color){
-  setTimeout(sqPaintCover,0);   // this cell may have started or ended a tuplet's span
+  if(el.classList.contains('sq-tup')){
+    if(_sqIsTup(cell)) _sqTupHits(cell).forEach(function(h,i){ if(el.children[i]) sqPaintStep(el.children[i],h,color); });
+  } else sqPaintStep(el,cell,color);
+  sqSyncRows();
+}
+function sqPaintStep(el,cell,color){
   el.classList.remove('on','accent');
   if(cell.v===2)el.classList.add('accent');else if(cell.v===1)el.classList.add('on');
   el.style.borderColor=cell.v>0?color:'';
@@ -63470,12 +63589,20 @@ function _sqCursorTransportChanged(){
 // were reachable only by pressing and holding. A kit cell is two-dimensional,
 // so the selection is a track and a step rather than just a step. There is no
 // length here — a drum hit has no length to set.
-var sqSelTi=-1, sqSelS=-1;
+// On a tuplet the selection is one of its hits (sqSelHi); on a plain step sqSelHi is -1.
+var sqSelTi=-1, sqSelS=-1, sqSelHi=-1;
+function sqNormSel(){
+  var row=sqSelTi>=0 ? sqGrid[sqSelTi] : null, c=row && row[sqSelS];
+  if(row && _sqIsCovered(row, sqSelS)){ sqSelTi=-1; sqSelS=-1; c=null; }
+  sqSelHi=_sqIsTup(c) ? Math.max(0, Math.min(c.r-1, sqSelHi)) : -1;
+}
 function sqSelEl(){
   if(sqSelTi<0) return null;
+  if(sqSelHi>=0) return (sqHitEls[sqSelTi] && sqHitEls[sqSelTi][sqSelS] && sqHitEls[sqSelTi][sqSelS][sqSelHi]) || null;
   return (sqStepEls[sqSelTi] && sqStepEls[sqSelTi][sqSelS]) || null;
 }
 function sqMarkSel(){
+  sqNormSel();
   document.querySelectorAll('.sq-step.sel').forEach(function(e){e.classList.remove('sel');});
   var e=sqSelEl(); if(e) e.classList.add('sel');
 }
@@ -63654,6 +63781,53 @@ function sqRevealInsp(){
     }
   }catch(err){}
 }
+// The same two gestures on one switch of a tuplet. The cell gets its list of hits only when a hit is really changed: a
+// double tap that merely selects puts the cell back exactly as it was, so opening an editor never alters a pattern.
+function sqAttachHit(el,ti,s,hi,track){
+  var moved=false,dnX=0,dnY=0,lastTap=0,before=null;
+  el.addEventListener('pointerdown',function(e){
+    sqInitFX();sqEnsureNoise();
+    moved=false;dnX=e.clientX;dnY=e.clientY;
+  });
+  el.addEventListener('pointermove',function(e){
+    if(Math.abs(e.clientX-dnX)+Math.abs(e.clientY-dnY)>10)moved=true;
+  });
+  el.addEventListener('pointercancel',function(){moved=true;});
+  el.addEventListener('pointerup',function(){
+    if(moved || Date.now()-window._gridPinchAt<400)return;
+    var cell=sqGrid[ti][s]; if(!_sqIsTup(cell)) return;
+    var now=Date.now(), was=_sqTupHits(cell)[hi].v, played=false;
+    var select=function(){ sqSelTi=ti; sqSelS=s; sqSelHi=hi; };
+    var clear=function(){ sqSelTi=-1; sqSelS=-1; sqSelHi=-1; };
+    var set=function(v){ _sqTupMake(cell).hits[hi].v=v; played=v>0; };
+    var isSel=sqSelTi===ti && sqSelS===s && sqSelHi===hi;
+    if(_tapEdit){
+      if(!was){ set(1); select(); }
+      else if(isSel){ set(0); clear(); }
+      else { select(); played=true; }
+      lastTap=0;
+    } else if(now-lastTap<300){
+      // Put back only what the first tap took away (see sqAttachStep).
+      if(before){ cell.v=before.v; if(before.hits) cell.hits=before.hits; else delete cell.hits; played=true; }
+      select(); lastTap=0;
+      if(typeof markSeqTaught==='function') markSeqTaught();
+    } else {
+      before=was ? {v:cell.v, hits:cell.hits ? cell.hits.map(function(h){ return Object.assign({},h); }) : null} : null;
+      set(was ? 0 : 1);
+      if(!was) select(); else if(isSel) clear();
+      lastTap=now;
+    }
+    sqRefreshStepEl(el.parentNode,cell,track.c);
+    sqMarkSel(); sqSyncInsp(); sqAuxSwitchSync();
+    if(sqSelTi>=0) sqRevealInsp();
+    if(_tapEdit && sqSelTi>=0) tapModeReveal('sq-insp');
+    if(sqAudition && played){
+      var h=_sqTupHits(cell)[hi];
+      sqInitFX();sqEnsureNoise();
+      sqHitTrack(track,sqCtx()?sqCtx().currentTime:0,sqGv(sqLK(sqMach,sqFocus),ti)*(h.vel/100),h.v===2,sqGp(sqLK(sqMach,sqFocus),ti)+h.p);
+    }
+  });
+}
 function sqAttachStep(el,ti,s,track){
   // held: the press already opened the step menu, so lifting the finger must
   // not also toggle the step. Without it a long press did both — the menu
@@ -63674,10 +63848,6 @@ function sqAttachStep(el,ti,s,track){
   });
   el.addEventListener('pointerup',function(){
     if(moved || Date.now()-window._gridPinchAt<400)return;
-    if(_sqIsCovered(sqGrid[ti], s)){
-      if(typeof showToast==='function') showToast('Covered by the tuplet before it — shorten or clear that one');
-      return;
-    }
     var now=Date.now(), cell=sqGrid[ti][s];
     // Tap: Edit. A tap selects (an empty step is placed first; the selected one clears), so its inspector is a touch away.
     if(_tapEdit){
