@@ -10438,7 +10438,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.1</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.1a</span></div>
  </div>
 </div>
 
@@ -11920,7 +11920,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.1</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.1a</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13132,7 +13132,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.1';
+const MODRIFF_VERSION = '2.1a';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -61317,7 +61317,10 @@ function sqAuxPick(idx){
 var sqLM = [{}, {}];
 function sqCellsSig(grid, steps){
   var out = [];
-  for(var k in grid){ var row = grid[k] || []; for(var s = 0; s < steps; s++){ var c = row[s]; if(c && c.v > 0) out.push(k + ':' + s + ':' + c.v + ':' + (c.vel || '') + ':' + (c.orn || 0)); } }
+  for(var k in grid){ var row = grid[k] || []; for(var s = 0; s < steps; s++){ var c = row[s]; if(c && c.v > 0) out.push(k + ':' + s + ':' + c.v + ':' + (c.vel || '') + ':' + (c.orn || 0)
+    // Only when there is something to say, so a grid of plain hits signs as it always has. Without these a ratchet
+    // or a tuplet edit was not seen as an edit, and a pattern could be laid out again over it.
+    + ((c.r || 1) > 1 ? ':r' + c.r + '/' + (c.rs || 1) : '') + (c.hits ? ':' + JSON.stringify(c.hits) : '')); } }
   return out.join('|');
 }
 function sqGridToRoles(kit, grid, steps){
@@ -61665,6 +61668,56 @@ function _sqIsCovered(row, s){
   }
   return false;
 }
+// ── A tuplet's own hits ──
+// A tuplet's head cell may carry `hits`, one entry per hit, each with what a step has: {v, vel, p, pr, orn, r}.
+// Without the list it plays as a tuplet always has (hit 1 as the cell says, the rest at 75%), so nothing saved
+// before the list existed changes; the list is made the first time one hit is edited. With it, the cell's own
+// vel, p, pr and orn are ignored and its v only says a tuplet is here, whether or not any hit is on.
+var SQ_TAIL = .75;
+function _sqDerive(h0, n){
+  var rest=Math.max(1,Math.round(h0.vel*SQ_TAIL)), out=[h0];
+  for(var i=1;i<n;i++) out.push({v:1, vel:rest, p:h0.p, pr:h0.pr, orn:0, r:1});
+  return out;
+}
+// The r hits of a cell as they stand. Never writes: opening an editor must not turn a plain tuplet into a listed one.
+// A saved list of the wrong length is padded or cut here, which is the one place a list is read.
+function _sqTupHits(c){
+  var n=Math.max(1,c.r||1), base=_sqDerive({v:c.v===2?2:(c.v>0?1:0), vel:c.vel||100, p:c.p||0, pr:c.pr||0, orn:c.orn||0, r:1}, n);
+  if(!Array.isArray(c.hits)) return base;
+  return base.map(function(d,i){
+    var h=c.hits[i];
+    if(!h||typeof h!=='object') return d;
+    return {v:h.v|0, vel:h.vel||d.vel, p:h.p||0, pr:h.pr||0, orn:h.orn||0, r:Math.max(1,Math.min(4,h.r||1))};
+  });
+}
+function _sqTupMake(c){ c.hits=_sqTupHits(c); c.v=1; return c; }
+// Back to a plain step, which keeps what hit 1 had.
+function _sqTupRemove(c){
+  if(c.hits){
+    var h=_sqTupHits(c)[0];
+    c.v=h.v; c.vel=h.vel; c.p=h.p; c.orn=h.orn; c.r=h.r; if(h.pr) c.pr=h.pr; else delete c.pr;
+    delete c.hits;
+  } else c.r=1;
+  c.rs=1;
+}
+// Another type of tuplet: hit 1 stays as it was, the others start over from it.
+function _sqTupSet(c,r,rs){
+  if(!c.hits){ c.r=r; c.rs=rs; return; }
+  var h0=_sqTupHits(c)[0], list=_sqDerive(Object.assign({},h0,{v:h0.v||1, r:1}), r);
+  list[0]=h0; c.r=r; c.rs=rs; c.hits=list;
+}
+// The head of the tuplet spanning step s (the head's own step included), or -1.
+function _sqTupAt(row,s){
+  if(!row) return -1;
+  for(var k=0;k<8 && s-k>=0;k++){ var c=row[s-k]; if(_sqIsTup(c) && c.rs>k && !_sqIsCovered(row,s-k)) return s-k; }
+  return -1;
+}
+function _sqCellSounds(c){
+  if(!c || !(c.v>0)) return false;
+  return !(c.hits && _sqIsTup(c)) || _sqTupHits(c).some(function(h){ return h.v>0; });
+}
+window._sqTup = {hits:_sqTupHits, make:_sqTupMake, remove:_sqTupRemove, setType:_sqTupSet, at:_sqTupAt, sounds:_sqCellSounds,
+  clone:function(c){ return sqCellClone(c); }, sig:function(g,n){ return sqCellsSig(g,n); }};
 // The first other tuplet that a tuplet starting at step s and spanning rs steps
 // would run into, or -1. Used to refuse the clash rather than paint it grey.
 function _sqTupClash(row, s, rs){
@@ -61765,7 +61818,7 @@ window._sqFillRange = function(a, b){
 // Rows and columns for the grid clipboard (see GRID CLIPBOARD). A cell is
 // {v, vel, r, orn}; copies are plain clones so the clipboard never aliases a
 // live cell that a later edit would change under it.
-function sqCellClone(c){ var o = c ? {v:c.v|0, r:c.r||1, rs:c.rs||1, orn:c.orn||0, vel:c.vel||100, p:c.p||0} : sqMkCell(); if(c && c.pr>0 && c.pr<100) o.pr=c.pr; return o; }
+function sqCellClone(c){ var o = c ? {v:c.v|0, r:c.r||1, rs:c.rs||1, orn:c.orn||0, vel:c.vel||100, p:c.p||0} : sqMkCell(); if(c && c.pr>0 && c.pr<100) o.pr=c.pr; if(c && Array.isArray(c.hits)) o.hits=c.hits.map(function(h){ return Object.assign({},h); }); return o; }
 function sqAfterClip(){ sqEnsureGrid(); sqRenderGrid(); sqClearSel(); }
 // k hits spread as evenly as they will go over n steps: step i is a hit when
 // (i*k) mod n < k, which is the Euclidean rhythm (3 in 8 is x..x..x., the
@@ -62549,7 +62602,8 @@ function _webDrumVoice(track,t,vol,ac,ps,ch,kit,lane){
   _sqOut = null;
   _chokeCur = null;
 }
-function sqPlayCell(track,cell,t,vol,ps,ch){
+// One step-like hit, `len` seconds long: a plain step, or one hit of a tuplet's list.
+function sqPlayOne(track,cell,t,len,vol,ps,ch){
   if(!cell||cell.v===0)return;
   // A step's own pitch (cell.p, ±24 st) rides on top of the lane's. Absent on
   // every cell saved before 4.2.1, which reads as 0 — no migration needed.
@@ -62560,7 +62614,7 @@ function sqPlayCell(track,cell,t,vol,ps,ch){
   // 3 across 4 a quarter-note triplet, 5 or 6 across 4 a quintuplet or
   // sextuplet beat). rs is 1 for an ordinary ratchet and for every cell saved
   // before it existed, which is the old behaviour exactly.
-  var r=Math.max(1,cell.r||1),sub=sqSd()*Math.max(1,cell.rs||1)/r,orn=cell.orn||0;
+  var r=Math.max(1,cell.r||1),sub=len/r,orn=cell.orn||0;
   // How hard this one hit is, apart from the lane's volume and the fader:
   // what a layered kit (sqLayerTrack) picks its recording by. A flam's grace
   // note and a ratchet's tail are softer strokes, not the main one quieter.
@@ -62571,6 +62625,21 @@ function sqPlayCell(track,cell,t,vol,ps,ch){
   if(orn===1){hit(t-.030,v*.45,false);}
   else if(orn===2){hit(t-.060,v*.35,false);hit(t-.040,v*.50,false);hit(t-.020,v*.65,false);}
   for(var i=0;i<r;i++)hit(t+i*sub,i===0?v:v*.75,ac&&i===0);
+}
+// A tuplet with its own hits: each is a step of a fraction of the span. `volOf` gives a hit's level, or null for
+// one that does not sound this time round.
+function sqPlayTup(track,cell,t,volOf,ps,ch){
+  var n=cell.r, len=sqSd()*cell.rs/n;
+  _sqTupHits(cell).forEach(function(h,i){
+    if(!h.v) return;
+    var v=volOf(h);
+    if(v!=null) sqPlayOne(track,h,t+i*len,len,v,ps,ch);
+  });
+}
+function sqPlayCell(track,cell,t,vol,ps,ch){
+  if(!cell||cell.v===0)return;
+  if(cell.hits && _sqIsTup(cell)) sqPlayTup(track,cell,t,function(){ return vol; },ps,ch);
+  else sqPlayOne(track,cell,t,sqSd()*Math.max(1,cell.rs||1),vol,ps,ch);
 }
 // One layer's worth of a step. Both layers share the clock, the step count and
 // the swing — they are two voices of one part, not two sequencers.
@@ -62587,7 +62656,12 @@ function _sqFireLayer(mach, grid, s, at, ch){
   }
   M.tracks.forEach(function(track,ti){
     var cell=grid[ti]&&grid[ti][s];
-    if(cell&&cell.v>0&&!_sqIsCovered(grid[ti],s)&&window._stepProb(cell))sqPlayCell(track,cell,at,sqGv(lk,ti)*(hum ? window._humanV(cell.v===2, part) : 1),sqGp(lk,ti),ch);
+    if(!cell||!(cell.v>0)||_sqIsCovered(grid[ti],s)) return;
+    // Rolled per thing that sounds: the step, or each hit of a tuplet that has its own (the head is not rolled then).
+    var vol=function(h){ return window._stepProb(h) ? sqGv(lk,ti)*(hum ? window._humanV(h.v===2, part) : 1) : null; };
+    if(cell.hits && _sqIsTup(cell)){ sqPlayTup(track,cell,at,vol,sqGp(lk,ti),ch); return; }
+    var v=vol(cell);
+    if(v!=null) sqPlayCell(track,cell,at,v,sqGp(lk,ti),ch);
   });
 }
 function sqFireStep(s,t){
@@ -62766,7 +62840,7 @@ function sqDraw(){
     // kick row as the accent so the dots read as the groove, not decoration.
     if(typeof setBeatDots==='function'){
       var _kr=sqGrid[0]||null, _acc=null;
-      if(_kr){ _acc=[]; for(var _i=0;_i<sqSteps;_i++) _acc.push(!!(_kr[_i]&&_kr[_i].v)); }
+      if(_kr){ _acc=[]; for(var _i=0;_i<sqSteps;_i++) _acc.push(_sqCellSounds(_kr[_i])); }
       setBeatDots(ds,sqSteps,_acc,'sq');
     }
   }
