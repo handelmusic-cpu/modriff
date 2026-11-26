@@ -259,3 +259,4 @@ Since 6.2:
 - [ ] v2.0h: iPhone app: after a Bounce with MIDI on, the toast's Open in mõdScore opens Safari with the take as sheet music (one staff a part, drums left out, in the song's key). (Measured in headless Chrome: tests/suite/handoff.test.js.)
 - [ ] v2.0h: a song link (#prog=) opens at the tempo it was sent with; it opened at 130 before. (Measured in headless Chrome.)
 - [ ] v2.1: iPhone app: Song > Share a link opens the iPhone share sheet; send it to yourself in Messages and tap it: Safari opens modriff.com/play and the splash offers to open the song. (Link and share-sheet logic measured in headless Chrome: tests/share/link.test.cjs; the sheet itself is not.)
+- [ ] v2.1a: iPhone app, first launch (fresh install): the splash shows one big green Learn button with Start and Random as quiet words under it; Learn opens the walkthrough, Start opens a blank page. (Measured in headless Chrome at four sizes: tests/learn/splash.test.cjs.)
