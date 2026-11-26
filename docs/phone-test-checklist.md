@@ -256,3 +256,5 @@ Since 6.2:
 - [ ] v2.0e: iPhone app: hold a mõdFX pad (or mute a part): the FX / MUTE chip hangs off the top edge of the tempo and does not sit on Play; Play does not move when it appears; tapping the chip still releases the pad / clears the mute. (Measured in headless Chrome at 360, 375, 390, 402 and 430 wide.)
 - [ ] v2.0f: Settings > About: the mõdScore and Music Playground links open modriff.com/score/ and /playground/ in the browser. (Checked in headless Chrome.)
 - [ ] v2.0g: iPhone app: Song > File > Open in mõdScore opens Safari on modriff.com/score/ with the chart's chords as a new song, in the song's key. (Measured in headless Chrome: tests/suite/handoff.test.js.)
+- [ ] v2.0h: iPhone app: after a Bounce with MIDI on, the toast's Open in mõdScore opens Safari with the take as sheet music (one staff a part, drums left out, in the song's key). (Measured in headless Chrome: tests/suite/handoff.test.js.)
+- [ ] v2.0h: a song link (#prog=) opens at the tempo it was sent with; it opened at 130 before. (Measured in headless Chrome.)
