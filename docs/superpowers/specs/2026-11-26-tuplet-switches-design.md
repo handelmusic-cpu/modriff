@@ -32,10 +32,15 @@ now, each with a small number (1–5). Widths come out at hits ÷ span: 7:4 is t
 
 For a selected hit: Vel, Ratchet (1–4, inside that hit's own length), Pitch, Prob, Orn, Accent,
 and ✕ (switches the hit off). The heading names it: "Snare · step 1 · hit 3 of 5".
-The Tuplet row acts on the whole tuplet. "—" removes it and leaves the first step with hit 1's
+The Tuplet row acts on the whole tuplet. Removing it leaves the first step with hit 1's
 settings (empty if hit 1 is off). Picking another type keeps hit 1's settings and rebuilds the rest.
 
-All hits may be off. The tuplet stays, still covering its steps, until removed with "—".
+All hits may be off. The tuplet stays, still covering its steps, until removed.
+
+No "—" buttons in the Ratchet, Tuplet or Orn rows (a dash does not say "none" or "remove"). Each
+row has a worded button, **Remove ratchet**, **Remove tuplet**, **Remove ornament**, shown only
+when there is something to remove. This is true of an ordinary step too. `−` and `+` still set the
+ratchet count; with no ornament, neither Flam nor Ruff is lit.
 
 ## Tuplets: Free is removed
 
