@@ -10438,7 +10438,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.0h</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.1</span></div>
  </div>
 </div>
 
@@ -11920,7 +11920,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.0h</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.1</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13136,7 +13136,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.0h';
+const MODRIFF_VERSION = '2.1';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -42383,9 +42383,31 @@ function _songShareData(){
 async function shareProgression(){
  try{
   const payload=await encodeSetup(_songShareData());
-  const url=location.href.split('#')[0]+'#prog='+payload;
-  _shareCopy(url,'Song link copied — '+url.length+' characters');
+  const url=_shareBase()+'#prog='+payload;
+  _shareSend(url,'Song link copied — '+url.length+' characters');
  }catch(e){ console.warn('share error',e); showToast('Could not build a link'); }
+}
+// Where a shared link points. The app is served from capacitor://localhost, so a link built from
+// location.href was "capacitor://localhost/#prog=…": it opened nothing for anyone it was sent to, and
+// the receiving side (the splash's "Someone shared a song with you — Open") only ever worked from the web
+// page. The free page at modriff.com/play decodes the same #prog= and #setup= fragments.
+function _shareNative(){ try{ return location.protocol==='capacitor:'; }catch(e){ return false; } }
+function _shareBase(){
+ return _shareNative() ? 'https://modriff.com/play/' : location.href.split('#')[0];
+}
+// In the app, hand the link to the iPhone's own share sheet (Messages, Mail, AirDrop); everywhere else, or
+// if the sheet will not open, copy it. A cancelled sheet is a decision, not a failure: no copy after it.
+function _shareSend(url,msg){
+ if(_shareNative() && navigator.share){
+  try{
+   navigator.share({url:url}).then(function(){ track('share_sheet',{}); },function(e){
+    if(e && e.name==='AbortError') return;
+    _shareCopy(url,msg);
+   });
+   return;
+  }catch(e){ /* a web view with no share sheet: copy */ }
+ }
+ _shareCopy(url,msg);
 }
 function _shareCopy(url,msg){
  const done=()=>showToast(msg);
@@ -42727,7 +42749,7 @@ async function _shareUrl(scope, st){
  const data=_shareBuild(scope, st);
  const payload=await encodeSetup(data);
  const tag = scope==='song' ? '#prog=' : '#setup=';
- return location.href.split('#')[0]+tag+payload;
+ return _shareBase()+tag+payload;
 }
 
 // Opens the sheet, measuring each scope so the choice is made on real numbers.
@@ -42767,7 +42789,7 @@ async function _shareDo(scope){
    showToast('Too large for a link — use Export instead');
    return;
   }
-  _shareCopy(url, (SHARE_SCOPES[scope]||{}).label+' link copied — '+url.length+' characters');
+  _shareSend(url, (SHARE_SCOPES[scope]||{}).label+' link copied — '+url.length+' characters');
   track('setup_shared',{scope:scope,len:url.length});
  }catch(e){ showToast('Could not build a link'); console.warn(e); }
 }
