@@ -32,8 +32,17 @@ namespace modsynth {
 // vel is a percent, 0 meaning "not set" (which the page reads as 100). p is the step's own pitch in
 // semitones, r the ratchet count, rs how many steps a tuplet spreads over, orn 1 (flam) or 2 (drag),
 // pr the probability in percent (0, or 100 and over, mean always).
+// A tuplet may carry settings for each of its hits (the page's cell.hits): `nh` of them, from `h0` in the lane's
+// own pool, so the thousands of cells without any stay seven doubles and playing one allocates nothing. With a
+// list the cell's vel, p, orn and pr say nothing.
 struct DrumCell {
   double v = 0, vel = 0, p = 0, r = 1, rs = 1, orn = 0, pr = 0;
+  int nh = 0, h0 = 0;
+};
+
+// One hit of a tuplet's list, read as a step: v 0 off, 1 hit, 2 accent; r its ratchet inside its own length.
+struct DrumHit {
+  double v = 0, vel = 0, p = 0, pr = 0, orn = 0, r = 1;
 };
 
 struct DrumLane {
@@ -43,6 +52,7 @@ struct DrumLane {
   int chokeGroup = 0;      // _trackChoke: 0 none, 1 the hats
   bool chokes = false;     // a closed or pedal hat shuts the group, an open one only rings
   std::vector<DrumCell> cells;   // the lane's row; a step past its end is empty
+  std::vector<DrumHit> hits;     // the pool the cells' hit lists point into
 };
 
 struct DrumLayer {
@@ -285,24 +295,37 @@ class DrumSequencer {
     for (size_t ti = 0; ti < L.lanes.size(); ti++) {
       const DrumLane &lane = L.lanes[ti];
       const DrumCell *cell = cellAt(lane, s);
-      if (!(cell && cell->v > 0 && !isCovered(lane, s) && stepProb(*cell))) continue;
+      if (!(cell && cell->v > 0 && !isCovered(lane, s))) continue;
+      if (cell->nh > 0 && isTup(*cell)) {
+        // sqPlayTup: each hit that is on is a step of a fraction of the span, rolled and humanized on its own, in
+        // order; the head is not rolled.
+        const double len = sd * cell->rs / cell->r;
+        for (int i = 0; i < cell->nh; i++) {
+          const DrumHit &h = lane.hits[(size_t)(cell->h0 + i)];
+          if (!(h.v > 0) || !Feel::stepProb(rng_, h.pr)) continue;
+          const double vol = lane.gain * humanV(h.v == 2, li);
+          playOne(L, li, (int)ti, lane, h, at + i * len, len, vol, lane.pitch, s, emit);
+        }
+        continue;
+      }
+      if (!stepProb(*cell)) continue;
       const double vol = lane.gain * humanV(cell->v == 2, li);
-      playCell(L, li, (int)ti, lane, *cell, at, sd, vol, lane.pitch, s, emit);
+      playOne(L, li, (int)ti, lane, *cell, at, sd * (cell->rs > 1 ? cell->rs : 1), vol, lane.pitch, s, emit);
     }
   }
 
-  // sqPlayCell: a step's own pitch rides on the lane's; a flam or a drag sounds before the beat; a ratchet or
-  // a tuplet spreads r hits over rs steps.
-  template <class Emit>
-  void playCell(const DrumLayer &L, int li, int ti, const DrumLane &lane, const DrumCell &cell, double t,
-                double sd, double vol, double ps, int s, Emit &emit) {
+  // sqPlayOne: one step-like thing (a cell, or a hit of a tuplet's list) `len` frames long. Its own pitch rides
+  // on the lane's; a flam or a drag sounds before the beat; its r strokes spread over its length.
+  template <class Step, class Emit>
+  void playOne(const DrumLayer &L, int li, int ti, const DrumLane &lane, const Step &cell, double t,
+               double len, double vol, double ps, int s, Emit &emit) {
     // The Drums switch is the Kit's: the Aux layer plays without it.
     const bool gated = li == 0 && !score_.drumsEnabled;
     if (cell.p != 0) ps = ps + cell.p;
     const bool ac = cell.v == 2;
     const double vel = (cell.vel != 0 ? cell.vel : 100.0) / 100.0, v = vol * vel;
     const double r = cell.r > 1 ? cell.r : 1;
-    const double sub = sd * (cell.rs > 1 ? cell.rs : 1) / r;
+    const double sub = len / r;
     const int orn = (int)cell.orn;
     auto hit = [&](double tt, double vv, bool aa) {
       if (gated || !lane.play) return;

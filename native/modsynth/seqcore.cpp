@@ -7,7 +7,8 @@ namespace modsynth {
 //   [1]  steps  swing  swing8  beatSteps  barSteps  drumsEnabled
 //   [7]  hum.amt  timeMul  velMul  driftMul  maxMs  maxVel  maxDriftMs  partOff[0]  partOff[1]
 //   [16] two layers, each: on  part  kit  nLanes, then per lane:
-//        gain  pitch  play  chokeGroup  chokes  nCells, then per cell: v  vel  p  r  rs  orn  pr
+//        gain  pitch  play  chokeGroup  chokes  nCells, then per cell: v  vel  p  r  rs  orn  pr  nHits,
+//        and nHits (0 for none, at most 8) times: v  vel  p  pr  orn  r
 bool DrumScore::fromDoubles(const double *d, size_t n, size_t *used) {
   size_t k = 0;
   auto need = [&](size_t m) { return k + m <= n; };
@@ -32,11 +33,20 @@ bool DrumScore::fromDoubles(const double *d, size_t n, size_t *used) {
       DrumLane &l = L.lanes[(size_t)ti];
       l.gain = d[k++]; l.pitch = d[k++]; l.play = d[k++] != 0; l.chokeGroup = (int)d[k++]; l.chokes = d[k++] != 0;
       const int nc = (int)d[k++];
-      if (nc < 0 || nc > 256 || !need((size_t)nc * 7)) return false;
+      if (nc < 0 || nc > 256) return false;
       l.cells.resize((size_t)nc);
       for (int c = 0; c < nc; c++) {
         DrumCell &x = l.cells[(size_t)c];
+        if (!need(8)) return false;
         x.v = d[k++]; x.vel = d[k++]; x.p = d[k++]; x.r = d[k++]; x.rs = d[k++]; x.orn = d[k++]; x.pr = d[k++];
+        const double nh = d[k++];
+        if (!(nh >= 0 && nh <= 8) || !need((size_t)nh * 6)) return false;
+        x.nh = (int)nh; x.h0 = (int)l.hits.size();
+        for (int j = 0; j < x.nh; j++) {
+          DrumHit y;
+          y.v = d[k++]; y.vel = d[k++]; y.p = d[k++]; y.pr = d[k++]; y.orn = d[k++]; y.r = d[k++];
+          l.hits.push_back(y);
+        }
       }
     }
   }

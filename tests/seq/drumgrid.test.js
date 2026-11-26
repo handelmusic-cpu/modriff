@@ -54,6 +54,15 @@ function busyGrid(seed, lanes, steps, o) {
         if (rnd() < 0.15) { c.r = 2 + Math.floor(rnd() * 3); if (rnd() < 0.6) c.rs = 1 + Math.floor(rnd() * 4); }
         if (rnd() < 0.15) c.orn = 1 + Math.floor(rnd() * 2);
         if (o.prob && rnd() < 0.5) c.pr = o.prob;
+        // A tuplet with settings of its own on each hit; one list in seven is the wrong length, which the page pads or cuts.
+        if (o.lists && rnd() < 0.6) {
+          c.r = 2 + Math.floor(rnd() * 6); c.rs = 2 + Math.floor(rnd() * 5);
+          if (rnd() < 0.85) {
+            const n = rnd() < 0.15 ? Math.max(1, c.r + (rnd() < 0.5 ? -2 : 2)) : c.r;
+            c.hits = Array.from({ length: n }, () => ({ v: Math.floor(rnd() * 3), vel: 20 + Math.floor(rnd() * 80), p: rnd() < 0.3 ? Math.floor(rnd() * 13) - 6 : 0, pr: 0,
+              orn: rnd() < 0.2 ? 1 + Math.floor(rnd() * 2) : 0, r: rnd() < 0.3 ? 2 + Math.floor(rnd() * 3) : 1 }));
+          }
+        }
       }
       row.push(c);
     }
@@ -104,11 +113,15 @@ function laneSettings(seed, lanes) {
   mk('drums switch off (aux still plays)', { drums: false, seed: 25 });
   mk('kit layer off, aux only', { kitOn: false, seed: 26 });
   mk('aux layer off', { aux: false, seed: 27 });
+  mk('tuplets with their own hits', { lists: true, density: 0.5, seed: 30 });
+  mk('hit lists at rate x2, swing 40, 32 steps', { lists: true, density: 0.5, steps: 32, rate: 2, swing: 40, seed: 31 });
+  mk('a 5:4 split between two lanes', { split: true, density: 0, seed: 32 });
   mk('tempo change 120 -> 87 after 21 steps', { changes: [[21, 87]], seed: 28 });
   mk('tempo change twice', { changes: [[10, 140], [47, 72]], seed: 29, bars: 8 });
 
   const stat = [];
   stat.push({ name: 'probability 30 and 75', kind: 'prob' });
+  stat.push({ name: 'probability 30 and 75 on each hit of a tuplet', kind: 'prob', lists: true });
   stat.push({ name: 'humanize 1.0 (time and velocity)', kind: 'human', amt: 1 });
   stat.push({ name: 'humanize 0.4', kind: 'human', amt: 0.4 });
   stat.push({ name: 'humanize drift only', kind: 'drift' });
@@ -197,14 +210,17 @@ function laneSettings(seed, lanes) {
     window.getCtx = realCtx; audioCtx = realAudio; E.send = keep.send; E.now = keep.now; E.ready = keep.ready;
     return out;
   }, { det: det.map(c => ({ name: c.name, bpm: c.bpm, rate: c.rate, steps: c.steps, swing: c.swing, swing8: c.swing8, bars: c.bars, aux: c.aux, drums: c.drums, kitOn: c.kitOn, meter: c.meter, changes: c.changes })),
-       stat: stat.map(c => ({ name: c.name, kind: c.kind, amt: c.amt })), lanes808, lanesPerc,
+       stat: stat.map(c => ({ name: c.name, kind: c.kind, amt: c.amt, lists: c.lists })), lanes808, lanesPerc,
        grids: (() => {
          const g = {};
          det.forEach(c => { const l = laneSettings(c.seed + 1000, lanes808), la = laneSettings(c.seed + 2000, lanesPerc);
-           g[c.name] = { grid: busyGrid(c.seed, lanes808, c.steps, { density: c.density }), auxGrid: busyGrid(c.seed + 500, lanesPerc, c.steps, { density: c.density }), vols: l.vols, pitches: l.pitches, auxVols: la.vols, auxPitches: la.pitches }; });
+           g[c.name] = { grid: busyGrid(c.seed, lanes808, c.steps, { density: c.density, lists: c.lists }), auxGrid: busyGrid(c.seed + 500, lanesPerc, c.steps, { density: c.density, lists: c.lists }), vols: l.vols, pitches: l.pitches, auxVols: la.vols, auxPitches: la.pitches };
+           if (c.split) [[0, [1, 0, 1, 0, 1]], [1, [0, 1, 0, 1, 0]]].forEach(([ti, on]) => { g[c.name].grid[ti][0] = { v: 1, r: 5, rs: 4, orn: 0, vel: 90, hits: on.map(v => ({ v, vel: 90, p: 0, pr: 0, orn: 0, r: 1 })) }; }); });
          // The random cases: every cell a plain hit on two lanes, so rates are countable.
          const flat = (lanes, prob) => { const o = {}; for (let ti = 0; ti < lanes; ti++) o[ti] = Array.from({ length: 16 }, (_, s) => (ti < 2 ? { v: s % 4 === 3 ? 2 : 1, r: 1, orn: 0, vel: 100, pr: ti === 0 ? 30 : 75 } : { v: 0, r: 1, orn: 0, vel: 100 })); return o; };
-         stat.forEach(c => { g[c.name] = { grid: flat(lanes808), auxGrid: flat(lanesPerc), vols: {}, pitches: {}, auxVols: {}, auxPitches: {} }; });
+         // ...or five 5:4s on those lanes whose every hit has the probability, the head's saying nothing.
+         const listed = lanes => { const o = flat(lanes); for (let ti = 0; ti < 2; ti++) o[ti] = o[ti].map((x, s) => s % 4 ? { v: 0, r: 1, orn: 0, vel: 100 } : { v: 1, r: 5, rs: 4, orn: 0, vel: 100, hits: Array.from({ length: 5 }, () => ({ v: 1, vel: 100, p: 0, pr: ti === 0 ? 30 : 75, orn: 0, r: 1 })) }); return o; };
+         stat.forEach(c => { const f = c.lists ? listed : flat; g[c.name] = { grid: f(lanes808), auxGrid: f(lanesPerc), vols: {}, pitches: {}, auxVols: {}, auxPitches: {} }; });
          // Humanize cases want every step to play, so no probability.
          stat.filter(c => c.kind !== 'prob').forEach(c => { for (const k of ['grid', 'auxGrid']) for (const ti in g[c.name][k]) g[c.name][k][ti].forEach(x => { if (x.v) x.pr = 0; }); });
          return g;
@@ -280,8 +296,10 @@ function laneSettings(seed, lanes) {
       const rate = (evs, lane) => evs.filter(e => e.lane === lane).length;
       // lane 0 has probability 30 on every step of a 16-step pattern, lane 1 75; steps fired / 16 patterns.
       const patterns = c.fired / 16;
-      const exp = [0.30 * 16 * patterns, 0.75 * 16 * patterns];
-      const sigma = exp.map((e, k) => Math.sqrt(16 * patterns * (k ? 0.75 * 0.25 : 0.30 * 0.70)));
+      // Chances a pattern: one a step, or twenty hits (four 5:4s) with their own.
+      const per = c.name.includes('each hit') ? 20 : 16;
+      const exp = [0.30 * per * patterns, 0.75 * per * patterns];
+      const sigma = exp.map((e, k) => Math.sqrt(per * patterns * (k ? 0.75 * 0.25 : 0.30 * 0.70)));
       const drumN = n.e.filter(e => e.part === 0);
       [0, 1].forEach(k => {
         const pc = rate(pm, k), nc = rate(drumN, k);
