@@ -10438,7 +10438,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.0f</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.0g</span></div>
  </div>
 </div>
 
@@ -11920,7 +11920,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.0f</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.0g</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -12050,6 +12050,8 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
     <button type="button" onclick="sbDo(shareProgression)">Share a link</button>
     <button type="button" data-midiexport onclick="sbDo(exportMidi)"
       title="Write just the chart's chords out as a .mid file. To export everything you played — melody, bass, drums, Aux, arp and the roll, each on its own track — use Bounce.">Chart chords → .mid</button>
+    <button type="button" onclick="sbDo(openChartInScore)"
+      title="Open the chart's chords as sheet music in mõdScore, the mõd notation app. It opens in a new tab on modriff.com; nothing is uploaded.">Open in mõdScore</button>
     <button type="button" onclick="sbDo(printChart)">Print / Save PDF</button>
     <button type="button" onclick="sbDo(openChordSheetImport)"
       title="Paste a chord sheet and the chart is built from it — sections, chords and repeats, in order">Import a chord sheet…</button>
@@ -13134,7 +13136,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.0f';
+const MODRIFF_VERSION = '2.0g';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -42188,112 +42190,168 @@ function openGuide(){
  // scroll position rather than the page's.
  const pg=document.getElementById('page-help'); if(pg) pg.scrollTop=0;
 }
+// The chart's chords as a Standard MIDI File: {bytes, cut}, or null (with a toast) when the
+// chart is empty. Shared by the .mid download and the handoff to mõdScore, so both carry
+// the same notes and the same free-version bar cap.
+function _chartMidi(){
+  var bpm=parseFloat(document.getElementById('bpm')?.value)||120;
+  var tempo=Math.round(60000000/bpm);
+  var tpq=480;
+  function varLen(n){if(n<128)return[n];var b=[];var v=n;while(v>0){b.unshift(v&0x7f);v>>=7;}for(var j=0;j<b.length-1;j++)b[j]|=0x80;return b;}
+  function u32(n){return[(n>>24)&0xff,(n>>16)&0xff,(n>>8)&0xff,n&0xff];}
+  function u16(n){return[(n>>8)&0xff,n&0xff];}
+  function str(s){return s.split('').map(function(c){return c.charCodeAt(0);});}
+  // A bar is however many sixteenth steps the song is actually running in —
+  // a 3/4 groove is 12, not 16 — and a slot's length is bars+beats+eighths,
+  // the same sum slotTotalMs() plays back. Exporting every slot as one 4/4
+  // bar put every chord after the first in the wrong place in any meter but
+  // 4/4, and flattened every partial-bar chord to a full bar.
+  var stepsBar=16;
+  try{ if(typeof _songBarSteps==='function') stepsBar=_songBarSteps(); }catch(e){}
+  if(!(stepsBar>0)) stepsBar=16;
+  var qPerBar=stepsBar/4;                     // quarter notes per bar
+  var barTicks=Math.round(tpq*qPerBar);
+  function slotTicks(sl){
+    var t=Math.round((sl.bars||0)*barTicks+(sl.beats||0)*tpq+(sl.eighths||0)*tpq/2);
+    return t>0?t:barTicks;                    // same fallback as slotTotalMs()
+  }
+  var track=[];
+  // Name the track and write down what it is. A .mid landing in a DAW as
+  // "Track 1" with no key, no chart and no step counts is the same problem
+  // the bounce had — MIDI has meta events for exactly this.
+  function meta(type, text){
+    var b=str(_riffAscii(text).slice(0,250));
+    track.push(0,0xff,type); track.push.apply(track,varLen(b.length)); track.push.apply(track,b);
+  }
+  meta(0x03, (document.getElementById('chart-title')?.value || 'mõdRïff chords'));
+  (function(){
+    var bits=[];
+    try{ bits.push(nn(root)+' '+((MODES[mode]||MODES.major).label)); }catch(e){}
+    bits.push(Math.round(bpm)+' bpm');
+    var st=[];
+    try{ if(typeof window._sqSteps==='function') st.push('drums '+window._sqSteps()); }catch(e){}
+    try{ st.push('bass '+window._blCaptureState().steps); }catch(e){}
+    try{ st.push('melody '+window._mlCaptureState().steps); }catch(e){}
+    if(st.length) bits.push('Steps: '+st.join(', '));
+    meta(0x01, 'mõdRïff — '+bits.join(' | '));
+    var ch=[];
+    (typeof sections!=='undefined'?sections:[]).forEach(function(sec){
+      (sec.slots||[]).forEach(function(sl){ ch.push(sl.isRest?'—':(sl.label||'?')); });
+    });
+    if(ch.length) meta(0x01, 'Chords: '+ch.join(' - '));
+  })();
+  // Tempo
+  track.push(0,0xff,0x51,0x03,(tempo>>16)&0xff,(tempo>>8)&0xff,tempo&0xff);
+  // Time sig — denominator stays 4 (dd=2), so the numerator is just the
+  // number of quarter notes in a bar. Non-integer bar lengths can't be
+  // notated that way, so those fall back to 4/4 rather than writing junk.
+  var sigNum=Number.isInteger(qPerBar)?Math.max(1,Math.min(255,qPerBar)):4;
+  track.push(0,0xff,0x58,0x04,sigNum,0x02,0x18,0x08);
+  // Key signature, so a notation app spells the chords in the song's key: A♭ was arriving
+  // in mõdScore as G♯–C–D♯. Written only when one is clear (see _midiKeySig).
+  var ks=_midiKeySig();
+  if(ks) track.push(0,0xff,0x59,0x02,ks.sf&0xff,ks.mi);
+  // Program change: piano
+  track.push(0,0xc0,0x00);
+  var allSlots=[];
+  if(typeof sections!=='undefined'){
+    sections.forEach(function(sec){if(sec&&sec.slots)sec.slots.forEach(function(sl){if(sl&&sl.rootM!==undefined)allSlots.push(sl);});});
+  }
+  if(!allSlots.length){showToast('No chords in song to export');return null;}
+  var pending=0; // ticks of silence owed to the next note-on (rest slots)
+  // Free writes the first FREE_NUMBERS.midiExportBars bars and says so. The
+  // last chord is shortened to land on the cap, not dropped, so what comes out
+  // is a clean N-bar file rather than N bars minus whatever did not fit.
+  var capTicks=(typeof modAllows==='function' && !modAllows('fullMidiExport'))
+    ? FREE_NUMBERS.midiExportBars*barTicks : Infinity;
+  var elapsed=0, cut=false;
+  allSlots.forEach(function(slot){
+    if(elapsed>=capTicks){ cut=true; return; }
+    var dur=slotTicks(slot);
+    if(elapsed+dur>capTicks){ dur=capTicks-elapsed; cut=true; }
+    elapsed+=dur;
+    // A rest holds its place in the bar without sounding — it used to export
+    // as a full chord, so every rest in the chart came back as a played one.
+    if(slot.isRest){ pending+=dur; return; }
+    var intvs=[];
+    // slotIvs: a chord with its own notes exports as what it plays, not as
+    // the nearest chord in the old-model fields.
+    try{intvs=slotIvs(slot);}catch(e){intvs=[0,4,7];}
+    var notes=intvs.map(function(iv){return Math.max(21,Math.min(108,slot.rootM+iv));});
+    // Slash chords carry their bass the way playChartSlot2 sounds it, so the
+    // exported chord matches the one printed on the chart.
+    if(slot.bassNote!=null) notes.push(Math.max(21,Math.min(108,slot.bassNote-12)));
+    // Two note-ons on one pitch share a single note-off, which leaves the
+    // pitch hanging in the DAW — clamping to 21..108 can collide, so dedupe.
+    notes=notes.filter(function(n,i){return notes.indexOf(n)===i;});
+    // Note-on — the first carries any rest time owed before it
+    notes.forEach(function(n,i){track.push.apply(track,varLen(i===0?pending:0));track.push(0x90,n,80);});
+    pending=0;
+    // Note-off after dur ticks
+    notes.forEach(function(n,i){track.push.apply(track,varLen(i===0?dur:0));track.push(0x80,n,0);});
+  });
+  // Trailing rests still run the file out to the end of the song
+  track.push.apply(track,varLen(pending));track.push(0xff,0x2f,0x00);
+  var hdr=str('MThd').concat(u32(6),u16(0),u16(1),u16(tpq));
+  var trk=str('MTrk').concat(u32(track.length),track);
+  return {bytes:new Uint8Array(hdr.concat(trk)), cut:cut};
+}
+// The MIDI key signature for the current root and mode: the major scale holding the most
+// notes of the mode, so D Dorian is written with no sharps or flats like C major, a
+// pentatonic as the major key it sits in, and E Hijaz (E F G♯ A B C D) like A minor rather
+// than E major. Ties go to the song's own key, or its relative major for a minor-third mode,
+// which is then marked minor.
+function _midiKeySig(){
+  try{
+    var st=(MODES[mode]||MODES.major).steps; if(!st||!st.length) return null;
+    var r=((root%12)+12)%12, minorish=st.indexOf(3)>=0;
+    var set=st.map(function(x){return (r+x)%12;});
+    function fit(t){ return set.filter(function(pc){ return MAJOR_STEPS.indexOf(((pc-t)%12+12)%12)>=0; }).length; }
+    var order=[minorish?(r+3)%12:r]; for(var k=0;k<12;k++) if(order.indexOf(k)<0) order.push(k);
+    var t=order[0], best=fit(t);
+    order.forEach(function(k){ var f=fit(k); if(f>best){ best=f; t=k; } });
+    // A scale no key holds well (whole tone, diminished) leaves two or more notes out of
+    // every one; better the song's own key than five flats chosen by a count.
+    if(best<set.length-1) t=order[0];
+    var mi=(minorish && t===(r+3)%12)?1:0;
+    var FIFTHS={0:0,7:1,2:2,9:3,4:4,11:5,6:6,1:-5,8:-4,3:-3,10:-2,5:-1};
+    var sf=FIFTHS[t]; if(t===6 && useFlats()) sf=-6;
+    return {sf:sf, mi:mi};
+  }catch(e){ return null; }
+}
 function exportMidi(){
   try{
-    var bpm=parseFloat(document.getElementById('bpm')?.value)||120;
-    var tempo=Math.round(60000000/bpm);
-    var tpq=480;
-    function varLen(n){if(n<128)return[n];var b=[];var v=n;while(v>0){b.unshift(v&0x7f);v>>=7;}for(var j=0;j<b.length-1;j++)b[j]|=0x80;return b;}
-    function u32(n){return[(n>>24)&0xff,(n>>16)&0xff,(n>>8)&0xff,n&0xff];}
-    function u16(n){return[(n>>8)&0xff,n&0xff];}
-    function str(s){return s.split('').map(function(c){return c.charCodeAt(0);});}
-    // A bar is however many sixteenth steps the song is actually running in —
-    // a 3/4 groove is 12, not 16 — and a slot's length is bars+beats+eighths,
-    // the same sum slotTotalMs() plays back. Exporting every slot as one 4/4
-    // bar put every chord after the first in the wrong place in any meter but
-    // 4/4, and flattened every partial-bar chord to a full bar.
-    var stepsBar=16;
-    try{ if(typeof _songBarSteps==='function') stepsBar=_songBarSteps(); }catch(e){}
-    if(!(stepsBar>0)) stepsBar=16;
-    var qPerBar=stepsBar/4;                     // quarter notes per bar
-    var barTicks=Math.round(tpq*qPerBar);
-    function slotTicks(sl){
-      var t=Math.round((sl.bars||0)*barTicks+(sl.beats||0)*tpq+(sl.eighths||0)*tpq/2);
-      return t>0?t:barTicks;                    // same fallback as slotTotalMs()
-    }
-    var track=[];
-    // Name the track and write down what it is. A .mid landing in a DAW as
-    // "Track 1" with no key, no chart and no step counts is the same problem
-    // the bounce had — MIDI has meta events for exactly this.
-    function meta(type, text){
-      var b=str(_riffAscii(text).slice(0,250));
-      track.push(0,0xff,type); track.push.apply(track,varLen(b.length)); track.push.apply(track,b);
-    }
-    meta(0x03, (document.getElementById('chart-title')?.value || 'mõdRïff chords'));
-    (function(){
-      var bits=[];
-      try{ bits.push(nn(root)+' '+((MODES[mode]||MODES.major).label)); }catch(e){}
-      bits.push(Math.round(bpm)+' bpm');
-      var st=[];
-      try{ if(typeof window._sqSteps==='function') st.push('drums '+window._sqSteps()); }catch(e){}
-      try{ st.push('bass '+window._blCaptureState().steps); }catch(e){}
-      try{ st.push('melody '+window._mlCaptureState().steps); }catch(e){}
-      if(st.length) bits.push('Steps: '+st.join(', '));
-      meta(0x01, 'mõdRïff — '+bits.join(' | '));
-      var ch=[];
-      (typeof sections!=='undefined'?sections:[]).forEach(function(sec){
-        (sec.slots||[]).forEach(function(sl){ ch.push(sl.isRest?'—':(sl.label||'?')); });
-      });
-      if(ch.length) meta(0x01, 'Chords: '+ch.join(' - '));
-    })();
-    // Tempo
-    track.push(0,0xff,0x51,0x03,(tempo>>16)&0xff,(tempo>>8)&0xff,tempo&0xff);
-    // Time sig — denominator stays 4 (dd=2), so the numerator is just the
-    // number of quarter notes in a bar. Non-integer bar lengths can't be
-    // notated that way, so those fall back to 4/4 rather than writing junk.
-    var sigNum=Number.isInteger(qPerBar)?Math.max(1,Math.min(255,qPerBar)):4;
-    track.push(0,0xff,0x58,0x04,sigNum,0x02,0x18,0x08);
-    // Program change: piano
-    track.push(0,0xc0,0x00);
-    var allSlots=[];
-    if(typeof sections!=='undefined'){
-      sections.forEach(function(sec){if(sec&&sec.slots)sec.slots.forEach(function(sl){if(sl&&sl.rootM!==undefined)allSlots.push(sl);});});
-    }
-    if(!allSlots.length){showToast('No chords in song to export');return;}
-    var pending=0; // ticks of silence owed to the next note-on (rest slots)
-    // Free writes the first FREE_NUMBERS.midiExportBars bars and says so. The
-    // last chord is shortened to land on the cap, not dropped, so what comes out
-    // is a clean N-bar file rather than N bars minus whatever did not fit.
-    var capTicks=(typeof modAllows==='function' && !modAllows('fullMidiExport'))
-      ? FREE_NUMBERS.midiExportBars*barTicks : Infinity;
-    var elapsed=0, cut=false;
-    allSlots.forEach(function(slot){
-      if(elapsed>=capTicks){ cut=true; return; }
-      var dur=slotTicks(slot);
-      if(elapsed+dur>capTicks){ dur=capTicks-elapsed; cut=true; }
-      elapsed+=dur;
-      // A rest holds its place in the bar without sounding — it used to export
-      // as a full chord, so every rest in the chart came back as a played one.
-      if(slot.isRest){ pending+=dur; return; }
-      var intvs=[];
-      // slotIvs: a chord with its own notes exports as what it plays, not as
-      // the nearest chord in the old-model fields.
-      try{intvs=slotIvs(slot);}catch(e){intvs=[0,4,7];}
-      var notes=intvs.map(function(iv){return Math.max(21,Math.min(108,slot.rootM+iv));});
-      // Slash chords carry their bass the way playChartSlot2 sounds it, so the
-      // exported chord matches the one printed on the chart.
-      if(slot.bassNote!=null) notes.push(Math.max(21,Math.min(108,slot.bassNote-12)));
-      // Two note-ons on one pitch share a single note-off, which leaves the
-      // pitch hanging in the DAW — clamping to 21..108 can collide, so dedupe.
-      notes=notes.filter(function(n,i){return notes.indexOf(n)===i;});
-      // Note-on — the first carries any rest time owed before it
-      notes.forEach(function(n,i){track.push.apply(track,varLen(i===0?pending:0));track.push(0x90,n,80);});
-      pending=0;
-      // Note-off after dur ticks
-      notes.forEach(function(n,i){track.push.apply(track,varLen(i===0?dur:0));track.push(0x80,n,0);});
-    });
-    // Trailing rests still run the file out to the end of the song
-    track.push.apply(track,varLen(pending));track.push(0xff,0x2f,0x00);
-    var hdr=str('MThd').concat(u32(6),u16(0),u16(1),u16(tpq));
-    var trk=str('MTrk').concat(u32(track.length),track);
-    var bytes=new Uint8Array(hdr.concat(trk));
-    var blob=new Blob([bytes],{type:'audio/midi'});
+    var m=_chartMidi(); if(!m) return;
+    var blob=new Blob([m.bytes],{type:'audio/midi'});
     _exportName('modriff-chords','MIDI file').then(function(nm){
       modPlatform.saveFile(_dlName(nm+'.mid'), blob);
-      showToast(cut ? 'Free .mid exports are '+FREE_NUMBERS.midiExportBars+' bars. The Studio Pack exports the whole song.'
-                    : 'Chart chords written to .mid');
+      showToast(m.cut ? 'Free .mid exports are '+FREE_NUMBERS.midiExportBars+' bars. The Studio Pack exports the whole song.'
+                      : 'Chart chords written to .mid');
     });
   }catch(e){console.error('MIDI export error',e);showToast('Export failed');}
+}
+// Hand the chart to mõdScore (the mõd apps share work through the link fragment; the format
+// is in modriff-site/suite/mod-suite.js and SUITE.md, and only the send half lives here).
+// The fragment never reaches a server, and an https link opens from the iPhone app too.
+function _modSuiteUrl(target, kind, title, bytes){
+  var bin='', CH=0x8000;
+  for(var i=0;i<bytes.length;i+=CH) bin+=String.fromCharCode.apply(null, bytes.subarray(i,i+CH));
+  var data=btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  var q=new URLSearchParams(); q.set('mod','1'); q.set('kind',kind); q.set('from','play');
+  if(title) q.set('title',String(title).slice(0,120)); q.set('data',data);
+  var base=window.MOD_SUITE_BASE || (/(^|\.)modriff\.com$/.test(location.hostname) ? location.origin+'/' : 'https://modriff.com/');
+  return base+target+'/#'+q.toString();
+}
+function openChartInScore(){
+  try{
+    var m=_chartMidi(); if(!m) return;
+    var title=(document.getElementById('chart-title')?.value||'').trim() || 'mõdRïff chords';
+    var a=document.createElement('a');
+    a.href=_modSuiteUrl('score','midi',title,m.bytes); a.target='_blank'; a.rel='noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    showToast(m.cut ? 'Opening the first '+FREE_NUMBERS.midiExportBars+' bars in mõdScore. The Studio Pack sends the whole song.'
+                    : 'Opening the chords in mõdScore');
+  }catch(e){console.error('mõdScore handoff error',e);showToast('Could not open mõdScore');}
 }
 // A song link carries the chart and the musical context, nothing else. It used
 // to be raw base64 of the JSON, which is the longest possible way to write it
