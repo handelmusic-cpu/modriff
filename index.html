@@ -10438,7 +10438,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.0g</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.0h</span></div>
  </div>
 </div>
 
@@ -11920,7 +11920,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.0g</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.0h</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13136,7 +13136,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.0g';
+const MODRIFF_VERSION = '2.0h';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -24987,8 +24987,10 @@ function buildUnlockChoices(){
   box.innerHTML = btn('blank','Start','Start blank')
                 + (resume ? btn('resume','Resume','Pick up where you left off') : '')
                 + btn('shared','Open','Open “'+_sharedArrival.name.replace(/"/g,'&quot;')+'”');
-  if(note) note.textContent = 'Someone shared '+(_sharedArrival.kind==='song'?'a song':'a setup')
-    +' with you — “'+_sharedArrival.name+'”. Open puts you straight into it; nothing here is uploaded anywhere.';
+  if(note) note.textContent = _sharedArrival.kind==='melody'
+    ? _sharedArrival.from+' sent “'+_sharedArrival.name+'”. Open puts it in the melody roll; nothing here is uploaded anywhere.'
+    : 'Someone shared '+(_sharedArrival.kind==='song'?'a song':'a setup')
+      +' with you — “'+_sharedArrival.name+'”. Open puts you straight into it; nothing here is uploaded anywhere.';
   return;
  }
  const firstTime = !resume && !tourChapterDone(1)
@@ -25136,6 +25138,7 @@ function unlockAudio(startDemo){
   const pend = window._sharedPending; window._sharedPending = null;
   if(pend && pend.kind==='setup') applySetup(pend.st, {mergeSetlist:true});
   else if(pend && pend.kind==='song') _applySharedSong(pend.data);
+  else if(pend && pend.kind==='melody') _applyHandoffMelody(pend);
   if(_sharedArrival && _sharedArrival.kind==='song'){ switchTab('songs'); setSongsMode('perform'); }
  } else if(mode==='resume'){
   restoreLastSession();
@@ -42342,13 +42345,22 @@ function _modSuiteUrl(target, kind, title, bytes){
   var base=window.MOD_SUITE_BASE || (/(^|\.)modriff\.com$/.test(location.hostname) ? location.origin+'/' : 'https://modriff.com/');
   return base+target+'/#'+q.toString();
 }
+// Opens bytes of MIDI in mõdScore, in a new tab. Call it straight from a tap: Safari lets a
+// tap open a tab only if nothing was awaited first. False when the take is too long to
+// travel in a link (browsers cut very long ones), with a toast saying what to do instead.
+function _openMidiInScore(title, bytes){
+  var url=_modSuiteUrl('score','midi',title,bytes);
+  if(url.length>1500000){ showToast('That is too long to send by link. Save the .mid and open it in mõdScore with Import > MIDI.'); return false; }
+  var a=document.createElement('a');
+  a.href=url; a.target='_blank'; a.rel='noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+  return true;
+}
 function openChartInScore(){
   try{
     var m=_chartMidi(); if(!m) return;
     var title=(document.getElementById('chart-title')?.value||'').trim() || 'mõdRïff chords';
-    var a=document.createElement('a');
-    a.href=_modSuiteUrl('score','midi',title,m.bytes); a.target='_blank'; a.rel='noopener';
-    document.body.appendChild(a); a.click(); a.remove();
+    if(!_openMidiInScore(title, m.bytes)) return;
     showToast(m.cut ? 'Opening the first '+FREE_NUMBERS.midiExportBars+' bars in mõdScore. The Studio Pack sends the whole song.'
                     : 'Opening the chords in mõdScore');
   }catch(e){console.error('mõdScore handoff error',e);showToast('Could not open mõdScore');}
@@ -42380,6 +42392,80 @@ function _shareCopy(url,msg){
  if(navigator.clipboard) navigator.clipboard.writeText(url).then(done).catch(()=>prompt('Copy link:',url));
  else prompt('Copy link:',url);
 }
+// ── Work handed over by another mõd app ──────────────────────────────────
+// mõdScore sends a part as modriff.com/play/#mod=1&kind=midi&from=score&title=…&data=…
+// (format: modriff-site/suite/mod-suite.js). The fragment never reaches a server. Like a
+// #prog= link it is decoded at load and held; Open on the splash puts it in the melody roll.
+
+// A Standard MIDI File's notes, every track merged, at 480 ticks a quarter note:
+// {bpm, notes:[{t, len, midi, vel}]}. Channel 10 (drums) is left out: the melody roll is
+// pitched, and a drum part turned into pitches is noise.
+function _smfNotes(u8){
+ var dv=new DataView(u8.buffer, u8.byteOffset, u8.byteLength), p=0;
+ function str4(){ var x=String.fromCharCode(u8[p],u8[p+1],u8[p+2],u8[p+3]); p+=4; return x; }
+ function vlq(){ var n=0, b; do{ b=u8[p++]; n=(n<<7)|(b&0x7f); }while(b&0x80 && p<u8.length); return n; }
+ if(str4()!=='MThd') throw new Error('not a MIDI file');
+ var hl=dv.getUint32(p); p+=4; var ntrk=dv.getUint16(p+2), div=dv.getUint16(p+4); p+=hl;
+ if(div&0x8000) throw new Error('SMPTE-timed MIDI is not supported');
+ var k=480/div, tempo=0, notes=[];
+ for(var ti=0; ti<ntrk && p<u8.length; ti++){
+  if(str4()!=='MTrk') break;
+  var len=dv.getUint32(p); p+=4; var end=p+len, tick=0, run=0, open={};
+  while(p<end){
+   tick+=vlq(); var st=u8[p];
+   if(st&0x80){ p++; if(st<0xf0) run=st; } else st=run;
+   if(st===0xff){ var mt=u8[p++], ml=vlq(); if(mt===0x51 && !tempo) tempo=(u8[p]<<16)|(u8[p+1]<<8)|u8[p+2]; p+=ml; continue; }
+   if(st===0xf0 || st===0xf7){ p+=vlq(); continue; }
+   var hi=st&0xf0, ch=st&0x0f;
+   if(hi===0xc0 || hi===0xd0){ p+=1; continue; }
+   var a=u8[p++], b=u8[p++];
+   if(hi!==0x80 && hi!==0x90) continue;
+   if(ch===9) continue;
+   var key=ch*128+a;
+   if(hi===0x90 && b>0){ (open[key]=open[key]||[]).push({t:tick, vel:b}); }
+   else { var q=open[key]; if(q && q.length){ var on=q.shift(); if(tick>on.t) notes.push({t:Math.round(on.t*k), len:Math.round((tick-on.t)*k), midi:a, vel:on.vel}); } }
+  }
+  p=end;
+ }
+ notes.sort(function(x,y){ return x.t-y.t || x.midi-y.midi; });
+ return {bpm: tempo ? Math.round(60000000/tempo) : null, notes:notes};
+}
+function loadHandoffFromHash(){
+ var h=location.hash; if(h.indexOf('mod=')<0) return null;
+ var q=new URLSearchParams(h.slice(1));
+ if(q.get('mod')!=='1' || !q.get('data')) return null;
+ try{ history.replaceState(null,'',location.href.split('#')[0]); }catch(e){}
+ var APPS={score:'mõdScore', playground:'Music Playground', play:'mõdRïff'};
+ var from=APPS[q.get('from')]||'another mõd app', title=q.get('title')||('From '+from);
+ try{
+  if(q.get('kind')!=='midi') throw new Error('this version of mõdRïff can only take MIDI');
+  var b=atob(q.get('data').replace(/-/g,'+').replace(/_/g,'/')), u8=new Uint8Array(b.length);
+  for(var i=0;i<b.length;i++) u8[i]=b.charCodeAt(i);
+  var smf=_smfNotes(u8);
+  if(!smf.notes.length) throw new Error('there are no notes in it');
+  window._sharedPending={kind:'melody', notes:smf.notes, bpm:smf.bpm, title:title, from:from};
+  return {kind:'melody', name:title, from:from};
+ }catch(e){ showToast('Could not open what '+from+' sent: '+e.message); return null; }
+}
+// Puts handed-over notes in the melody roll, the way a tab goes in (tabToMelodyGrid): from
+// the bar its first note is in, sixteenth-note steps, up to 64 of them, Follow off so it
+// plays as written. Takes the sender's tempo. Undo puts the roll and the tempo back.
+function _applyHandoffMelody(pend){
+ if(typeof window._mlRestoreState!=='function' || typeof window._mlCaptureState!=='function'){ showToast('The melody roll is not ready yet'); return false; }
+ var bar=1920, first=pend.notes[0].t, start=Math.floor(first/bar)*bar;
+ var last=Math.max.apply(null, pend.notes.map(function(n){ return n.t+n.len; }));
+ var parsed={notes:pend.notes, blocks:[{start:start, len:Math.max(bar/4, last-start), name:pend.title}]};
+ var g=tabToMelodyGrid(parsed, 0); if(!g) return false;
+ var before=JSON.parse(JSON.stringify(window._mlCaptureState()));
+ var bp=document.getElementById('bpm'), bpmBefore=bp ? bp.value : null;
+ window._mlRestoreState({steps:g.steps, grid:g.grid, follow:false});
+ if(pend.bpm && bp){ var v=_clampBpm(pend.bpm); bp.value=v; if(typeof onBpmInput==='function') onBpmInput(v); }
+ var note=(g.lifted ? ' (up '+g.lifted+(g.lifted===1?' octave':' octaves')+' to fit the roll)' : '')
+   +(g.cut ? '. '+g.cut+' notes past 64 steps were left out' : '');
+ showToast('“'+pend.title+'” from '+pend.from+' is in the melody roll'+note+'. Follow is off, so it plays as written.',
+  {actionLabel:'Undo', onAction(){ window._mlRestoreState(before); if(bp && bpmBefore!=null){ bp.value=bpmBefore; if(typeof onBpmInput==='function') onBpmInput(+bpmBefore); } }});
+ return true;
+}
 async function loadProgressionFromHash(){
  const h=location.hash;
  if(!h.startsWith('#prog=')) return null;
@@ -42408,7 +42494,9 @@ function _applySharedSong(data){
   if(data.title){ const t=document.getElementById('chart-title'); if(t) t.value=data.title; }
   if(data.root!==undefined) root=data.root;
   if(data.mode) setMode(data.mode);
-  if(data.bpm){ const bp=document.getElementById('bpm'); if(bp){ bp.value=data.bpm; if(typeof onBpmInput==='function') onBpmInput(); } }
+  // onBpmInput takes the tempo: called with nothing it wrote undefined into the tempo
+  // controls, which reset them to 130, so every shared song opened at 130 bpm.
+  if(data.bpm){ const bp=document.getElementById('bpm'); if(bp){ const v=_clampBpm(data.bpm); bp.value=v; if(typeof onBpmInput==='function') onBpmInput(v); } }
   buildSectionTabs();
   renderChords();
   if(typeof renderChartSeq==='function') renderChartSeq();
@@ -57269,6 +57357,14 @@ function _finishRecording(midiFile){
     if(natBad) done += '. The native engine could not be captured, so what it plays is not in the files';
     else if(nat && nat.lost>0) done += '. The native engine dropped ' + Math.round(nat.lost*1000/_sr) + ' ms of audio while recording';
     var _toastOpts=(sk.length || natBad || (nat && nat.lost>0)) ? {ms:6000} : undefined;
+    // A take that wrote MIDI can go straight to mõdScore as sheet music, one staff a part
+    // (the drums stay behind: mõdScore brings in pitched parts only).
+    if(midiFile && midiFile.bytes){
+      _toastOpts=Object.assign({ms:9000}, _toastOpts||{}, {actionLabel:'Open in mõdScore', onAction:function(){
+        try{ _openMidiInScore((document.getElementById('chart-title')?.value||'').trim()||'mõdRïff take', midiFile.bytes); }
+        catch(e){ console.error('mõdScore handoff error',e); showToast('Could not open mõdScore'); }
+      }});
+    }
     // With a folder the toast waits for the blob files to be written too and is
     // said just before the sheet takes the screen.
     if(!folder) majorToast(done, _toastOpts);
@@ -57635,6 +57731,9 @@ function _buildMidiRecording(){
     var _qPerBar=_stepsBar/4;
     var _sigNum=Number.isInteger(_qPerBar)?Math.max(1,Math.min(255,_qPerBar)):4;
     conductor.push(0,0xff,0x58,0x04,_sigNum,0x02,0x18,0x08);
+    // The song's key, as the chart .mid has it (_midiKeySig), so notation spells the take in it.
+    var _ks=(typeof _midiKeySig==='function')?_midiKeySig():null;
+    if(_ks) conductor.push(0,0xff,0x59,0x02,_ks.sf&0xff,_ks.mi);
     conductor.push(0,0xff,0x2f,0x00);
     var conductorTrk=str('MTrk').concat(u32(conductor.length),conductor);
     var allTrks=conductorTrk;
@@ -57649,7 +57748,7 @@ function _buildMidiRecording(){
     var bytes=new Uint8Array(hdr.concat(allTrks));
     var blob=new Blob([bytes],{type:'audio/midi'});
     return { name:(document.getElementById('chart-title')?.value||'modriff-performance')+'-live.mid',
-             blob:blob, notes:recNotes.length, lanes:numTracks-1, cut:midiCut, incomplete:!!_midiRecNativeCut };
+             blob:blob, bytes:bytes, notes:recNotes.length, lanes:numTracks-1, cut:midiCut, incomplete:!!_midiRecNativeCut };
   }catch(e){ console.error('MIDI recording export error',e); return null; }
 }
 // Global hooks called from inside the bass/drum IIFEs (their state isn't
@@ -58289,7 +58388,7 @@ if(typeof setLatencyPreset==='function') setLatencyPreset(latencyChoice(), {sile
 // buildUnlockChoices. Nothing here presses play; that stays the user's call.
 (async function(){
  try{
-  _sharedArrival = (await loadProgressionFromHash()) || (await loadSetupFromHash()) || null;
+  _sharedArrival = loadHandoffFromHash() || (await loadProgressionFromHash()) || (await loadSetupFromHash()) || null;
  }catch(e){ _sharedArrival = null; }
  try{ buildUnlockChoices(); }catch(e){}
 })();
