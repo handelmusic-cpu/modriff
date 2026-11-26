@@ -5604,6 +5604,17 @@ body.tour-open .tab-page { padding-bottom: 42vh; }
  cursor:pointer; touch-action:manipulation; min-height:44px;
 }
 .tour-btn.go { border:none; background:var(--pg); color:#06140d; font-weight:700; }
+/* The ending's three ways to keep what was made: full-width rows, a name and one line under it. */
+.tour-acts { display:grid; gap:8px; margin-top:12px; }
+.tour-act {
+ display:flex; flex-direction:column; align-items:flex-start; gap:1px; text-align:left;
+ min-height:48px; padding:8px 14px; border-radius:14px; cursor:pointer; touch-action:manipulation;
+ border:1px solid rgba(255,255,255,.28); background:rgba(255,255,255,.05); color:#f2f3ff;
+ font-family:'Outfit',sans-serif;
+}
+.tour-act b { font-size:.82rem; font-weight:700; }
+.tour-act span { font-size:.7rem; color:rgba(255,255,255,.7); line-height:1.35; }
+.tour-act:active { background:rgba(255,255,255,.14); border-color:var(--pg); }
 /* A short phone (an SE is 667px) cannot fit the chords, the keys and a full
    card under them for the step that lights both, so the card tightens up
    rather than landing on the keys. */
@@ -10451,7 +10462,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.1a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.1b</span></div>
  </div>
 </div>
 
@@ -11933,7 +11944,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.1a</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.1b</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13149,7 +13160,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.1a';
+const MODRIFF_VERSION = '2.1b';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -41771,9 +41782,35 @@ function playOnboardingDemo(opts){
       '<div class="tour-title">You’re playing</div>' +
       '<div class="tour-text">Chords and a tune over a beat. That’s the core of it. ' +
         'When you want more, <b>Find</b> in the More sheet takes you to any control by name, and <b>Tutorials</b> and the <b>Guide</b>, beside it, have the rest.</div>' +
+      // The first minute used to end on "Keep playing", just when someone has made something. Three ways to
+      // keep it: a take, a link for a friend, a saved setup. Not on a replay: that person has a rig of their
+      // own, and the "Restore my setup" toast on close is what gets it back; an action's toast would replace it.
+      (replay ? '' :
+        '<div class="tour-acts">' +
+          '<button type="button" class="tour-act" id="_ob-rec"><b>Record it</b><span>Capture what you play, then send the audio</span></button>' +
+          '<button type="button" class="tour-act" id="_ob-send"><b>Send it to a friend</b><span>A link that opens this sound and groove</span></button>' +
+          '<button type="button" class="tour-act" id="_ob-save"><b>Save this setup</b><span>Keep this sound and groove</span></button>' +
+        '</div>') +
       '<div class="tour-foot"><button class="tour-btn go" id="_ob-done">Keep playing</button></div>';
     document.getElementById('_ob-exit').onclick = function(){ close(false); };
     document.getElementById('_ob-done').onclick = function(){ close(false); };
+    // Each action runs straight after the card closes, in the same tap: the share sheet only opens from
+    // a tap, and a timeout in between would lose it.
+    var act = function(id, name, fn){
+      var b = document.getElementById(id); if(!b) return;
+      b.onclick = function(){
+        close(false);
+        if(typeof track==='function') track('tour_end_action', {a:name});
+        try{ fn(); }catch(e){ console.warn('tour end action', name, e); }
+      };
+    };
+    act('_ob-rec', 'record', function(){
+      if(typeof _isRecording!=='undefined' && _isRecording) return;
+      toggleRecording();
+      showToast('Recording. Play for a bit, then tap the red button to stop.');
+    });
+    act('_ob-send', 'send', function(){ shareRigNow(); });
+    act('_ob-save', 'save', function(){ setupSaveNew(); });
   }
   function close(early){
     closed = true;
@@ -42812,6 +42849,9 @@ async function _shareDo(scope){
   track('setup_shared',{scope:scope,len:url.length});
  }catch(e){ showToast('Could not build a link'); console.warn(e); }
 }
+// The walkthrough's "Send it to a friend": the whole rig as it is now, straight to the share sheet, with no
+// scope sheet in between (a first-time player has no setlist to leave out, and the choice would be noise).
+function shareRigNow(){ _shareForId=null; return _shareDo('all'); }
 function _setupLiveName(){
  const el=document.getElementById('setup-name');
  return (el&&el.value.trim()) || 'mõdRïff setup';
