@@ -28,9 +28,9 @@ Latest official release is `LinkKit-4.1.3` (2026-10-19, deployment target iOS 15
 - The grant says "iOS applications". The SDK ships a Catalyst slice, so the Mac app is plainly intended, but
   the words do not say Mac (open question 3).
 - **Owner's own agreement (2026-11-23).** The owner signed a separate Link license agreement with Ableton (the
-  cross-platform SDK, the app named as the licensed product). Ableton's countersignature was still blank on the
-  copy in hand: check it is completed. The app still links LinkKit, so which text covers the Mac Catalyst slice
-  is for Ableton to confirm. The agreement's terms are confidential: never copy them into this public repo.
+  cross-platform SDK, the app named as the licensed product). **Ableton has countersigned** (signature on the
+  copy received 2026-11-26; its date line is blank, so keep the DocuSign completion email as the record). The app
+  still links LinkKit, so which text covers the Mac Catalyst slice is for Ableton to confirm. The agreement's terms are confidential: never copy them into this public repo.
 
 **What the UI guidelines require** (PDF v1.10, shipped with the SDK):
 - Ableton's **preference pane** (a `UIViewController` from LinkKit, not configurable: title "Ableton Link", the
@@ -68,8 +68,8 @@ Still the owner's to do (nobody else can):
 
 - **Multicast entitlement: done.** Granted on the App ID and added to `App.entitlements`. Without the key in the
   signed app **Link on an iPhone or iPad shows no peers.** The Simulator and the Mac app do not need it.
-- **Mac wording.** Get Ableton's countersigned copy of the owner's agreement, and ask in one line to
-  link-devs@ableton.com whether it (or LinkKit's "iOS applications" grant) covers the Mac Catalyst build the app links.
+- **Mac wording.** The owner's agreement is countersigned. Ask in one line to link-devs@ableton.com whether it
+  (or LinkKit's "iOS applications" grant) covers the Mac Catalyst build the app links.
 - **Never an In-App Purchase**, and the SDK is never committed (the licence; the repository is public).
 
 ## 3. Engine design
