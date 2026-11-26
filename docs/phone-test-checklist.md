@@ -254,3 +254,4 @@ Since 6.2:
 - [ ] v2.0c: iPhone app: the arp rate chip beside Play/Record shows only while Arp is on; switching Arp on and off does not move anything else in the bar. (Measured in headless Chrome at 390 wide.)
 - [ ] v2.0d: Settings > About: each artist link (Spotify, Apple Music, YouTube, Dut Dut Records) opens that artist's own page, not a search. (Checked in headless Chrome.)
 - [ ] v2.0e: iPhone app: hold a mõdFX pad (or mute a part): the FX / MUTE chip hangs off the top edge of the tempo and does not sit on Play; Play does not move when it appears; tapping the chip still releases the pad / clears the mute. (Measured in headless Chrome at 360, 375, 390, 402 and 430 wide.)
+- [ ] v2.0f: Settings > About: the mõdScore and Music Playground links open modriff.com/score/ and /playground/ in the browser. (Checked in headless Chrome.)
