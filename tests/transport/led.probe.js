@@ -1,4 +1,4 @@
-/* The MUTE / SOLO / FX chip (#ft-ms-led) must not sit on anything in the transport (2.0d).
+/* The MUTE / SOLO / FX chip (#ft-ms-led) must not sit on anything in the transport (2.0e).
 
    Before: it was a third child of the left cell, which is only as wide as the key's floor plus the tempo, so it
    overflowed onto Play (a held mõdFX pad painted "FX" over the play button) on every phone narrower than 430.
