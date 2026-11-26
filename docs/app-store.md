@@ -170,7 +170,7 @@ References: [Apple: no technical implementation required](https://developer.appl
 [privacy disclosure rules](https://developer.apple.com/app-store/app-privacy-details/).
 
 `privacy.html` covers the camera (chord-sheet photo, read on the device), optional iCloud sync, the app's folder in Files,
-one-time packs and iPad. The November 12, 2026 update clarifies Apple's aggregate store reports and optional usage/diagnostic
+one-time packs and iPad. Pasting a web page address in Library > Chord charts (v2.2) makes one request from the device to that site, only for an address the person pasted; nothing is sent to us. The label stays Data Not Collected, but `privacy.html` (site repo) should say so. The November 12, 2026 update clarifies Apple's aggregate store reports and optional usage/diagnostic
 sharing, removes the overbroad "no third-party code" claim, and keeps the landing page consistent. The site's iPhone Duo tab shows the three states from `screenshots/v6.9.6/`; the open, wide shot was removed (it showed the old Linn kit name), so retake it from Xcode before the site keeps that state. The
 site's "for iPhone, iPad and Mac" is true: the Mac Catalyst build is uploaded to App Store Connect.
 
