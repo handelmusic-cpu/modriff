@@ -87,7 +87,7 @@ function laneSettings(seed, lanes) {
   // ── The cases ──────────────────────────────────────────────────────────────────────────────────
   // swing8: 8ths or 16ths; meter: [beats, unit]; auxOn: the second layer; changes: tempo changes by step.
   const det = [];
-  const mk = (name, o) => det.push(Object.assign({ name, bpm: 120, rate: 1, steps: 16, swing: 0, swing8: true, bars: 6, aux: true, tupCover: true, drums: true, kitOn: true, seed: 11, density: 0.4, meter: [4, 4] }, o));
+  const mk = (name, o) => det.push(Object.assign({ name, bpm: 120, rate: 1, steps: 16, swing: 0, swing8: true, bars: 6, aux: true, drums: true, kitOn: true, seed: 11, density: 0.4, meter: [4, 4] }, o));
   mk('plain 120, 16 steps');
   mk('swing 8ths 50', { swing: 50, seed: 12 });
   mk('swing 16ths 66', { swing: 66, swing8: false, seed: 13 });
@@ -100,7 +100,6 @@ function laneSettings(seed, lanes) {
   mk('12 steps (not a whole bar)', { steps: 12, seed: 20 });
   mk('7/8 meter, 14 steps', { steps: 14, meter: [7, 8], seed: 21 });
   mk('6/8 compound, 12 steps, swing', { steps: 12, meter: [6, 8], swing: 50, seed: 22 });
-  mk('tuplet cover off', { tupCover: false, density: 0.55, seed: 23 });
   mk('dense, many ratchets and tuplets', { density: 0.8, seed: 24 });
   mk('drums switch off (aux still plays)', { drums: false, seed: 25 });
   mk('kit layer off, aux only', { kitOn: false, seed: 26 });
@@ -116,7 +115,7 @@ function laneSettings(seed, lanes) {
   stat.push({ name: 'humanize off for the aux part', kind: 'humanoff' });
 
   const result = await page.evaluate(async ({ det, stat, lanes808, lanesPerc, grids }) => {
-    const out = { det: [], stat: [] };
+    const out = { det: [], stat: [], noCover: typeof window._sqSetTupCover === 'undefined' && !document.getElementById('sq-tupcoverBtn') };
     const fake = { currentTime: 0, sampleRate: 48000, state: 'running' };
     clearTimeout(clockTimer);                                     // the page's own clock is not wanted any more
     const realCtx = getCtx, realAudio = audioCtx;
@@ -133,7 +132,6 @@ function laneSettings(seed, lanes) {
       sqRateMul = c.rate;
       METER.beats = c.meter[0]; METER.unit = c.meter[1];
       drumsEnabled = c.drums;
-      window._sqSetTupCover(c.tupCover);
       window._sqRestoreState({ steps: c.steps, swing: c.swing, swing8: c.swing8, mach: '808', grid: c.grid, vols: c.vols, pitches: c.pitches,
         kitOn: c.kitOn, aux: { mach: 'PERC', grid: c.auxGrid, on: c.aux, vols: c.auxVols, pitches: c.auxPitches } });
       window._sqEnsureGrid();
@@ -185,7 +183,7 @@ function laneSettings(seed, lanes) {
     // Statistics: one long run each, with the page's Math.random.
     for (const c of stat) {
       const o = { name: c.name, kind: c.kind };
-      const base = { bpm: 120, rate: 1, steps: 16, swing: 0, swing8: true, aux: true, tupCover: true, drums: true, kitOn: true, meter: [4, 4], human: null };
+      const base = { bpm: 120, rate: 1, steps: 16, swing: 0, swing8: true, aux: true, drums: true, kitOn: true, meter: [4, 4], human: null };
       Object.assign(base, grids[c.name]);
       if (c.kind === 'human') base.human = { amt: c.amt, time: 1, vel: 1, drift: 0 };
       if (c.kind === 'drift') base.human = { amt: 1, time: 0, vel: 0, drift: 1 };
@@ -198,7 +196,7 @@ function laneSettings(seed, lanes) {
     }
     window.getCtx = realCtx; audioCtx = realAudio; E.send = keep.send; E.now = keep.now; E.ready = keep.ready;
     return out;
-  }, { det: det.map(c => ({ name: c.name, bpm: c.bpm, rate: c.rate, steps: c.steps, swing: c.swing, swing8: c.swing8, bars: c.bars, aux: c.aux, tupCover: c.tupCover, drums: c.drums, kitOn: c.kitOn, meter: c.meter, changes: c.changes })),
+  }, { det: det.map(c => ({ name: c.name, bpm: c.bpm, rate: c.rate, steps: c.steps, swing: c.swing, swing8: c.swing8, bars: c.bars, aux: c.aux, drums: c.drums, kitOn: c.kitOn, meter: c.meter, changes: c.changes })),
        stat: stat.map(c => ({ name: c.name, kind: c.kind, amt: c.amt })), lanes808, lanesPerc,
        grids: (() => {
          const g = {};
@@ -213,6 +211,8 @@ function laneSettings(seed, lanes) {
        })() });
   await browser.close(); srv.close();
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
+  ok(result.det.every(c => c.score[0] === 2), 'the page writes score version 2', result.det[0].score[0]);
+  ok(result.noCover, 'Tuplets: Free is gone from the page', 'window._sqSetTupCover or #sq-tupcoverBtn is still there');
 
   // ── Hand the scores to the C++ core ────────────────────────────────────────────────────────────
   const all = result.det.concat(result.stat);

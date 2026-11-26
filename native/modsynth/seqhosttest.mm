@@ -18,7 +18,7 @@ static int failed = 0;
 // The score layout of seqcore.cpp: 16 steps, lane 0 an accent on step 0 and hits on 4, 8, 12; lane 1 a hit every
 // step at probability 100 (always); the second layer off.
 static std::vector<double> score() {
-  std::vector<double> d = {1, 16, 0, 1, 4, 16, 1, 1, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 0};
+  std::vector<double> d = {2, 16, 0, 1, 4, 16, 1, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 0};
   auto cell = [&](double v) { d.insert(d.end(), {v, 0, 0, 1, 1, 0, 0}); };
   d.insert(d.end(), {1, 0, 0, 2});
   d.insert(d.end(), {0.8, 0, 1, 0, 0, 16});
@@ -592,7 +592,7 @@ int main() {
     // nothing of this one; with lane 1 only ringing, the same score keeps the open voice sounding. Three hosts: choking, not choking, and one with the closing hit alone (what the chain leaves of it).
     {
       auto hatScore = [&](bool closes) {
-        std::vector<double> d = {1, 16, 0, 1, 4, 16, 1, 1, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 0};
+        std::vector<double> d = {2, 16, 0, 1, 4, 16, 1, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 0};
         auto cell = [&](double v) { d.insert(d.end(), {v, 0, 0, 1, 1, 0, 0}); };
         d.insert(d.end(), {1, 0, 0, 2});
         d.insert(d.end(), {0.8, 0, 1, 1, 0, 16});            // lane 0: group 1, does not choke

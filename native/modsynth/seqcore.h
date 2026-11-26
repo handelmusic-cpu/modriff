@@ -66,7 +66,6 @@ struct DrumScore {
   int beatSteps = 4;       // meterBeatSteps()
   int barSteps = 16;       // meterStepsPerBar()
   bool drumsEnabled = true;   // the Drums switch: the Kit layer is silent without it, the Aux layer is not
-  bool tupCover = true;    // a tuplet's span is its own (sqTupCover)
   Humanize hum;
   DrumLayer layers[2];
 
@@ -257,7 +256,6 @@ class DrumSequencer {
   static bool isTup(const DrumCell &c) { return c.v > 0 && c.r > 1 && c.rs > 1; }
   static const DrumCell *cellAt(const DrumLane &l, int s) { return (s >= 0 && s < (int)l.cells.size()) ? &l.cells[(size_t)s] : nullptr; }
   bool isCovered(const DrumLane &l, int s) const {
-    if (!score_.tupCover) return false;
     for (int k = 1; k < 8 && s - k >= 0; k++) {
       const DrumCell *c = cellAt(l, s - k);
       if (c && isTup(*c) && c->rs > k && !isCovered(l, s - k)) return true;
