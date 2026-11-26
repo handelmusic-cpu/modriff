@@ -3214,6 +3214,19 @@ body.light-mode .unlock-logo { --wm-ink:#14162a; --wm-k1:#2a82e6; --wm-k2:#9a52e
 .unlock-btn:active { background:var(--surf); border-color:var(--text); }
 .unlock-btn[disabled] { opacity:.4; cursor:default; }
 .unlock-btn.ghost { /* kept for the shared-link fallback markup; same look now */ }
+/* First visit: Learn on its own full-width row above, Start and Random quiet underneath. `order` moves
+   Learn without moving it in the markup (see buildUnlockChoices). */
+.unlock-choices.first-visit { flex-wrap:wrap; justify-content:center; }
+.unlock-btn.unlock-lead {
+ order:-1; flex:1 1 100%; min-height:64px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+ background:var(--pg); color:#06140d; border-color:transparent; font-size:18px; letter-spacing:.16em;
+}
+.unlock-btn.unlock-lead small { font-size:11px; font-weight:500; letter-spacing:.1em; text-transform:none; opacity:.8; }
+.unlock-btn.unlock-lead:active { background:var(--pg); border-color:var(--text); filter:brightness(.92); }
+.unlock-btn.unlock-quiet {
+ min-height:44px; background:transparent; border-color:transparent; color:var(--muted); font-size:13px; font-weight:500;
+}
+.unlock-btn.unlock-quiet:active { background:transparent; border-color:var(--border2); color:var(--text); }
 @keyframes btnPulse{
  0%,100%{box-shadow:0 0 24px hsla(var(--kh), var(--ks), var(--kl), .3), 0 0 0 0 hsla(var(--kh), var(--ks), var(--kl), .2);transform:scale(1);}
  50%{box-shadow:0 0 48px hsla(var(--kh), var(--ks), var(--kl), .6), 0 0 0 8px hsla(var(--kh), var(--ks), var(--kl), 0);transform:scale(1.03);}
@@ -5591,6 +5604,17 @@ body.tour-open .tab-page { padding-bottom: 42vh; }
  cursor:pointer; touch-action:manipulation; min-height:44px;
 }
 .tour-btn.go { border:none; background:var(--pg); color:#06140d; font-weight:700; }
+/* The ending's three ways to keep what was made: full-width rows, a name and one line under it. */
+.tour-acts { display:grid; gap:8px; margin-top:12px; }
+.tour-act {
+ display:flex; flex-direction:column; align-items:flex-start; gap:1px; text-align:left;
+ min-height:48px; padding:8px 14px; border-radius:14px; cursor:pointer; touch-action:manipulation;
+ border:1px solid rgba(255,255,255,.28); background:rgba(255,255,255,.05); color:#f2f3ff;
+ font-family:'Outfit',sans-serif;
+}
+.tour-act b { font-size:.82rem; font-weight:700; }
+.tour-act span { font-size:.7rem; color:rgba(255,255,255,.7); line-height:1.35; }
+.tour-act:active { background:rgba(255,255,255,.14); border-color:var(--pg); }
 /* A short phone (an SE is 667px) cannot fit the chords, the keys and a full
    card under them for the step that lights both, so the card tightens up
    rather than landing on the keys. */
@@ -10438,7 +10462,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.0h</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.1c</span></div>
  </div>
 </div>
 
@@ -11920,7 +11944,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.0h</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.1c</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13136,7 +13160,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.0h';
+const MODRIFF_VERSION = '2.1c';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -24979,7 +25003,7 @@ function buildUnlockChoices(){
  const box=document.getElementById('unlock-choices');
  const note=document.getElementById('unlock-note');
  if(!box) return;
- const btn=(mode,label,aria)=>'<button class="unlock-btn" onclick="unlockAudio(\''+mode+'\')"'
+ const btn=(mode,label,aria,cls)=>'<button class="unlock-btn'+(cls?' '+cls:'')+'" onclick="unlockAudio(\''+mode+'\')"'
    +(aria?' aria-label="'+aria+'"':'')+'>'+label+'</button>';
  const resume = hasLastSession();
  if(_sharedArrival){
@@ -24996,10 +25020,16 @@ function buildUnlockChoices(){
  const firstTime = !resume && !tourChapterDone(1)
    && !(typeof tutDoneSet==='function' && tutDoneSet().length);
  _splashPrimary = resume ? 'resume' : firstTime ? 'learn' : 'blank';
- box.innerHTML = btn('blank','Start','Start blank')
-               + btn('roll','Random','Random key, groove and sound')
+ // A first visit gets one big way in, the walkthrough, with Start and Random as quiet options under it.
+ // Three equal buttons made a blank page (Start) look like the thing to do, and it is the weakest first
+ // minute. The markup keeps Start, Random, Learn in that order and CSS lifts Learn to the top: the tests
+ // and anything else that takes the first button still get Start.
+ const lead = firstTime && !resume;
+ box.classList.toggle('first-visit', lead);
+ box.innerHTML = btn('blank','Start','Start blank', lead ? 'unlock-quiet' : '')
+               + btn('roll','Random','Random key, groove and sound', lead ? 'unlock-quiet' : '')
                + (resume ? btn('resume','Resume','Pick up where you left off')
-                         : firstTime ? btn('learn','Learn','One-minute walkthrough') : '');
+                         : firstTime ? btn('learn','Learn<small>one-minute walkthrough</small>','One-minute walkthrough','unlock-lead') : '');
  if(note) note.textContent = '';
 }
 // The wordmark is the right-hand button, made big.
@@ -41752,9 +41782,35 @@ function playOnboardingDemo(opts){
       '<div class="tour-title">You’re playing</div>' +
       '<div class="tour-text">Chords and a tune over a beat. That’s the core of it. ' +
         'When you want more, <b>Find</b> in the More sheet takes you to any control by name, and <b>Tutorials</b> and the <b>Guide</b>, beside it, have the rest.</div>' +
+      // The first minute used to end on "Keep playing", just when someone has made something. Three ways to
+      // keep it: a take, a link for a friend, a saved setup. Not on a replay: that person has a rig of their
+      // own, and the "Restore my setup" toast on close is what gets it back; an action's toast would replace it.
+      (replay ? '' :
+        '<div class="tour-acts">' +
+          '<button type="button" class="tour-act" id="_ob-rec"><b>Record it</b><span>Capture what you play, then send the audio</span></button>' +
+          '<button type="button" class="tour-act" id="_ob-send"><b>Send it to a friend</b><span>A link that opens this sound and groove</span></button>' +
+          '<button type="button" class="tour-act" id="_ob-save"><b>Save this setup</b><span>Keep this sound and groove</span></button>' +
+        '</div>') +
       '<div class="tour-foot"><button class="tour-btn go" id="_ob-done">Keep playing</button></div>';
     document.getElementById('_ob-exit').onclick = function(){ close(false); };
     document.getElementById('_ob-done').onclick = function(){ close(false); };
+    // Each action runs straight after the card closes, in the same tap: the share sheet only opens from
+    // a tap, and a timeout in between would lose it.
+    var act = function(id, name, fn){
+      var b = document.getElementById(id); if(!b) return;
+      b.onclick = function(){
+        close(false);
+        if(typeof track==='function') track('tour_end_action', {a:name});
+        try{ fn(); }catch(e){ console.warn('tour end action', name, e); }
+      };
+    };
+    act('_ob-rec', 'record', function(){
+      if(typeof _isRecording!=='undefined' && _isRecording) return;
+      toggleRecording();
+      showToast('Recording. Play for a bit, then tap the red button to stop.');
+    });
+    act('_ob-send', 'send', function(){ shareRigNow(); });
+    act('_ob-save', 'save', function(){ setupSaveNew(); });
   }
   function close(early){
     closed = true;
@@ -42383,9 +42439,31 @@ function _songShareData(){
 async function shareProgression(){
  try{
   const payload=await encodeSetup(_songShareData());
-  const url=location.href.split('#')[0]+'#prog='+payload;
-  _shareCopy(url,'Song link copied — '+url.length+' characters');
+  const url=_shareBase()+'#prog='+payload;
+  _shareSend(url,'Song link copied — '+url.length+' characters');
  }catch(e){ console.warn('share error',e); showToast('Could not build a link'); }
+}
+// Where a shared link points. The app is served from capacitor://localhost, so a link built from
+// location.href was "capacitor://localhost/#prog=…": it opened nothing for anyone it was sent to, and
+// the receiving side (the splash's "Someone shared a song with you — Open") only ever worked from the web
+// page. The free page at modriff.com/play decodes the same #prog= and #setup= fragments.
+function _shareNative(){ try{ return location.protocol==='capacitor:'; }catch(e){ return false; } }
+function _shareBase(){
+ return _shareNative() ? 'https://modriff.com/play/' : location.href.split('#')[0];
+}
+// In the app, hand the link to the iPhone's own share sheet (Messages, Mail, AirDrop); everywhere else, or
+// if the sheet will not open, copy it. A cancelled sheet is a decision, not a failure: no copy after it.
+function _shareSend(url,msg){
+ if(_shareNative() && navigator.share){
+  try{
+   navigator.share({url:url}).then(function(){ track('share_sheet',{}); },function(e){
+    if(e && e.name==='AbortError') return;
+    _shareCopy(url,msg);
+   });
+   return;
+  }catch(e){ /* a web view with no share sheet: copy */ }
+ }
+ _shareCopy(url,msg);
 }
 function _shareCopy(url,msg){
  const done=()=>showToast(msg);
@@ -42727,7 +42805,7 @@ async function _shareUrl(scope, st){
  const data=_shareBuild(scope, st);
  const payload=await encodeSetup(data);
  const tag = scope==='song' ? '#prog=' : '#setup=';
- return location.href.split('#')[0]+tag+payload;
+ return _shareBase()+tag+payload;
 }
 
 // Opens the sheet, measuring each scope so the choice is made on real numbers.
@@ -42767,10 +42845,13 @@ async function _shareDo(scope){
    showToast('Too large for a link — use Export instead');
    return;
   }
-  _shareCopy(url, (SHARE_SCOPES[scope]||{}).label+' link copied — '+url.length+' characters');
+  _shareSend(url, (SHARE_SCOPES[scope]||{}).label+' link copied — '+url.length+' characters');
   track('setup_shared',{scope:scope,len:url.length});
  }catch(e){ showToast('Could not build a link'); console.warn(e); }
 }
+// The walkthrough's "Send it to a friend": the whole rig as it is now, straight to the share sheet, with no
+// scope sheet in between (a first-time player has no setlist to leave out, and the choice would be noise).
+function shareRigNow(){ _shareForId=null; return _shareDo('all'); }
 function _setupLiveName(){
  const el=document.getElementById('setup-name');
  return (el&&el.value.trim()) || 'mõdRïff setup';
@@ -78214,6 +78295,15 @@ function proSheet(what, module, hint){
   const m = cur.module && MODULE_COPY[cur.module];
   head(m ? m.name : 'mõdRïff packs');
   body.appendChild(mk('div','pro-what', cur.what ? modPartOf(cur.what, cur.module)+'.' : (m ? m.line : 'Packs for mõdRïff')));
+  // Someone who owns nothing is buying once, so the whole set leads and the single pack sits under it, still
+  // one tap away in the foot. Someone who owns some packs keeps the pack first: what they came for, with
+  // "Complete Your Studio" beneath. It used to be underneath for everyone, below the pack's list and demo.
+  const offer=modBundleOffer();
+  const leadBundle=!!(offer && offer.fresh);
+  if(leadBundle){
+   body.appendChild(bundleBlock(offer));
+   if(m) body.appendChild(mk('div','pro-listhd','Or just this pack'));
+  }
   if(m){
    const ul=bullets(m.bullets); ul.classList.add('pro-list'); body.appendChild(ul);
    if(PACK_DEMO[cur.module] && !modHas(cur.module)){
@@ -78230,8 +78320,7 @@ function proSheet(what, module, hint){
    if(modHas(cur.module)){ const o=mk('div','pro-price'); o.appendChild(ownedMark()); body.appendChild(o); }
    else { const p=price(cur.module); foot.appendChild(btn('Unlock '+m.name+(p ? ' — '+p : ''), 'pro-buy', function(){ buy(cur.module); })); }
   }
-  const offer=modBundleOffer();
-  if(offer){ const b=bundleBlock(offer); b.classList.add('pro-aside'); body.appendChild(b); }
+  if(offer && !leadBundle){ const b=bundleBlock(offer); b.classList.add('pro-aside'); body.appendChild(b); }
   foot.appendChild(restoreBtn());
   foot.appendChild(btn('All packs', 'pro-sec', function(){ cur={ what:'', module:null, view:'store' }; render(); }));
  }

@@ -186,7 +186,7 @@ claim it):
 
 - **Ableton Link on a device.** The licence needs no approval, and the `com.apple.developer.networking.multicast`
   entitlement is granted and in `App.entitlements` (the owner saw an iPhone and a Mac sync). The owner signed a Link
-  license agreement with Ableton on 2026-11-23; get Ableton's countersignature, and ask whether it covers the Mac
+  license agreement with Ableton on 2026-11-23 and Ableton has countersigned; ask whether it covers the Mac
   Catalyst build (`docs/link.md`). Its terms are confidential: nothing from it goes in a note or this repo.
 - **iCloud.** The entitlement and `MODRIFF_CLOUDKIT` are in the project (1.9.9.3), so the note says sync is
   optional and off by default. The schema is deployed to Production (2026-11-21: `Doc` with `modified`, `payload`,
