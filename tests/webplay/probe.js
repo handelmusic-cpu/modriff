@@ -133,13 +133,15 @@ if (appBuild) check(appBuild.indexOf('window.__modFreeWeb=true') < 0, 'the app b
     check(sheet && /Sampler Engine/.test(sheet.text) && /free to download/.test(sheet.text), 'it names the pack and says the app is free to download');
     await page.evaluate(() => document.getElementById('_pro-sheet').remove());
 
-    // ── The Sampler is a lock tile, and the sub-nav entry is gone
+    // ── Live disallows the Sampler widget and the Studio picker keeps it hidden.
     await page.click('button[onclick="unlockAudio(\'blank\')"]').catch(() => {}); await page.waitForTimeout(1500);
+    await page.evaluate(() => studioShow('drums'));
+    await page.locator('#ss-cur').click();
+    await page.locator('#ss-pick').waitFor({ state: 'visible' });
     const pads = await page.evaluate(() => ({
-      tile: !!document.querySelector('.lv-locked[data-mod="pads"]'),
-      navHidden: getComputedStyle(document.getElementById('pf-pads-btn')).display === 'none',
+      pickerHidden: getComputedStyle(document.getElementById('ss-smp')).display === 'none',
       allowed: lvAllowed('pads') }));
-    check(!pads.allowed && pads.navHidden, 'the Sampler widget is not allowed and its sub-nav button is hidden', JSON.stringify(pads));
+    check(!pads.allowed && pads.pickerHidden, 'Live disallows the Sampler widget and Studio hides its picker entry', JSON.stringify(pads));
     check(st.samples.size === 0, 'opening the sheets asked for no samples', [...st.samples].slice(0, 3).join(' '));
     await ctx.close();
   }
