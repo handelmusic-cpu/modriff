@@ -60,7 +60,7 @@ drum machine,synth,theory,midi,sampler,songwriting,backing track,looper,piano,gu
 (93.) The name covers “chord” and “groovebox,” and the subtitle covers “music.”
 Keep keywords distinct from the name, subtitle and category, and omit other products’ names.
 
-**Description** (2174 of 4000). One line per paragraph on purpose: App Store Connect keeps every line
+**Description** (limit 4000). One line per paragraph on purpose: App Store Connect keeps every line
 break you paste, so a description wrapped to 85 columns shows a break mid-sentence. It names no other product
 (no iReal, 808 or Linn: those are trademarks) and no price (prices are per storefront). It does not promise
 playback with the screen locked: background scheduling is still being moved to the engine
@@ -98,7 +98,7 @@ FREE TO START, PACKS WHEN YOU WANT MORE
 mõdRïff is free to use. Major, minor, pentatonic and blues scales, two drum kits, five saved songs, two sections per song and 30-second audio export are included. Add only what you need with one-time packs: Sampler Engine, mõdSynth Engine, Groove, Theory, Practice & Perform, Studio and Sounds. Or get Full Studio for every pack listed here, and every update to them. No subscriptions.
 
 PRIVATE BY DESIGN
-No account. No ads. No tracking. No third-party analytics. Works offline. Your songs, patterns and recordings stay on your device. Apple provides aggregate store statistics and, if you opt in to sharing, app usage and diagnostics.
+No account. No ads. No tracking. No third-party analytics. Make music offline. Your work stays on your device unless you choose to share it or turn on iCloud sync. Recordings are excluded from sync. Apple provides aggregate store statistics and, if you opt in to sharing, app usage and diagnostics.
 
 mõdRïff is made by one person, Ben Handel of Dutdut Records. Questions or ideas: support@modriff.com
 ```
@@ -169,15 +169,24 @@ References: [Apple: no technical implementation required](https://developer.appl
 [usage reports and opt-in](https://developer.apple.com/help/app-store-connect-analytics/engagement/app-usage/),
 [privacy disclosure rules](https://developer.apple.com/app-store/app-privacy-details/).
 
-`privacy.html` covers the camera (chord-sheet photo, read on the device), optional iCloud sync, the app's folder in Files,
-one-time packs and iPad. Pasting a web page address in Library > Chord charts (v2.2) makes one request from the device to that site, only for an address the person pasted; nothing is sent to us. The label stays Data Not Collected, but `privacy.html` (site repo) should say so. The November 12, 2026 update clarifies Apple's aggregate store reports and optional usage/diagnostic
-sharing, removes the overbroad "no third-party code" claim, and keeps the landing page consistent. The site's iPhone Duo tab shows the three states from `screenshots/v6.9.6/`; the open, wide shot was removed (it showed the old Linn kit name), so retake it from Xcode before the site keeps that state. The
-site's "for iPhone, iPad and Mac" is true: the Mac Catalyst build is uploaded to App Store Connect.
+The [public policy](https://modriff.com/privacy.html) covers on-device chord-sheet recognition, optional iCloud sync,
+Files and one-time packs. In Library > Chord charts, Import requests the web address the user entered directly from
+that site. Next page requests the linked page. The developer receives neither the address nor the imported charts.
+The App Privacy answer stays Data Not Collected. The site's iPhone Duo shots in `screenshots/v6.9.6/` are historical.
+
+## App Store Connect status
+
+App Store Connect app ID `6828620379` covers iOS and macOS. Apple confirmed the v2.4 iOS release candidate in
+TestFlight on November 27, 2026 (`1.0 (261127.1534)`, source `f0e385549`). The previous TestFlight builds were
+iOS `1.0 (261125.1142)` and macOS `1.0 (261125.1136)`. Check the outstanding messages for
+[iOS](https://appstoreconnect.apple.com/apps/6828620379/appstore/reviewsubmissions/details/a57b9ead-b8b5-488c-99e3-6ecbe4aec323) and
+[macOS](https://appstoreconnect.apple.com/apps/6828620379/appstore/reviewsubmissions/details/da1e7fd7-fddc-4e38-8986-6a36efb5bc57)
+before resubmitting. TestFlight availability and App Review approval are separate steps.
 
 ## App Review notes
 
 Apple's reply to the first submission asked for six things in the Notes field (limit 4000). The note below
-answers all six in order (3311 characters, counted with `len()` on the text between the rules). Paste it into
+answers all six in order. Paste it into
 App Store Connect > App Review Information > Notes and replace the recording line with the real link first.
 It is the only review note: the sandbox route to the packs is in it, so the IAP section no longer has its own.
 
@@ -214,17 +223,17 @@ mõdRïff is a chord-based music maker for iPhone, iPad and Mac. You pick a key 
 
 3. HOW TO REACH THE MAIN FEATURES
 No account, sample file or setup needed; it works offline. Open the app, tap Start, press the green play button in the bottom bar. Tap the chord pads on the Live tab, or open Drums and tap steps in the grid.
-Paid features: the app is free; seven optional packs and a Full Studio bundle are one-time In-App Purchases. Tapping any locked control opens a sheet naming it with the pack and its price; Settings > About > Store lists every pack. In the sandbox: tap a locked drum kit (Digital 1 and Analog 1 are free), buy the Groove Pack, then tap another locked control: the sheet now offers "Complete Your Studio", an upgrade price for Full Studio shown only after a pack is owned. Restore Purchases is on that sheet, the store screen and Settings > About. Locked things can often be tried first: sampler pads and Sounds Pack voices play a quiet preview twice, and Hear it plays a short Groove Pack demo.
-Permissions, each asked only when used: Microphone, when you record in the Sampler. Camera, when you choose Camera to import a chord sheet from a photo (Songs > File > Import a chord sheet). Bluetooth, only via Settings > MIDI to pair a Bluetooth MIDI keyboard (not needed to review). Local Network, only when Ableton Link is switched on in Settings. iCloud sync (Settings > iCloud & backup) is optional and off by default; it needs an iCloud account and is not needed to review. Background audio is enabled so a song keeps playing when the screen locks.
+Paid features: seven optional packs and Full Studio are one-time purchases. Tap a locked drum kit in Studio > Drums. On a fresh install the sheet shows Full Studio first. Tap Unlock Groove Pack at the bottom to buy only that pack. After buying it, tap another locked control to see Complete Your Studio, the upgrade for existing pack owners. Restore Purchases is at the bottom of the sheet and under More > Settings > Packs & purchases, which also has the Store button. Hear it plays a short demo.
+Permissions are requested when used. Microphone: record a sample in the Sampler. Camera: Song > Build > File > Import a chord sheet > Camera. Bluetooth: pair a MIDI keyboard in Settings > MIDI & keyboard. Local Network: turn on Ableton Link in Settings. Background audio allows supported playback to continue when you lock the screen. Optional iCloud sync is off by default under Settings > iCloud & backup.
 
 4. EXTERNAL SERVICES
-Apple's StoreKit 2 for the purchases, and Apple's on-device text recognition (Vision) to read chord-sheet photos; the picture is not stored or sent. Ableton Link (Ableton's SDK) for tempo sync with other apps on the local network. No server or backend of ours, no analytics, no advertising and no AI service. Nothing leaves the device unless the person turns on iCloud sync (off by default): then songs, setups and patches go to their own private iCloud (CloudKit) database, which we cannot read; recordings never sync. On the Mac, Link listens for peers on the local network (the com.apple.security.network.server entitlement); the app runs no server.
+Apple's StoreKit 2 handles purchases. Apple's Vision reads chord-sheet photos on the device without storing or sending the picture. Ableton Link syncs tempo with other apps on the local network. On Mac, it listens for local peers using the com.apple.security.network.server entitlement. The app has no developer backend, third-party analytics, ads or AI service. With iCloud sync on, songs, setups and patches go to the user's private CloudKit database, which we cannot access. Recordings stay local unless the user shares them. Importing from a web address in Library > Chord charts requests the chosen site directly. Sharing or opening music in the browser sends it where the user chooses.
 
 5. REGIONS
 It behaves the same in every region. Only the prices differ, as the App Store sets them per storefront. English only.
 
 6. THIRD-PARTY MATERIAL
-Each bundled sound, font and code library is logged with its source, author and licence. Almost all sounds are CC0 (public domain). The rest are MIT, CC BY 3.0 (credited), SIL Open Font Licence fonts, and the developer's own work (icon, two sound effects). The synthesis models in the mõdSynth Macro Osc patches are MIT-licensed code from Emilie Gillet (Mutable Instruments). Ableton Link is used under license from Ableton AG. Credits and licence links for all of it are in Settings > Help & about > Credits. The app names no third-party product.
+Sources, authors and licences for the bundled sounds, fonts and libraries are in Settings > Help & about > Credits. They include CC0 sounds, credited CC BY 3.0 sounds, SIL Open Font Licence fonts, MIT-licensed code and sounds, and original work. Emilie Gillet's MIT-licensed synthesis models are used in the mõdSynth Macro Osc patches. Ableton Link is used under licence from Ableton AG.
 Contact: support@modriff.com
 ```
 
@@ -234,11 +243,11 @@ Contact: support@modriff.com
 2. Splash: tap Start.
 3. Press play in the bottom bar; let a groove run a few seconds.
 4. Live tab: tap chord pads; change key once to show everything following.
-5. Drums: open the grid and tap a few steps.
-6. Tap a locked control (a locked drum kit): the pack sheet opens, showing pack and price.
-7. Buy the Groove Pack with the sandbox account: confirm the Apple payment sheet; the kit unlocks and plays.
+5. Studio > Drums: open the grid and tap a few steps.
+6. Tap a locked drum kit. Show Full Studio at the top of the purchase sheet and Unlock Groove Pack at the bottom.
+7. Tap Unlock Groove Pack and confirm the sandbox purchase. Select the kit and let it play.
 8. Tap another locked control: the "Complete Your Studio" offer shows.
-9. Settings > Help & about > Store, then Restore Purchases.
+9. More > Settings > Packs & purchases > Restore Purchases.
 10. Sampler: tap Record; the microphone permission prompt appears; allow it, record a second, play it back.
 
 ## Header and search results
@@ -268,7 +277,7 @@ launch, tap Random, tap play, tap a chord, then `xcrun simctl io <udid> screensh
 Simulator: the shared one gets other sessions' builds installed over it. Driving a new Simulator needs the owner's
 approval in the app once per device.
 
-**IAP review shots** (`screenshots/iap/`, 1320 x 2868, opaque) show all eleven purchase sheets from the 1.9.9.9.2 iPhone Simulator build. `verification.json` records each sheet’s text, ownership and image hash; `source/` holds the disposable Simulator capture automation.
+**IAP review shots** (`screenshots/iap/`, 1320 x 2868, opaque) show all eleven purchase sheets from the v2.4 iPhone Simulator build. Full Studio appears first on the seven single-pack sheets, with each pack's own purchase button in the footer. `verification.json` records each sheet's text, ownership and image hash. `source/` holds the disposable Simulator capture automation.
 
 **Mac upload set** ([screenshots/mac-v2.2/](app-store/screenshots/mac-v2.2/)) contains six opaque sRGB PNGs at
 2560 × 1600, in upload order: Live, Studio drums, mõdSynth, Song builder, Stage and Mix. They were captured
@@ -280,9 +289,9 @@ Mac App Store build: `ios/mac-catalyst/archive-mac-store.sh` archives the Releas
 `App.pkg` to `~/Desktop/modRiff-mac-store/export` (`... upload` sends it to App Store Connect from Xcode's signed-in
 account). Checked 2026-11-06: the app is signed by Apple Distribution (cloud managed, made by Xcode on first export, none
 needed in the keychain), the package by `3rd Party Mac Developer Installer`, with the `Mac Catalyst Team Store Provisioning
-Profile: Handel.modRiff` embedded and the sandbox entitlements present. Not done: the app record's macOS platform in App
-Store Connect (a build cannot be uploaded until it exists), then upload, and the purchase flow on the Mac through
-StoreKit. Audio and bounce saving work on the Mac (owner-tested).
+Profile: Handel.modRiff` embedded and the sandbox entitlements present. The Mac build has reached TestFlight on the
+same app record as iOS. The Mac sandbox purchase and restore flow still need device verification. Audio and bounce
+saving work on the Mac (owner-tested).
 
 The current **iPhone app previews** are the three `store-*.mp4` files in `docs/app-store/previews/layout-overhaul/`: Live and Mix, landscape instruments, then Song and learning. They were retaken from the native Simulator for 1.9.4a–1.9.4c; the instruments film shows the larger two-row Studio selector and Aux, and Mix has Mixer and Voices only. Each is 27.1 seconds at constant 30 fps, H.264 High Level 4.0 and stereo AAC; portrait is 886 × 1920 and landscape 1920 × 886. The README lists coverage and rebuild commands, and `verification.json` records decoding, frame counts, loudness, true peak and hashes. Not uploaded or processed by App Store Connect; not heard on a physical iPhone. iPad and Mac need their own footage. `previews/feature-series/`, `high-impact/` and `2026-11-13/` retain the earlier films and their original editable sources; do not upload those earlier selections for this layout.
 
@@ -375,7 +384,7 @@ does). The pack’s list inside the app and its retaken `iap/Handel.modRiff.prac
   eleven different. Upload each under that product's Review Information. Each is the pack's
   sheet over a rolled song, with the store's launch prices filled in; the three Complete Your
   Studio shots come from owning one, two and three packs (Groove; Groove and Sounds; Groove,
-  Sounds and Studio), and `Full Studio` is the All packs screen. They were captured from the 1.9.9.9.2 iPhone Simulator build. Retake them on a device once a purchase runs, and
+  Sounds and Studio), and `Full Studio` is the All packs screen. They were captured from the v2.4 iPhone Simulator build. Retake them on a device once a purchase runs, and
   again if a pack's copy, price or the sheet changes.
 - A **promotional image** per product, which is optional and is what the store shows if it
   features the item: `docs/app-store/promo/<product id>.png`, 1024 x 1024, opaque, no rounded
