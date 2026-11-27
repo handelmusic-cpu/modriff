@@ -176,9 +176,9 @@ The App Privacy answer stays Data Not Collected. The site's iPhone Duo shots in 
 
 ## App Store Connect status
 
-App Store Connect app ID `6828620379` covers iOS and macOS. Apple confirmed the v2.4 iOS release candidate in
-TestFlight on November 27, 2026 (`1.0 (261127.1534)`, source `f0e385549`). The previous TestFlight builds were
-iOS `1.0 (261125.1142)` and macOS `1.0 (261125.1136)`. Check the outstanding messages for
+App Store Connect app ID `6828620379` covers iOS and macOS. Apple confirmed both v2.4 release candidates in
+TestFlight on November 27, 2026 (iOS `1.0 (261127.1534)`, macOS `1.0 (261127.1536)`, source `f0e385549`).
+Check the outstanding messages for
 [iOS](https://appstoreconnect.apple.com/apps/6828620379/appstore/reviewsubmissions/details/a57b9ead-b8b5-488c-99e3-6ecbe4aec323) and
 [macOS](https://appstoreconnect.apple.com/apps/6828620379/appstore/reviewsubmissions/details/da1e7fd7-fddc-4e38-8986-6a36efb5bc57)
 before resubmitting. TestFlight availability and App Review approval are separate steps.
