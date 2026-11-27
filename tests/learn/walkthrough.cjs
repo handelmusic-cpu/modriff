@@ -65,7 +65,7 @@ const out = process.env.EVIDENCE;
    assert.match(await page.locator('#_pro-sheet .pro-what').innerText(),/Rearranging the layout/);
    await page.evaluate(()=>{document.getElementById('_pro-sheet').remove();libOpenSheet('ireal');});
    assert.equal(await page.locator('.lib-tabs button.on').innerText(),'Chord charts');
-   assert.equal(await page.locator('.lib-import-in').getAttribute('aria-label'),'Chord chart link');
+   assert.equal(await page.locator('.lib-import-in').getAttribute('aria-label'),'Chord chart link or web page address');
    assert(!/iReal/.test(await page.locator('.lib-sheet').innerText()));
    // Real browser touch must pass through the dim layer's holes and satisfy
    // the gates by count; Show me alone cannot establish that the keys work.
