@@ -112,6 +112,7 @@ Since 6.2:
 - [ ] 64. Chord quick card (1.9.9.1) — Song > Build, tap a chord in the timeline (and in Tiles) → a card opens beside it with Length, Rhythm, Type, Voicing; More shows Chord, Words, Bass, Plays, move, delete; any pick applies and shuts it; a tap elsewhere or the cross shuts it; no scrolling to the bottom needed.
 - [ ] 65. Tuplet switches (2.4) — give kick and snare a 5:4 each, switch off opposite hits, play: five even hits shared between them;
   the narrow 7:4 switches are tappable, and a double tap opens the editor without pressing anything in it.
+- [ ] 66. Guitar chord note names (2.4a) — Chord Forms on Guitar, then Uke, then the Song chart → every dot and open circle names its note and reads at arm's length.
 
 ## Done
 
