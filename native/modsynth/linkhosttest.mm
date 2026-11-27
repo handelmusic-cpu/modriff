@@ -18,8 +18,8 @@ static int failed = 0;
 
 // seqhosttest's score: 16 steps, a hit every step on lane 1.
 static std::vector<double> score() {
-  std::vector<double> d = {1, 16, 0, 1, 4, 16, 1, 1, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 0};
-  auto cell = [&](double v) { d.insert(d.end(), {v, 0, 0, 1, 1, 0, 0}); };
+  std::vector<double> d = {2, 16, 0, 1, 4, 16, 1, 0, 1, 1, 0.5, 14, 0.28, 18, 0, 0};
+  auto cell = [&](double v) { d.insert(d.end(), {v, 0, 0, 1, 1, 0, 0, 0}); };
   d.insert(d.end(), {1, 0, 0, 2});
   d.insert(d.end(), {0.8, 0, 1, 0, 0, 16});
   for (int s = 0; s < 16; s++) cell(s == 0 ? 2 : (s % 4 == 0 ? 1 : 0));
