@@ -50,6 +50,17 @@ const OUT = process.env.OUT || '/tmp';
     R.check(!d.fb.includes('R') && !d.pn.includes('R') && !d.pn.includes('B') && !d.pp.includes('R') && !d.pp.includes('B'), 'no R / B marks in the diagrams', JSON.stringify(d));
     R.check(['C', 'E', 'G'].every(n => d.pn.includes(n)) && ['C', 'E', 'G'].every(n => d.pp.includes(n)), 'piano keys name their notes', JSON.stringify(d.pn));
     R.check(d.fb.filter(t => /^\d+$/.test(t)).length <= 1, 'guitar diagram has at most one fret number', JSON.stringify(d.fb));
+    // fretted chords name every note they sound: C shape on guitar and ukulele, in fretted dots and open circles
+    const fr = await page.evaluate(() => {
+      const names = (inst, f) => [..._svgFretboard(inst, f).matchAll(/<text class="fb-(?:dot|open)"[^>]*>([^<]*)<\/text>/g)].map(m => m[1]);
+      const want = (inst, f) => f.map((x, i) => x < 0 ? null : nn(FRET_SHAPES[inst].openPc[i] + x)).filter(Boolean);
+      const out = [];
+      for (const inst of ['guitar', 'ukulele']) for (const q of Object.keys(FRET_SHAPES[inst].shapes)) for (let rootPc = 0; rootPc < 12; rootPc++)
+        _allShapes(inst, q, rootPc).forEach(s => { const g = names(inst, s.frets), w = want(inst, s.frets); out.push(g.join() === w.join()); });
+      return { c: names('guitar', [-1, 3, 2, 0, 1, 0]), n: out.length, ok: out.filter(Boolean).length };
+    });
+    R.check(fr.c.join() === 'C,E,G,C,E', 'open C on guitar names C E G C E', JSON.stringify(fr.c));
+    R.check(fr.n > 0 && fr.ok === fr.n, 'every fretted shape names every sounded note', fr.ok + '/' + fr.n);
     // minor keeps its lowercase m
     const css = await page.evaluate(() => ['.cqual', '.btn-sev .sl-qual', '#chroma-quality-row .tb'].map(s => { const e = document.querySelector(s); return e ? getComputedStyle(e).textTransform : 'absent'; }));
     R.check(css.every(c => c === 'none' || c === 'absent'), 'quality labels are not uppercased', JSON.stringify(css));
