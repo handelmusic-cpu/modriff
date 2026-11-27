@@ -86,6 +86,7 @@ const watchdog = setTimeout(() => { console.log('FAIL the run did not finish in 
   await editor(d);
   await ghostPress(browser, url, errs);
   await writers(d);
+  await leftovers(d);
 
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
   await browser.close(); if (srv) srv.close();
@@ -336,6 +337,11 @@ async function ghostPress(browser, url, errs) {
   await tap('#sq-insp [aria-label="Remove ratchet"]', 450);
   const after = await page.evaluate(() => T.c(1, 1).r);
   ok(after === 1, 'and a tap that starts on the button presses it', after);
+  // An assistive technology's activation is a click with no press of its own, some while after the last touch.
+  await tap(q, 450); await tap(q, 80); await tap(q, 1000);
+  const at = await page.evaluate(() => { const b = [...document.querySelectorAll('#sq-insp button')].find(b => b.textContent === 'Flam'); if (!b) return 'no editor';
+    b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 })); return T.c(1, 1).orn; });
+  ok(at === 1, 'a click that no touch made (assistive technology) still presses a button', at);
   await d.ctx.close();
 }
 
@@ -388,4 +394,28 @@ async function writers(d) {
   });
   ok(m && m.split === '1:90,1:70,1:90,1:70,1:90', 'two halves of a split landing on one voice make the whole tuplet', JSON.stringify(m));
   ok(m && m.loud === '1:80,1:40,0:40,0:40,0:40' && m.plain === '2:80', 'where both sound the louder stays; plain steps collide as before', JSON.stringify(m));
+}
+
+// Patterns saved before this hold switched-off cells that still remember a tuplet (v 0, r 5, rs 4): the old cross, a tap
+// off and a fill all left them. They look like plain steps, and switching one on must give a plain step: it used to bring
+// the whole tuplet back, over whatever was drawn there, with neither of the editor's refusals.
+async function leftovers(d) {
+  console.log('switched-off tuplets from older saves:');
+  const { page, tap, show } = d, old = { v: 0, r: 5, rs: 4 };
+  const state = () => page.evaluate(() => { const c = T.c(0, 0); return { v: c.v, r: c.r, rs: c.rs, tups: [...document.querySelectorAll('#sq-gInner .sq-tup[data-ti="0"]')].map(e => e.dataset.s).join() }; });
+  const plain = s => s.v > 0 && s.r === 1 && s.rs === 1 && s.tups === '2';
+  await show({ 0: { 0: old, 2: { v: 1, r: 3, rs: 2 } } });
+  await tap('#sq-gInner .sq-grow[data-ti="0"] > .sq-step:nth-child(1)');
+  let s = await state(); ok(plain(s), 'a tap switches on a plain step, and the tuplet beside it stays', JSON.stringify(s));
+  await show({ 0: { 0: old, 2: { v: 1, r: 3, rs: 2 } } });
+  await page.evaluate(() => window._sqPlayIn(0, 0, false, 80));
+  s = await state(); ok(plain(s), 'so does playing one in', JSON.stringify(s));
+  const x = await page.evaluate(() => {
+    const host = document.getElementById('sq-xstrip') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'sq-xstrip' }));
+    window._sqRestoreState({ steps: 16, mach: '808', grid: {}, aux: { mach: 'PERC', grid: { 0: T.row({ 0: { v: 0, r: 5, rs: 4 }, 2: { v: 1, r: 3, rs: 2 } }) }, on: true } });
+    window._sqEnsureGrid(); window._sqRenderGrid();
+    host.querySelector('.sq-xrow .sq-xc:not(.sq-xhit)').dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    const c = T.aux(0, 0); return { v: c.v, r: c.r, rs: c.rs, boxes: host.querySelectorAll('.sq-xtup').length };
+  });
+  ok(x.v === 1 && x.r === 1 && x.rs === 1 && x.boxes >= 1, 'and a tap on the Live Aux roll', JSON.stringify(x));
 }

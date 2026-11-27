@@ -10503,7 +10503,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.3b</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.3c</span></div>
  </div>
 </div>
 
@@ -11985,7 +11985,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.3b</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.3c</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13199,7 +13199,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.3b';
+const MODRIFF_VERSION = '2.3c';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -62180,6 +62180,10 @@ function _sqHitAt(row, pos){
   var c=row[head];
   return {s:head, hi:Math.max(0, Math.min(c.r-1, Math.floor((pos-head)*c.r/c.rs+1e-9)))};
 }
+// A switched-off cell can still remember a tuplet (older saves are full of them: the cross, a tap off and Fill left the
+// fields). Switching such a step on gives a plain step; it used to bring the whole tuplet back over whatever was beside
+// it, past the editor's refusals.
+function _sqWake(c){ if(c && !(c.v>0) && c.rs>1){ c.r=1; c.rs=1; delete c.hits; } }
 function _sqCellSounds(c){
   if(!c || !(c.v>0)) return false;
   return !(c.hits && _sqIsTup(c)) || _sqTupHits(c).some(function(h){ return h.v>0; });
@@ -63812,7 +63816,7 @@ function sqRenderXRow(ti){
       var el = sw(L.grid[ti][x.s], x.s);
       if(x.s%bw===0) el.classList.add('b4');
       el.addEventListener('pointerup', function(){
-        var c = L.grid[ti][x.s]; step(el, c);
+        var c = L.grid[ti][x.s]; _sqWake(c); step(el, c);
         if(sqAudition && c.v>0){
           try{ sqInitFX(); sqEnsureNoise(); sqPlayCell(tr, c, sqCtx()?sqCtx().currentTime:0, sqGv(lk,ti), sqGp(lk,ti), ch); }catch(e){}
         }
@@ -63961,6 +63965,7 @@ window._sqPlayIn = function(ti, step, accent, vel){
  // Inside a tuplet the hit goes to the tuplet's nearest one: the step itself would not sound.
  const head=_sqTupAt(sqGrid[ti], sIdx), at=head>=0 ? head : sIdx;
  const cell=sqGrid[ti][at]; if(!cell) return false;
+ if(head<0) _sqWake(cell);
  let hit=cell, semis=0;
  if(head>=0){
   const hi=Math.max(0, Math.min(cell.r-1, Math.round((sIdx-head)*cell.r/cell.rs)));
@@ -64081,7 +64086,6 @@ function sqSyncInsp(){
     return;
   }
   host.classList.add('open');
-  sqGuardInsp(host);
   // On a tuplet the controls are the selected hit's (all but the Tuplet row, which is the whole tuplet's). `st` is what
   // they show; own() is what they change, and gives the tuplet its list of hits at the first change, not before.
   var tup=sqSelHi>=0 && _sqIsTup(cell), hi=sqSelHi;
@@ -64239,14 +64243,19 @@ function sqSyncInsp(){
 // just what hides it (never to centre it: the grid would jump under every tap while a beat is laid down), and not at all when
 // it is already in view, which is every tap after the first one.
 // The tap that opens this editor scrolls it into view while the finger is still lifting, and the click that follows lands
-// on whatever arrived under it: a double tap on a step could press "Remove ratchet". A finger's click counts here only
-// if its press began in the editor too (a keyboard's click has no press and no detail, and passes).
-var _sqInspPress=false, _sqInspGuarded=false;
-function sqGuardInsp(host){
-  if(_sqInspGuarded) return; _sqInspGuarded=true;
-  document.addEventListener('pointerdown',function(e){ _sqInspPress=host.contains(e.target); },true);
-  host.addEventListener('click',function(e){ if(e.detail && !_sqInspPress){ e.preventDefault(); e.stopPropagation(); } },true);
-}
+// on whatever arrived under it: a double tap on a step could press "Remove ratchet". So a click in the editor is dropped
+// when it follows hard on a press that ended outside it. Only then: an assistive technology's activation is a click with
+// no press of its own, and must get through. Listening from the start, since the first tap that opens the editor counts.
+var _sqOutPress=false, _sqOutUpAt=0;
+document.addEventListener('pointerdown',function(e){
+  _sqOutPress=!(e.target && e.target.closest && e.target.closest('#sq-insp'));
+  if(!_sqOutPress) _sqOutUpAt=0;
+},true);
+document.addEventListener('pointerup',function(e){ if(_sqOutPress) _sqOutUpAt=e.timeStamp; },true);
+document.addEventListener('click',function(e){
+  if(!e.detail || !_sqOutUpAt || e.timeStamp-_sqOutUpAt>700) return;
+  if(e.target && e.target.closest && e.target.closest('#sq-insp')){ e.preventDefault(); e.stopPropagation(); }
+},true);
 function sqRevealInsp(){
   try{
     var e=document.getElementById('sq-insp'); if(!e || !e.classList.contains('open')) return;
@@ -64337,6 +64346,7 @@ function sqAttachStep(el,ti,s,track){
   el.addEventListener('pointerup',function(){
     if(moved || Date.now()-window._gridPinchAt<400)return;
     var now=Date.now(), cell=sqGrid[ti][s];
+    _sqWake(cell);
     // Tap: Edit. A tap selects (an empty step is placed first; the selected one clears), so its inspector is a touch away.
     if(_tapEdit){
       if(cell.v===0){ cell.v=1; sqSelTi=ti; sqSelS=s; }
