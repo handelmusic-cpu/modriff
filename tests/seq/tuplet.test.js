@@ -85,6 +85,7 @@ const watchdog = setTimeout(() => { console.log('FAIL the run did not finish in 
   await grid(d);
   await editor(d);
   await ghostPress(browser, url, errs);
+  await writers(d);
 
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
   await browser.close(); if (srv) srv.close();
@@ -336,4 +337,55 @@ async function ghostPress(browser, url, errs) {
   const after = await page.evaluate(() => T.c(1, 1).r);
   ok(after === 1, 'and a tap that starts on the button presses it', after);
   await d.ctx.close();
+}
+
+// ── Task 6: what else writes drum cells ────────────────────────────────────────────────
+async function writers(d) {
+  console.log('other writers:');
+  const { page, show } = d;
+  const dark = '00000';
+  const list = on => on.split('').map(v => ({ v: +v, vel: 90, p: 0, pr: 0, orn: 0, r: 1 }));
+  await show({ 0: { 0: { v: 1, r: 5, rs: 4, hits: list(dark) } } });
+  const a = await page.evaluate(() => { window._sqPlayIn(0, 2, false, 64); const c = T.c(0, 0);
+    const one = { on: c.hits.map(h => h.v).join(''), vel: c.hits[3].vel, under: T.c(0, 2).v, lit: [...T.lane(0).querySelectorAll('.sq-hit')].map(e => e.classList.contains('on') ? 1 : 0).join('') };
+    window._sqPlayIn(0, 0, true); one.head = c.hits === T.c(0, 0).hits ? '' : T.c(0, 0).hits.map(h => h.v).join(''); return one; });
+  ok(a.on === '00010' && a.vel === 64 && a.under === 0 && a.lit === '00010', 'playing in at step 3 of a 5:4 lights the nearest hit (the fourth) at that velocity', JSON.stringify(a));
+  ok(await page.evaluate(() => T.c(0, 0).hits.map(h => h.v).join('')) === '20010', 'and on its own step, the first hit', JSON.stringify(a));
+
+  await show({ 0: { 0: { v: 1, r: 5, rs: 4 }, 1: { v: 1, vel: 55 } }, 1: { 1: { v: 1 } } });
+  const b = await page.evaluate(() => { window._sqClearAt(1); const c = T.c(0, 0);
+    return { on: c.hits ? c.hits.map(h => h.v).join('') : null, head: c.v, under: T.c(0, 1).vel + '/' + T.c(0, 1).v, other: T.c(1, 1).v }; });
+  ok(b.on === '11011' && b.head === 1 && b.under === '55/1' && b.other === 0, 'clearing step 2 switches off the hit that starts in it, and leaves what is stored under', JSON.stringify(b));
+  const b2 = await page.evaluate(() => { window._sqClearAt(0); return { on: T.c(0, 0).hits.map(h => h.v).join(''), head: T.c(0, 0).v }; });
+  ok(b2.on === '00011' && b2.head === 1, 'clearing a tuplet\'s own step silences the two hits that start in it and keeps the tuplet', JSON.stringify(b2));
+
+  await show({ 2: { 12: { v: 1, r: 5, rs: 4 } }, 3: { 6: { v: 1, r: 7, rs: 8, hits: list('1111111') } }, 4: { 0: { v: 1, r: 3, rs: 2 } } });
+  const c = await page.evaluate(() => { window._sqFillRange(12, 16); const g = window._sqCaptureState().grid, over = [], kept = [];
+    for (const ti in g) g[ti].forEach((c, s) => { if (c.v > 0 && c.r > 1 && c.rs > 1) { kept.push(ti + ':' + s); if (s + c.rs > 12) over.push(ti + ':' + s); } if (s >= 12 && c.hits) over.push('list ' + ti + ':' + s); });
+    return { over, kept }; });
+  ok(c.over.length === 0 && c.kept.join() === '4:0', 'a fill removes every tuplet that reaches into its stretch, and no other', JSON.stringify(c));
+
+  const v = await page.evaluate(() => {
+    let changed = 0, tries = 40, first = '';
+    for (let k = 0; k < tries; k++) {
+      const lanes = {}; for (let ti = 0; ti < 12; ti++) lanes[ti] = { 0: { v: 1, r: 5, rs: 4 }, 4: { v: 1, r: 5, rs: 4 }, 8: { v: 1, r: 5, rs: 4 }, 12: { v: 1, r: 5, rs: 4 } };
+      T.load(lanes); window._sqSetStepsRaw(32, true);
+      const g = window._sqCaptureState().grid;
+      const n = document.querySelectorAll('#sq-gInner .sq-grow[data-ti]').length;   // the kit's lanes
+      for (let ti = 0; ti < n; ti++) for (let s = 16; s < 28; s++) { const A = JSON.stringify(window._sqTup.clone(g[ti][s])), B = JSON.stringify(window._sqTup.clone(g[ti][s - 16])); if (A !== B) { changed++; if (!first) first = ti + ':' + s + ' ' + A + ' from ' + B + ' steps ' + window._sqSteps(); } }
+    }
+    return changed ? changed + ' cells, first ' + first : 0;
+  });
+  ok(v === 0, 'varying a lengthened pattern leaves the steps inside a tuplet alone (40 times over)', v);
+
+  const m = await page.evaluate(() => {
+    const A = window._sqTup; if (!A.lay) return null;
+    const row = (on, vel) => ({ role: A.role('808', 'BD'), cells: T.row({ 0: { v: 1, r: 5, rs: 4, hits: on.split('').map(v => ({ v: +v, vel, p: 0, pr: 0, orn: 0, r: 1 })) } }) });
+    const g = A.lay('808', [row('10101', 90), row('01010', 70)], 16), both = A.lay('808', [row('11000', 40), row('10000', 80)], 16);
+    const plain = A.lay('808', [{ role: A.role('808', 'BD'), cells: T.row({ 0: { vel: 40 } }) }, { role: A.role('808', 'BD'), cells: T.row({ 0: { v: 2, vel: 80 } }) }], 16);
+    const lane = x => Object.values(x).map(r => r[0]).find(c => c.v > 0);
+    return { split: lane(g).hits.map(h => h.v + ':' + h.vel).join(), loud: lane(both).hits.map(h => h.v + ':' + h.vel).join(), plain: lane(plain).v + ':' + lane(plain).vel };
+  });
+  ok(m && m.split === '1:90,1:70,1:90,1:70,1:90', 'two halves of a split landing on one voice make the whole tuplet', JSON.stringify(m));
+  ok(m && m.loud === '1:80,1:40,0:40,0:40,0:40' && m.plain === '2:80', 'where both sound the louder stays; plain steps collide as before', JSON.stringify(m));
 }
