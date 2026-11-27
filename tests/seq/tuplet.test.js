@@ -63,6 +63,9 @@ function installHarness() {
   };
 }
 
+// A page that stops answering would otherwise hang the run for good.
+const watchdog = setTimeout(() => { console.log('FAIL the run did not finish in four minutes'); process.exit(3); }, 240000);
+
 (async () => {
   const srv = process.env.URL ? null : await serve();
   const url = process.env.URL || 'http://127.0.0.1:' + srv.address().port + '/index.html';
@@ -80,6 +83,8 @@ function installHarness() {
 
   const d = await drumPage(browser, url, errs);
   await grid(d);
+  await editor(d);
+  await ghostPress(browser, url, errs);
 
   ok(errs.length === 0, 'the page threw nothing', errs.join(' | '));
   await browser.close(); if (srv) srv.close();
@@ -148,10 +153,11 @@ async function drumPage(browser, url, errs) {
   await page.evaluate(installHarness);
   const cdp = await ctx.newCDPSession(page);
   // A finger on the middle of one element. `wait` after it: past the double-tap window unless the next tap is the pair's.
-  const tap = async (sel, wait) => {
-    const b = await page.evaluate(sel => { const e = document.querySelector(sel); if (!e) return null;
-      e.scrollIntoView({ block: 'center', inline: 'center' }); const r = e.getBoundingClientRect();
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2, hit: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === e }; }, sel);
+  // `still`: tap where it is, without scrolling it to the middle first.
+  const tap = async (sel, wait, still) => {
+    const b = await page.evaluate(([sel, still]) => { const e = document.querySelector(sel); if (!e) return null;
+      if (!still) e.scrollIntoView({ block: 'center', inline: 'center' }); const r = e.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, hit: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === e }; }, [sel, !!still]);
     if (!b) return { missing: sel };
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x, y: b.y }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -219,7 +225,10 @@ async function grid(d) {
   ok(c1 === '0' && c2 === '2', 'a tuplet under another draws nothing until the first is removed', c1 + ' then ' + c2);
 
   await show({ 0: five, 1: { 4: { v: 1, r: 7, rs: 4 } } });
-  await page.evaluate(() => { document.dispatchEvent(new CustomEvent('sq-start-request')); }); await page.waitForTimeout(900);
+  // An automatic start is refused while the page's audio is still waking, so ask until it plays.
+  for (let k = 0; k < 8 && !(await page.evaluate(() => window._sqPlaying())); k++) { await page.evaluate(() => { document.dispatchEvent(new CustomEvent('sq-start-request')); }); await page.waitForTimeout(700); }
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => window._sqPlaying()), 'the drum sequencer starts', '');
   const sample = () => page.evaluate(() => [0, 1, 2].map(ti => { const row = T.lane(ti); const l = row.querySelectorAll('.sq-step.head');
     return { n: l.length, boxes: row.querySelectorAll('.sq-tup.head').length, hit: l.length && l[0].dataset.hi != null ? +l[0].dataset.hi : -1 }; }));
   const seen = new Set(); let worst = null;
@@ -245,4 +254,86 @@ async function grid(d) {
     return { n, seq: seq.join() };
   });
   ok(x.n === 5 && x.seq === '2,0,1', 'the Live Aux roll shows the same switches; a tap steps one hit on, accent, off', JSON.stringify(x));
+}
+
+// ── Task 5: the editor under the grid ────────────────────────────────────────────────
+async function editor(d) {
+  console.log('editor:');
+  const { page, tap, show } = d;
+  const insp = () => page.evaluate(() => { const h = document.getElementById('sq-insp'), btn = [...h.querySelectorAll('button')].map(b => b.textContent);
+    const vel = h.querySelector('.pr-insp-vel');
+    return { open: h.classList.contains('open'), head: (h.querySelector('.pr-insp-what') || {}).textContent || '', dash: btn.filter(x => x === '—').length,
+      remove: btn.filter(x => /^Remove /.test(x)).join(), vel: vel ? +vel.value : null }; });
+  // press a button by its label, inside the group whose caption is `group` (or anywhere in the editor)
+  const press = (label, group) => page.evaluate(([label, group]) => { const h = document.getElementById('sq-insp');
+    const scope = group ? [...h.querySelectorAll('.pr-insp-grp')].find(g => g.querySelector('.pr-insp-lbl').textContent === group) : h;
+    const b = scope && [...scope.querySelectorAll('button')].find(b => b.textContent === label); if (!b) return false; b.click(); return true; }, [label, group]);
+  const cell = (s) => page.evaluate(s => { const c = T.c(0, s); return JSON.parse(JSON.stringify({ v: c.v, r: c.r, rs: c.rs, vel: c.vel, p: c.p || 0, pr: c.pr || 0, orn: c.orn || 0, hits: c.hits || null })); }, s);
+  const sel = () => page.evaluate(() => T.sel());
+  const dbl = async (q) => { await tap(q, 80); await tap(q); };
+
+  await show({ 0: { 0: { v: 1, r: 5, rs: 4 } } });
+  await dbl(hit(0, 0, 1));
+  let i = await insp(), c = await cell(0);
+  const off = () => page.evaluate(() => [...document.querySelectorAll('#sq-insp button')].filter(b => { const r = b.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth + .5; }).map(b => b.textContent).join());
+  ok(await off() === '', 'every button of the editor is on a 390 pt screen, Remove tuplet too', await off());
+  ok(i.open && /· step 1 · hit 2 of 5$/.test(i.head) && i.vel === 75 && c.hits === null, 'opening a hit names it, shows what it plays with, and writes nothing', JSON.stringify([i, c]));
+  ok(i.dash === 0 && i.remove === 'Remove tuplet', 'no dash buttons; only the tuplet is there to remove', JSON.stringify(i));
+  await press('Flam', 'Orn'); i = await insp(); c = await cell(0);
+  ok(c.hits && c.hits[1].orn === 1 && c.hits[0].orn === 0 && /Remove ornament/.test(i.remove), 'Flam goes on that hit alone, and can be removed', JSON.stringify([c.hits, i.remove]));
+  await press('Remove ornament'); i = await insp(); c = await cell(0);
+  ok(c.hits[1].orn === 0 && !/ornament/.test(i.remove), 'Remove ornament', JSON.stringify([c.hits[1], i.remove]));
+  await press('+', 'Ratchet'); await press('+', 'Ratchet'); c = await cell(0); i = await insp();
+  ok(c.hits[1].r === 3 && c.r === 5 && c.rs === 4 && /Remove ratchet/.test(i.remove), 'a ratchet inside one hit leaves the tuplet alone', JSON.stringify(c));
+  await press('Remove ratchet'); c = await cell(0); i = await insp();
+  ok(c.hits[1].r === 1 && !/ratchet/.test(i.remove), 'Remove ratchet', JSON.stringify([c.hits[1], i.remove]));
+  await page.evaluate(() => { const s = document.querySelector('#sq-insp .pr-insp-vel'); s.value = '33'; s.dispatchEvent(new Event('input', { bubbles: true })); });
+  await press('+', 'Pitch'); await press('−', 'Prob'); await press('Accent'); c = await cell(0);
+  ok(JSON.stringify(c.hits[1]) === JSON.stringify({ v: 2, vel: 33, p: 1, pr: 90, orn: 0, r: 1 }) && c.hits[2].vel === 75 && c.pr === 0, 'velocity, pitch, probability and accent are the hit\'s own', JSON.stringify(c.hits));
+  await press('✕'); c = await cell(0); i = await insp();
+  ok(c.hits[1].v === 0 && i.open && await sel() === '0,0,1', 'the cross switches the hit off and keeps it selected', JSON.stringify([c.hits[1], i.open, await sel()]));
+  await press('7:4', 'Tuplet'); c = await cell(0);
+  ok(c.r === 7 && c.rs === 4 && c.hits.length === 7 && await page.evaluate(() => document.querySelectorAll('#sq-gInner .sq-hit').length) === 7, 'another type redraws with that many switches', JSON.stringify(c));
+  await dbl(hit(0, 0, 0)); await press('✕'); await press('Remove tuplet'); c = await cell(0); i = await insp();
+  ok(c.v === 0 && c.r === 1 && c.rs === 1 && c.hits === null && !i.open, 'Remove tuplet with hit 1 off leaves an empty step', JSON.stringify([c, i.open]));
+
+  await show({});
+  await tap(`#sq-gInner .sq-grow[data-ti="0"] > .sq-step:nth-child(1)`);
+  i = await insp();
+  ok(i.open && i.remove === '' && i.dash === 0, 'a plain step has nothing to remove and no dash', JSON.stringify(i));
+  await press('+', 'Ratchet'); await press('Ruff', 'Orn'); i = await insp();
+  ok(i.remove === 'Remove ratchet,Remove ornament', 'then a ratchet and an ornament to remove', i.remove);
+  await press('Remove ratchet'); await press('Remove ornament'); c = await cell(0);
+  ok(c.r === 1 && c.orn === 0, 'both removed', JSON.stringify(c));
+  await press('5:4', 'Tuplet'); i = await insp();
+  ok(await sel() === '0,0,0' && /hit 1 of 5$/.test(i.head), 'a step made a tuplet selects its first hit', JSON.stringify([await sel(), i.head]));
+  await press('Remove tuplet'); c = await cell(0);
+  ok(c.v === 1 && c.r === 1 && c.rs === 1 && c.hits === null && await sel() === 'a step', 'removing it gives the step back', JSON.stringify([c, await sel()]));
+
+  await show({ 0: { 12: { v: 1 } } });
+  const last = `#sq-gInner .sq-grow[data-ti="0"] > .sq-step:nth-child(13)`;
+  await dbl(last);
+  await press('5:8', 'Tuplet'); c = await cell(12);
+  const toast = await page.evaluate(() => document.body.textContent.includes('5:8 would run past the end of the pattern'));
+  ok(c.r === 1 && c.rs === 1 && toast, 'a tuplet that would run past the end is refused, and says so', JSON.stringify([c, toast]));
+}
+
+// Opening the editor scrolls the page under a finger that is still lifting: that press must not push a button there. (It
+// did: a double tap on a lane in the middle of the screen could land on "Remove ratchet".) A page of its own each time,
+// so the hint under the grid is still there as on a first visit.
+async function ghostPress(browser, url, errs) {
+  console.log('a press that opens the editor:');
+  const q = '#sq-gInner .sq-grow[data-ti="1"] > .sq-step:nth-child(2)';
+  const d = await drumPage(browser, url, errs), { page, tap, show } = d;
+  await show({ 1: { 1: { r: 3 } } });
+  await page.evaluate(() => { T.lane(1).scrollIntoView({ block: 'center' }); document.getElementById('sq-gScroll').scrollLeft = 0; });
+  await page.waitForTimeout(400);
+  await tap(q, 80, true); await tap(q, 600, true);
+  const got = await page.evaluate(() => ({ r: T.c(1, 1).r, v: T.c(1, 1).v, open: document.getElementById('sq-insp').classList.contains('open') }));
+  ok(got.r === 3 && got.v === 1 && got.open, 'a double tap on a ratcheted step opens the editor and presses nothing in it', JSON.stringify(got));
+  // ...while a finger put down on a button of the editor still presses it.
+  await tap('#sq-insp [aria-label="Remove ratchet"]', 450);
+  const after = await page.evaluate(() => T.c(1, 1).r);
+  ok(after === 1, 'and a tap that starts on the button presses it', after);
+  await d.ctx.close();
 }

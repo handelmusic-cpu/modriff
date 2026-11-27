@@ -2909,6 +2909,8 @@ body.light-mode .subnav-btn.active { color:#1d1f33; background:rgba(0,0,0,.06); 
 body.seq-taught .pr-hint { display:none !important; }
 .sq-insp-hint { display:block; margin-top:6px; }
 .sq-insp.open ~ .sq-insp-hint { display:none; }
+/* A dozen tuplet types and the Remove button are wider than a phone: they wrap, or the far ones are off the screen. */
+.sq-insp .sq-insp-tup { flex:1 1 100%; flex-wrap:wrap; }
 /* The kit's step editor, sideways on a phone. The inspector sat under a grid that is already taller than the screen
    (the tab bar and the transport take 112 pt of 390), so placing a step opened an editor nobody could see, and the only
    way to find it was to scroll for it. Here it is pinned to the foot of the page: it stays on screen however the grid is
@@ -2921,7 +2923,7 @@ body.seq-taught .pr-hint { display:none !important; }
   .sq-insp.open { position:sticky; bottom:calc(-96px - env(safe-area-inset-bottom,0px)); z-index:6; gap:4px 10px; padding:5px 8px 6px; background:var(--bg);
     border-top:1px solid var(--border2); box-shadow:0 -6px 14px rgba(0,0,0,.45); }
   .sq-insp .pr-insp-del { order:5; }
-  .sq-insp .sq-insp-tup { order:9; flex:1 1 100%; flex-wrap:wrap; }
+  .sq-insp .sq-insp-tup { order:9; }
   .sq-insp .pr-insp-vel { flex:1 1 70px; min-width:60px; max-width:120px; }
 }
 /* The tab row, folded away while a phone on its side scrolls down (6.9.9.9.9.1a). Sideways the tabs (and, on Chords, the
@@ -10447,7 +10449,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.1c</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.1d</span></div>
  </div>
 </div>
 
@@ -11929,7 +11931,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.1c</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.1d</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13141,7 +13143,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.1c';
+const MODRIFF_VERSION = '2.1d';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -63624,15 +63626,28 @@ function sqSyncInsp(){
     return;
   }
   host.classList.add('open');
-  var el=sqSelEl();
+  sqGuardInsp(host);
+  // On a tuplet the controls are the selected hit's (all but the Tuplet row, which is the whole tuplet's). `st` is what
+  // they show; own() is what they change, and gives the tuplet its list of hits at the first change, not before.
+  var tup=sqSelHi>=0 && _sqIsTup(cell), hi=sqSelHi;
+  var st=tup ? _sqTupHits(cell)[hi] : cell;
+  var own=function(){
+    if(!tup) return cell;
+    if(!cell.hits || cell.hits.length!==cell.r || !cell.hits[hi]) _sqTupMake(cell);
+    return (st=cell.hits[hi]);
+  };
+  var paint=function(){ var box=sqStepEls[sqSelTi] && sqStepEls[sqSelTi][sqSelS]; if(box) sqRefreshStepEl(box,cell,track.c); };
   var redraw=function(){
-    if(el) sqRefreshStepEl(el,cell,track.c);
+    paint();
     sqMarkSel();
     sqSyncInsp();
   };
+  var audition=function(){
+    try{ sqInitFX(); sqHitTrack(track, sqCtx()?sqCtx().currentTime:0, sqGv(sqLK(sqMach,sqFocus),sqSelTi)*((st.vel||100)/100), st.v===2, sqGp(sqLK(sqMach,sqFocus),sqSelTi)+(st.p||0)); }catch(e){}
+  };
 
   var what=document.createElement('span'); what.className='pr-insp-what';
-  what.innerHTML='<b>'+(track.n||track.s||'Step')+'</b> · step '+(sqSelS+1);
+  what.innerHTML='<b>'+(track.n||track.s||'Step')+'</b> · step '+(sqSelS+1)+(tup ? ' · hit '+(hi+1)+' of '+cell.r : '');
   host.appendChild(what);
 
   // Velocity first: it is the one people reach for most, and the one that
@@ -63640,19 +63655,19 @@ function sqSyncInsp(){
   var vg=_prGroup('Vel');
   var sl=document.createElement('input');
   sl.type='range'; sl.min='1'; sl.max='100'; sl.className='pr-insp-vel';
-  sl.value=String(cell.vel||100);
+  sl.value=String(st.vel||100);
   sl.setAttribute('aria-label','Velocity');
-  var vv=document.createElement('span'); vv.className='pr-insp-val'; vv.textContent=String(cell.vel||100);
+  var vv=document.createElement('span'); vv.className='pr-insp-val'; vv.textContent=String(st.vel||100);
   sl.addEventListener('input',function(){
-    cell.vel=parseInt(sl.value,10);
-    vv.textContent=String(cell.vel);
+    var o=own(); o.vel=parseInt(sl.value,10);
+    vv.textContent=String(o.vel);
     // Only the velocity bar changes. sqRefreshStepEl also tears down and
     // rebuilds the step's ratchet dots and ornament badge, which on a
     // ratcheted step was a DOM rebuild per pixel of the drag; selection does
     // not move during a drag either, so sqMarkSel had nothing to do.
-    var vb=el && el.querySelector('.vb');
-    if(vb) vb.style.height=Math.round(cell.vel/100*55)+'%';
-    else if(el) sqRefreshStepEl(el,cell,track.c);
+    var el=sqSelEl(), vb=el && el.querySelector('.vb');
+    if(vb) vb.style.height=Math.round(o.vel/100*55)+'%';
+    else paint();
   });
   vg.appendChild(sl); vg.appendChild(vv);
   host.appendChild(vg);
@@ -63660,21 +63675,25 @@ function sqSyncInsp(){
   // Setting a plain ratchet drops any tuplet span the step had: the two are the
   // same fields, and a "3 across 2 steps" nudged to 4 hits should not quietly
   // become 4 across 2.
+  // A worded button takes a thing off a step, and is there only when there is something to take off. (These rows used
+  // to offer "—", which said neither "none" nor "remove".)
+  var removeBtn=function(group, label, fn){ var rb=_prBtn(label,null,label,fn); group.appendChild(rb); };
+  var ratchet=function(n){ var o=own(); o.r=n; if(!tup){ o.rs=1; delete o.hits; } redraw(); };
   var rg=_prGroup('Ratchet');
-  rg.appendChild(_prBtn('−',null,'Fewer hits on this step',function(){ cell.r=Math.max(1,(cell.r||1)-1); cell.rs=1; redraw(); }));
-  var rv=document.createElement('span'); rv.className='pr-insp-val'; rv.textContent=String(cell.r||1);
+  rg.appendChild(_prBtn('−',null,'Fewer hits on this step',function(){ ratchet(Math.max(1,(st.r||1)-1)); }));
+  var rv=document.createElement('span'); rv.className='pr-insp-val'; rv.textContent=String(st.r||1);
   rg.appendChild(rv);
-  rg.appendChild(_prBtn('+',null,'More hits on this step',function(){ cell.r=Math.min(4,(cell.r||1)+1); cell.rs=1; redraw(); }));
+  rg.appendChild(_prBtn('+',null,'More hits on this step',function(){ ratchet(Math.min(4,(st.r||1)+1)); }));
+  if((st.r||1)>1) removeBtn(rg,'Remove ratchet',function(){ ratchet(1); });
   host.appendChild(rg);
 
   // Tuplets: this many even hits across this many steps, starting here. The
   // grid is straight sixteenths, so a triplet is something that has to cross
-  // steps; leave the steps it covers empty (or let them play over it). Aux has
-  // the same, which is how a triplet figure goes over a straight kit.
+  // steps, and it takes them over. Aux has the same, which is how a triplet
+  // figure goes over a straight kit.
   var tg=_prGroup('Tuplet'); tg.classList.add('sq-insp-tup');
   // hits : steps. Each is `r` even hits spread across `rs` steps starting here.
-  var TUP=[[1,1,'—','No tuplet'],
-   [3,2,'3:2','Triplet — three even hits across two steps (an eighth-note triplet)'],
+  var TUP=[[3,2,'3:2','Triplet — three even hits across two steps (an eighth-note triplet)'],
    [3,4,'3:4','Triplet — three across four steps (a quarter-note triplet)'],
    [3,8,'3:8','Triplet — three across eight steps (a half-note triplet: three in two beats)'],
    [5,4,'5:4','Quintuplet — five across four steps (one beat)'],
@@ -63687,67 +63706,72 @@ function sqSyncInsp(){
    [4,5,'4:5','Four across five steps: a little behind the beat, landing on the next'],
    [5,6,'5:6','Five across six steps']];
   TUP.forEach(function(o){
-    var on=(o[0]===1) ? (!(cell.rs>1)) : ((cell.r||1)===o[0] && (cell.rs||1)===o[1]);
+    var on=(cell.r||1)===o[0] && (cell.rs||1)===o[1];
     tg.appendChild(_prBtn(o[2],on,o[3],function(){
-      // With cover on, a tuplet may not run into another one: the covered steps
-      // would be silent, and the second tuplet with them. Say where, and stop.
-      if(o[1]>1){
-        var hit=_sqTupClash(sqGrid[sqSelTi]||[], sqSelS, o[1]);
-        if(hit>=0){ if(typeof showToast==='function') showToast(o[2]+' would run into the tuplet at step '+(hit+1)+' — shorten or clear that one first'); return; }
-      }
-      cell.r=o[0]; cell.rs=o[1]; redraw();
+      // It needs the steps to exist, and may not run into another tuplet: that one would be silenced. Say, and stop.
+      if(sqSelS+o[1]>sqSteps){ if(typeof showToast==='function') showToast(o[2]+' would run past the end of the pattern'); return; }
+      var hit=_sqTupClash(sqGrid[sqSelTi]||[], sqSelS, o[1]);
+      if(hit>=0){ if(typeof showToast==='function') showToast(o[2]+' would run into the tuplet at step '+(hit+1)+' — shorten or clear that one first'); return; }
+      _sqTupSet(cell,o[0],o[1]);
+      if(sqSelHi<0) sqSelHi=0;
+      redraw();
     }));
   });
+  if(_sqIsTup(cell)) removeBtn(tg,'Remove tuplet',function(){ _sqTupRemove(cell); sqSelHi=-1; redraw(); });
   host.appendChild(tg);
 
   // Pitch, in semitones, for this hit only — on top of the lane's pitch.
   // Each nudge auditions the hit so you hear where it landed.
   var pg=_prGroup('Pitch');
   var pv=document.createElement('span'); pv.className='pr-insp-val';
-  var pShow=function(){ var n=cell.p||0; pv.textContent=(n>0?'+':'')+n; };
+  var pShow=function(){ var n=st.p||0; pv.textContent=(n>0?'+':'')+n; };
   var pSet=function(d){
-    cell.p=Math.max(-24,Math.min(24,(cell.p||0)+d)); pShow();
-    if(el) sqRefreshStepEl(el,cell,track.c);
-    try{ sqInitFX(); sqHitTrack(track, sqCtx()?sqCtx().currentTime:0, sqGv(sqLK(sqMach,sqFocus),sqSelTi)*((cell.vel||100)/100), cell.v===2, sqGp(sqLK(sqMach,sqFocus),sqSelTi)+(cell.p||0)); }catch(e){}
+    var o=own(); o.p=Math.max(-24,Math.min(24,(o.p||0)+d)); pShow();
+    paint();
+    audition();
   };
   pShow();
   pg.appendChild(_prBtn('−',null,'Down a semitone',function(){ pSet(-1); }));
   pg.appendChild(pv);
   pg.appendChild(_prBtn('+',null,'Up a semitone',function(){ pSet(1); }));
   pv.title='Tap to reset'; pv.style.cursor='pointer';
-  pv.addEventListener('click',function(){ if(cell.p){ pSet(-cell.p); } });
+  pv.addEventListener('click',function(){ if(st.p){ pSet(-st.p); } });
   host.appendChild(pg);
 
   // How often this hit sounds, from every time down to one in ten. Rolled each
   // time the step comes round; stored only when it is not 100.
   var cg=_prGroup('Prob');
   var cv=document.createElement('span'); cv.className='pr-insp-val'; cv.style.cursor='pointer'; cv.title='Tap for every time';
-  var cShow=function(){ cv.textContent=(cell.pr||100)+'%'; };
-  var cBy=function(d){
-    var n=Math.max(10,Math.min(100,(cell.pr||100)+d));
-    if(n>=100) delete cell.pr; else cell.pr=n;
-    cShow(); if(el) sqRefreshStepEl(el,cell,track.c);
+  var cShow=function(){ cv.textContent=(st.pr||100)+'%'; };
+  // A step stores it only below 100; a hit of a list keeps the field, 0 meaning every time.
+  var cSet=function(n){
+    var o=own(); if(n<100) o.pr=n; else if(tup) o.pr=0; else delete o.pr;
+    cShow(); paint();
   };
+  var cBy=function(d){ cSet(Math.max(10,Math.min(100,(st.pr||100)+d))); };
   cShow();
   cg.appendChild(_prBtn('−',null,'Plays less often',function(){ cBy(-10); }));
   cg.appendChild(cv);
   cg.appendChild(_prBtn('+',null,'Plays more often',function(){ cBy(10); }));
-  cv.addEventListener('click',function(){ delete cell.pr; cShow(); if(el) sqRefreshStepEl(el,cell,track.c); });
+  cv.addEventListener('click',function(){ if(st.pr) cSet(100); });
   host.appendChild(cg);
 
   var og=_prGroup('Orn');
-  [[0,'—','No ornament'],[1,'Flam','Flam'],[2,'Ruff','Ruff']].forEach(function(o){
-    og.appendChild(_prBtn(o[1],(cell.orn||0)===o[0],o[2],function(){ cell.orn=o[0]; redraw(); }));
+  [[1,'Flam'],[2,'Ruff']].forEach(function(o){
+    og.appendChild(_prBtn(o[1],(st.orn||0)===o[0],o[1],function(){ own().orn=o[0]; redraw(); }));
   });
+  if(st.orn>0) removeBtn(og,'Remove ornament',function(){ own().orn=0; redraw(); });
   host.appendChild(og);
 
-  host.appendChild(_prBtn('Accent',cell.v===2,'Accent this step',function(){
-    cell.v=(cell.v===2)?1:2; redraw();
+  host.appendChild(_prBtn('Accent',st.v===2,'Accent this step',function(){
+    var o=own(); o.v=(o.v===2)?1:2; redraw();
   }));
 
-  var del=_prBtn('✕',null,'Remove this step',function(){
+  // On a hit the cross switches that hit off and stays on it; on a step it takes the step away.
+  var del=_prBtn('✕',null,tup?'Switch this hit off':'Remove this step',function(){
+    if(tup){ own().v=0; redraw(); return; }
     cell.v=0;
-    if(el) sqRefreshStepEl(el,cell,track.c);
+    paint();
     sqSelTi=-1; sqSelS=-1; sqMarkSel(); sqSyncInsp();
   });
   del.classList.add('pr-insp-del');
@@ -63759,6 +63783,15 @@ function sqSyncInsp(){
 // the transport on a phone, so a step could be placed, edited in the dark, and the editor "not appear". Scrolls the page by
 // just what hides it (never to centre it: the grid would jump under every tap while a beat is laid down), and not at all when
 // it is already in view, which is every tap after the first one.
+// The tap that opens this editor scrolls it into view while the finger is still lifting, and the click that follows lands
+// on whatever arrived under it: a double tap on a step could press "Remove ratchet". A finger's click counts here only
+// if its press began in the editor too (a keyboard's click has no press and no detail, and passes).
+var _sqInspPress=false, _sqInspGuarded=false;
+function sqGuardInsp(host){
+  if(_sqInspGuarded) return; _sqInspGuarded=true;
+  document.addEventListener('pointerdown',function(e){ _sqInspPress=host.contains(e.target); },true);
+  host.addEventListener('click',function(e){ if(e.detail && !_sqInspPress){ e.preventDefault(); e.stopPropagation(); } },true);
+}
 function sqRevealInsp(){
   try{
     var e=document.getElementById('sq-insp'); if(!e || !e.classList.contains('open')) return;
