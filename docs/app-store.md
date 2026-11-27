@@ -260,7 +260,7 @@ listing subtitle, “Make Music Without Limits.”
 
 The upload set is `docs/app-store/screenshots/v7.1-captioned/` (the `iphone-6.9in-` and `ipad-13in-` files: 1320 x 2868 and
 2064 x 2752, opaque; five shots each, in this order: Live, Studio, mõdSynth, Song, Stage, each with a caption over a framed screenshot).
-The Studio shot was refreshed from 1.9.4c on both devices: the larger two-row selector includes Aux and the duplicate Kit/Aux row is gone. The other raw shots were retaken for the layout overhaul from build 1.9.2 in the iOS Simulator (iPhone 18 Pro Max, iPad Pro 13-inch (M5)), status bar
+The Studio shot was refreshed from v2.4 on both devices and shows the current Drums module picker and pattern. The other raw shots were retaken for the layout overhaul from build 1.9.2 in the iOS Simulator (iPhone 18 Pro Max, iPad Pro 13-inch (M5)), status bar
 9:41, every pack open, the app playing a random song. The tabs read Live, Studio, Song, Mix, and the shots show what the overhaul
 made: Live's two rows of four split pads and tall keys, Studio's strip and pick row with a drum groove, the mõdSynth editor with the
 wavetable view, the Song builder and the chord chart. `raw/` holds the plain captures; `build.sh` regenerates the captioned files
