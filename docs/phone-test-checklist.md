@@ -110,6 +110,8 @@ Since 6.2:
 - [ ] 62. Background audio with Vary or a drop voicing (6.9.9.9.9.9.9.9.7) — piano chords, a song, Vary on, every part on, lock the phone → keeps playing. Copy diagnostics `nativeTransport.history` lists every refusal with its reason.
 - [ ] 63. Background audio, held chords (6.9.9.9.9.9.9.9.8) — a song with sustained or gated chords, every part on, Play, lock the phone → keeps playing (this was the refusal in the 9.7 diagnostics: held-chord release read the real audio clock).
 - [ ] 64. Chord quick card (1.9.9.1) — Song > Build, tap a chord in the timeline (and in Tiles) → a card opens beside it with Length, Rhythm, Type, Voicing; More shows Chord, Words, Bass, Plays, move, delete; any pick applies and shuts it; a tap elsewhere or the cross shuts it; no scrolling to the bottom needed.
+- [ ] 65. Tuplet switches (2.3b) — give kick and snare a 5:4 each, switch off opposite hits, play: five even hits shared between them;
+  the narrow 7:4 switches are tappable, and a double tap opens the editor without pressing anything in it.
 
 ## Done
 
