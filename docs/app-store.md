@@ -270,12 +270,12 @@ approval in the app once per device.
 
 **IAP review shots** (`screenshots/iap/`, 1320 x 2868, opaque) show all eleven purchase sheets from the 1.9.9.9.2 iPhone Simulator build. `verification.json` records each sheet’s text, ownership and image hash; `source/` holds the disposable Simulator capture automation.
 
-There is no Mac set in this folder: the old `mac-16x10-*` files in `v6.9.2/` are the web build in Chrome. Mac App Store
-needs 16:10 shots (2880 x 1800 at 2x, a 1440 x 900 window). `ios/mac-catalyst/run-mac.sh` builds and opens the Mac app, but it
-signs with the team, replaces `~/Applications/modRiff-dev.app` and needs someone to drive the window and capture it
-(`screencapture -l`); it was not run from this session. There is now a Mac app (Mac Catalyst, same bundle id, so
-universal purchase): it builds, signs ad hoc and launches on this Mac with all eight plugins registered and a 922 x 692
-window. Retake the Mac set from that window before uploading, and check the Studio panel at the 768 x 600 minimum.
+**Mac upload set** ([screenshots/mac-v2.2/](app-store/screenshots/mac-v2.2/)) contains six opaque sRGB PNGs at
+2560 × 1600, in upload order: Live, Studio drums, mõdSynth, Song builder, Stage and Mix. They were captured
+from the running v2.2 Mac Catalyst app (source commit `35ae4ec57`) at 2×, with Full Studio enabled for the
+demo and an original chord chart, “After Hours.” The `mac-16x10-*` files in `v6.9.2/` are historical web captures.
+For Mac release verification, check Studio at the 768 × 600 minimum window size.
+
 Mac App Store build: `ios/mac-catalyst/archive-mac-store.sh` archives the Release Mac Catalyst build and exports a signed
 `App.pkg` to `~/Desktop/modRiff-mac-store/export` (`... upload` sends it to App Store Connect from Xcode's signed-in
 account). Checked 2026-11-06: the app is signed by Apple Distribution (cloud managed, made by Xcode on first export, none
