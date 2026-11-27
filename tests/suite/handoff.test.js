@@ -130,7 +130,9 @@ const CAPTURE = async () => {
     await p.goto(URL); await p.evaluate(() => localStorage.clear()); await p.goto(URL); await p.waitForTimeout(1500);
     await p.click('.unlock-btn >> text=Random'); await p.waitForTimeout(2000);
     await p.evaluate(() => {
-      setModTier('pro'); switchTab('perform');
+      // Straight time: a Random groove can come with swing, which puts off-beat sixteenths
+      // late on purpose, and this checks the grid, not the feel.
+      setModTier('pro'); switchTab('perform'); setSwingAll(0);
       window._deliverFiles = async function (list) { (list || []).forEach((f) => { if (/\.mid$/.test(f.name)) f.blob.arrayBuffer().then((b) => { window.__savedTake = Array.from(new Uint8Array(b)); }); }); };
       const mt = majorToast; window.__toasts = [];
       majorToast = function (msg, opts) { window.__toasts.push({ msg, opts }); return mt(msg, opts); };
