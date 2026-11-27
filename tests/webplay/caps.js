@@ -8,7 +8,7 @@
      (cd dist-web && python3 -m http.server 8778 --bind 127.0.0.1 &)
      (cd dist && python3 -m http.server 8779 --bind 127.0.0.1 &)
      node tests/webplay/caps.js
-   Env: WEB (default http://127.0.0.1:8778/play/), APP (default http://127.0.0.1:8779/), CHROMIUM, PLAYWRIGHT. */
+   Env: WEB (default http://127.0.0.1:8778/play/), APP (default http://127.0.0.1:8779/index.html), CHROMIUM, PLAYWRIGHT. */
 'use strict';
 let chromium;
 try { ({ chromium } = require('playwright')); }
@@ -17,7 +17,7 @@ catch (e) {
   catch (e2) { ({ chromium } = require(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright')); }
 }
 const WEB = process.env.WEB || 'http://127.0.0.1:8778/play/';
-const APP = process.env.APP || 'http://127.0.0.1:8779/';
+const APP = process.env.APP || 'http://127.0.0.1:8779/index.html';
 let fails = 0;
 const check = (ok, what, got) => { console.log((ok ? 'PASS ' : 'FAIL ') + what + (got !== undefined && got !== '' ? '  (' + got + ')' : '')); if (!ok) fails++; };
 
@@ -107,15 +107,14 @@ const wavSeconds = (buf) => {
     await page.evaluate(() => toggleRecording());
     await page.waitForTimeout(800);
     const on = await page.evaluate(() => _isRecording);
-    // 4 s cap, then the recorder's own tail (REC_TAIL_MS) so reverb rings out, then the write.
-    // An uncapped take would still be recording at 20 s and be 20 s long.
-    await page.waitForTimeout(5500);
-    const mid = await page.evaluate(() => ({ rec: _isRecording, fin: _recFinishing }));
-    await page.waitForFunction(() => !_isRecording && !_recFinishing, null, { timeout: 20000 }).catch(() => {});
+    // The tail finishes on silence and can already be done by the time a fixed delay expires.
+    await page.waitForFunction(() => _recFinishing || !_isRecording, null, { timeout: 6500 });
+    const stoppedAt = (Date.now() - t0) / 1000;
+    await page.waitForFunction(() => !_isRecording && !_recFinishing, null, { timeout: 20000 });
     await page.waitForTimeout(2500);
     const tail = await page.evaluate(() => REC_TAIL_MS / 1000);
     check(on === true, 'web: Bounce starts');
-    check(mid.fin === true, 'web: at 6 s the take has stopped itself and is finishing', JSON.stringify(mid));
+    check(stoppedAt >= 3.2 && stoppedAt <= 6.5, 'web: the take stops itself near the 4 s cap', stoppedAt.toFixed(2) + 's');
     check(st.wavs.length >= 1, 'web: a .wav was saved', st.wavs.map(w => w.name + ' ' + w.sec.toFixed(2) + 's').join(' | '));
     const took = (Date.now() - t0) / 1000;
     if (st.wavs[0]) check(st.wavs[0].sec > 3.2 && st.wavs[0].sec <= 4 + tail + 1, 'web: the file is the cap plus the recorder\'s tail (4 s + up to ' + tail + ' s), not the ' + took.toFixed(0) + ' s that passed', st.wavs[0].sec.toFixed(2) + 's');
@@ -164,10 +163,12 @@ const wavSeconds = (buf) => {
     // And free again: the same 2 s cap now ends the take.
     await page.waitForFunction(() => !_isRecording && !_recFinishing, null, { timeout: 20000 }).catch(() => {});
     await page.evaluate(() => { setModOwned([]); toggleRecording(); });
-    await page.waitForTimeout(4500);
-    const fin = await page.evaluate(() => _recFinishing);
-    check(fin === true, 'app, free: the same take stops itself at the cap');
-    await page.waitForFunction(() => !_isRecording && !_recFinishing, null, { timeout: 20000 }).catch(() => {});
+    const freeStartedAt = Date.now();
+    await page.waitForFunction(() => _isRecording, null, { timeout: 1500 });
+    await page.waitForFunction(() => _recFinishing || !_isRecording, null, { timeout: 4500 });
+    const freeStoppedAt = (Date.now() - freeStartedAt) / 1000;
+    check(freeStoppedAt >= 1.6 && freeStoppedAt <= 4.5, 'app, free: the same take stops itself at the 2 s cap', freeStoppedAt.toFixed(2) + 's');
+    await page.waitForFunction(() => !_isRecording && !_recFinishing, null, { timeout: 20000 });
     check(st.errs.length === 0, 'app: nothing thrown', st.errs.join(' | '));
     await ctx.close();
   }

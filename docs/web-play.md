@@ -34,7 +34,7 @@ packages and which is untouched):
 - `samples/` is not shipped (3 MB instead of 19). The free tier already plays
   synthesized voices and the Digital 1 and Analog 1 kits are synthesized. The one free thing that
   was recorded was the Sampler's pad banks, so on the web the Sampler widget is a
-  lock tile (`lvAllowed`), its sub-nav button is hidden, and `_psFactoryBuild` /
+  lock tile (`lvAllowed`), its Studio picker entry is hidden, and `_psFactoryBuild` /
   `_psFetch` never run.
 - Neither the source nor either build includes Vercel analytics tags. The app uses
   only Apple's built-in App Store Connect reports; the web page has no analytics.
@@ -48,7 +48,7 @@ packages and which is untouched):
   Restore.
 - The Studio Pack's two caps apply here as in a free app (`FREE_NUMBERS.sections` and `bounceSeconds`;
   the page holds no pack, so `modHas('studio')` is false): **Bounce stops itself after 30 seconds**
-  (the file is those 30 plus the recorder's usual 8-second tail) and **a song holds 2 sections**. Only
+  (the file also captures the tail until it goes quiet, up to 8 seconds) and **a song holds 2 sections**. Only
   *adding* is stopped; a setup, shared link, demo or chart that arrives with more still loads whole.
   Both say so in a toast with "See pack", which on the web opens the page that points at the app.
 
@@ -58,11 +58,10 @@ likelier to block an unknown subdomain than a path on a domain they already allo
 
 ## Open items
 
-- `WEB_STORE.appleId` (in `index.html`, next to `modProducts`) is empty until the
-  app has an Apple ID (App Store Connect > App Information). Until then the sheet
-  links to `https://modriff.com`. Once set, iPhone, iPad and Mac go straight to
-  `apps.apple.com/app/id<ID>`; one app record serves all three. Chromebooks and
-  Windows always get the landing page.
+- The Apple ID is `6828620379`. Once the public store listing is reachable, set
+  `WEB_STORE.appleId` in `index.html` and republish `/play/`. The sheet currently
+  links to `https://modriff.com`. Setting the ID sends iPhone, iPad and Mac to
+  `apps.apple.com/app/id6828620379`. Chromebooks and Windows still get the landing page.
 - Not heard on a school Chromebook yet: the engine is tuned on iPhone-class chips.
 - An Android app is a separate project (the C++ engine sits behind Apple's audio
   stack). Chromebooks run this page, installable from the address bar.
