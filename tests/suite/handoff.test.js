@@ -1,4 +1,4 @@
-/* The mõd suite handoff (v2.0g, v2.0h): "Open in mõdScore" sends the chart's chords to mõdScore in
+/* The mõd suite handoff (v2.0g, v2.0h, v2.3): "Open in mõdScore" sends the chart's chords to mõdScore in
    the link fragment (modriff.com/score/#mod=1&kind=midi&data=…, format in
    modriff-site/suite/mod-suite.js), and the chart's .mid carries a key signature so notation
    spells the chords in the song's key.
@@ -11,7 +11,8 @@
             the FF 59 key signature event; it opens in a new tab.
    cap      free sends the same capped chart the free .mid has; the Studio Pack the whole song.
    bounce   a real Bounce (ring, play, ring): the finished toast offers Open in mõdScore, and
-            tapping it opens modriff.com/score/ with exactly the take's .mid.
+            tapping it opens modriff.com/score/ with the take moved to start on a bar line, every
+            drum hit on a sixteenth; the .mid that is saved is still the take as recorded.
    incoming modriff.com/play/#mod=1&kind=midi&from=score…: the splash offers Open, and Open
             puts the notes in the melody roll on the right steps, Follow off, at the sender's
             tempo (onBpmInput used to be called with no value there, which reset it to 130).
@@ -129,8 +130,10 @@ const CAPTURE = async () => {
     await p.goto(URL); await p.evaluate(() => localStorage.clear()); await p.goto(URL); await p.waitForTimeout(1500);
     await p.click('.unlock-btn >> text=Random'); await p.waitForTimeout(2000);
     await p.evaluate(() => {
-      setModTier('pro'); switchTab('perform');
-      window._deliverFiles = async function () {};
+      // Straight time: a Random groove can come with swing, which puts off-beat sixteenths
+      // late on purpose, and this checks the grid, not the feel.
+      setModTier('pro'); switchTab('perform'); setSwingAll(0);
+      window._deliverFiles = async function (list) { (list || []).forEach((f) => { if (/\.mid$/.test(f.name)) f.blob.arrayBuffer().then((b) => { window.__savedTake = Array.from(new Uint8Array(b)); }); }); };
       const mt = majorToast; window.__toasts = [];
       majorToast = function (msg, opts) { window.__toasts.push({ msg, opts }); return mt(msg, opts); };
     });
@@ -139,6 +142,8 @@ const CAPTURE = async () => {
     await p.evaluate(() => ftPlayStop()); await p.click('#ft-rec-ring');
     // "Recording…" is a major toast too: wait for the one that says the take is written.
     await p.waitForFunction(() => window.__toasts.some((t) => /^(Mix|Saved to)/.test(t.msg)), null, { timeout: 30000 }).catch(() => {});
+    // The toast comes just before the files are handed over; wait for the saved .mid too.
+    await p.waitForFunction(() => !!window.__savedTake, null, { timeout: 10000 }).catch(() => {});
     const r = await p.evaluate(async () => {
       const t = window.__toasts.filter((x) => /^(Mix|Saved to)/.test(x.msg)).pop();
       if (!t || !t.opts || !t.opts.onAction) return { label: t && t.opts && t.opts.actionLabel, msg: t && t.msg };
@@ -148,14 +153,36 @@ const CAPTURE = async () => {
       const u = new window.URL(opened.href), q = new URLSearchParams(u.hash.slice(1));
       const b = atob(q.get('data').replace(/-/g, '+').replace(/_/g, '/'));
       const sent = Array.from(b, (c) => c.charCodeAt(0));
-      const take = _buildMidiRecording();
+      const shift = _recBarShiftMs();
+      const aligned = _buildMidiRecording({ shiftMs: shift }), saved = _buildMidiRecording();
+      // Every drum hit's tick in what was sent (a sixteenth is 120 ticks at 480 a quarter).
+      const ticks = []; let pos = 14;
+      while (pos < sent.length - 8) {
+        if (String.fromCharCode(...sent.slice(pos, pos + 4)) !== 'MTrk') break;
+        const len = (sent[pos + 4] << 24) | (sent[pos + 5] << 16) | (sent[pos + 6] << 8) | sent[pos + 7];
+        let p = pos + 8, end = p + len, tick = 0, run = 0;
+        while (p < end) {
+          let d = 0, b; do { b = sent[p++]; d = (d << 7) | (b & 127); } while (b & 128); tick += d;
+          let st = sent[p]; if (st & 128) { p++; if (st < 0xf0) run = st; } else st = run;
+          if (st === 0xff) { p++; let l = 0; do { b = sent[p++]; l = (l << 7) | (b & 127); } while (b & 128); p += l; continue; }
+          const hi = st & 0xf0; if (hi === 0xc0 || hi === 0xd0) { p += 1; continue; }
+          const v1 = sent[p++], v2 = sent[p++]; if (hi === 0x90 && v2 > 0 && (st & 15) === 9) ticks.push(tick);
+        }
+        pos = end;
+      }
+      const off = ticks.map((t) => Math.min(t % 120, 120 - (t % 120)));
       return { label: t.opts.actionLabel, msg: t.msg, base: u.origin + u.pathname, target: opened.target, kind: q.get('kind'),
-               sentLen: sent.length, same: !!take && JSON.stringify(sent) === JSON.stringify(Array.from(take.bytes)),
+               sentLen: sent.length, shift: Math.round(shift),
+               same: !!aligned && JSON.stringify(sent) === JSON.stringify(Array.from(aligned.bytes)),
+               savedUnshifted: !!saved && JSON.stringify(Array.from(saved.bytes)) === JSON.stringify(Array.from(window.__savedTake || [])),
+               drumHits: ticks.length, worstOff: off.length ? Math.max(...off) : null,
                tracks: sent.length > 12 ? (sent[10] << 8 | sent[11]) : 0 };
     });
     check(r.label === 'Open in mõdScore', 'bounce: the finished toast offers Open in mõdScore', r.msg);
     check(r.base === 'https://modriff.com/score/' && r.target === '_blank' && r.kind === 'midi', 'bounce: it opens modriff.com/score/ in a new tab with MIDI', `${r.base} ${r.target} ${r.kind}`);
-    check(r.same && r.tracks >= 2, "bounce: it sends exactly the take's .mid", `${r.sentLen} bytes, ${r.tracks} tracks`);
+    check(r.same && r.tracks >= 2, 'bounce: it sends the take, moved to start on a bar line', `${r.sentLen} bytes, ${r.tracks} tracks, shifted ${r.shift} ms`);
+    check(r.drumHits > 0 && r.worstOff <= 10, 'bounce: every drum hit lands on a sixteenth in what is sent', `${r.drumHits} hits, worst ${r.worstOff} ticks off`);
+    check(r.savedUnshifted, 'bounce: the .mid that is saved is the take as recorded, not shifted');
     check(errs.length === 0, 'bounce: no page errors', errs.join('; '));
     await ctx.close();
   }

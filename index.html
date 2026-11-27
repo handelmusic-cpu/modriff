@@ -10503,7 +10503,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.3c</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.4</span></div>
  </div>
 </div>
 
@@ -11985,7 +11985,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.3c</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.4</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13199,7 +13199,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.3c';
+const MODRIFF_VERSION = '2.4';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -57642,8 +57642,11 @@ function _finishRecording(midiFile){
     // A take that wrote MIDI can go straight to mõdScore as sheet music, one staff a part
     // (the drums stay behind: mõdScore brings in pitched parts only).
     if(midiFile && midiFile.bytes){
+      // Notation wants bars: the copy for mõdScore starts on the bar line before the first note.
+      var _scoreBytes=midiFile.bytes;
+      try{ var _sh=_recBarShiftMs(); if(_sh){ var _al=_buildMidiRecording({shiftMs:_sh}); if(_al && _al.bytes) _scoreBytes=_al.bytes; } }catch(e){}
       _toastOpts=Object.assign({ms:9000}, _toastOpts||{}, {actionLabel:'Open in mõdScore', onAction:function(){
-        try{ _openMidiInScore((document.getElementById('chart-title')?.value||'').trim()||'mõdRïff take', midiFile.bytes); }
+        try{ _openMidiInScore((document.getElementById('chart-title')?.value||'').trim()||'mõdRïff take', _scoreBytes); }
         catch(e){ console.error('mõdScore handoff error',e); showToast('Could not open mõdScore'); }
       }});
     }
@@ -57929,8 +57932,35 @@ function _stopMidiRecording(){
   // everything and hands it over once. See _deliverFiles.
   return _midiRecNotes.length ? _buildMidiRecording() : null;
 }
-function _buildMidiRecording(){
+// Where the first bar line of a take falls, in ms from the moment recording started, so a take
+// sent to notation starts on beat 1 instead of wherever Record was pressed. Every engine plays
+// on the master clock, whose beat 1 is CLOCK_EPOCH, and the take's times run from
+// _midiRecCtxEpoch on the same audio clock. Returns the bar line at or before the first note
+// (negative: a bar that began before recording did), or 0 when the grid can't be trusted (the
+// clock never ran, or the tempo changed since it started).
+function _recBarShiftMs(){
   try{
+    if(!(CLOCK_EPOCH>0) || !_midiRecNotes.length) return 0;
+    var bpm=parseFloat(document.getElementById('bpm')?.value)||120;
+    if(Math.abs(bpm-CLOCK_EPOCH_BPM)>0.01) return 0;
+    var steps=16; try{ if(typeof _songBarSteps==='function') steps=_songBarSteps()||16; }catch(e){}
+    var barMs=(steps/4)*60000/bpm;
+    var phase=((CLOCK_EPOCH-_midiRecCtxEpoch)*1000)%barMs; if(phase<0) phase+=barMs;
+    var first=Math.min.apply(null, _midiRecNotes.map(function(n){ return n.tOn; }));
+    if(!isFinite(first)) return 0;
+    return phase+Math.floor((first-phase)/barMs)*barMs;
+  }catch(e){ return 0; }
+}
+// opts.shiftMs moves the take that much earlier (later when negative) before it is written:
+// the copy sent to mõdScore starts on a bar line (_recBarShiftMs). The .mid that is saved is
+// written without it, as it always was.
+function _buildMidiRecording(opts){
+  try{
+    var _shift=(opts && opts.shiftMs) || 0;
+    var _src=_shift ? _midiRecNotes.map(function(n){ return Object.assign({}, n, {tOn:n.tOn-_shift, tOff:n.tOff-_shift}); })
+                             .filter(function(n){ return n.tOff>0; })
+                             .map(function(n){ return n.tOn<0 ? Object.assign({}, n, {tOn:0}) : n; })
+                    : _midiRecNotes;
     var bpm=parseFloat(document.getElementById('bpm')?.value)||120;
     var tpq=480;
     var msPerTick=(60000/bpm)/tpq;
@@ -57941,12 +57971,12 @@ function _buildMidiRecording(){
     var LANES=MIDI_LANES.concat(MIDI_REC_ONLY); // one lane→channel map for the file and for MIDI out
     // Free keeps the first FREE_NUMBERS.midiExportBars bars of the take: notes
     // that start inside it, the last of them cut to the line.
-    var recNotes=_midiRecNotes, midiCut=false;
+    var recNotes=_src, midiCut=false;
     if(typeof modAllows==='function' && !modAllows('fullMidiExport')){
       var barSteps=16; try{ if(typeof _songBarSteps==='function') barSteps=_songBarSteps()||16; }catch(e){}
       var capMs=FREE_NUMBERS.midiExportBars*(barSteps/4)*(60000/bpm);
       recNotes=[];
-      _midiRecNotes.forEach(function(n){
+      _src.forEach(function(n){
         if(n.tOn>=capMs){ midiCut=true; return; }
         if(n.tOff>capMs){ midiCut=true; n=Object.assign({},n,{tOff:capMs}); }
         recNotes.push(n);
