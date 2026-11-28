@@ -1,6 +1,7 @@
 /* PhraseGen, the melody and bass generators' composer (1.x), measured rather than read.
 
    Lifted out of index.html (between its ==PhraseGen== markers) and run in Node, many lines per style, counting:
+     - written rhythms: each style draws from 8 to 16 hand-written cells, picked to suit the tempo and the kick;
      - variety: how many of 300 presses give a different line, and a different rhythm (Pop Hook was one fixed
        rhythm on every press);
      - key: every note is in the key's scale or the chord (Jazz, Funk and Motown may approach by a half step);
@@ -66,6 +67,18 @@ for (const [part, base] of [['mel', MEL], ['bass', BASS]]) {
   }
 }
 
+// ── the written rhythms ──
+// Each style with a rhythm vocabulary has 8 to 16 cells, and in 4/4 its lines open with one of them (a quarter of
+// presses move one onset a sixteenth, and the tail of a phrase is developed, so the opening cell is what is held).
+for (const [part, base] of [['mel', MEL], ['bass', BASS]]) for (const style of PG.styles(part)) {
+  const cells = PG.rhythms(part, style); if (!cells) continue;
+  const L = Math.max(...cells.map(c => c[c.length - 1])) > 7 ? 16 : 8;
+  const set = new Set(cells.map(c => c.join(',')));
+  const ls = run(part, base, style, {}, 300, 17);
+  const hit = ls.filter(l => set.has(notes(l).filter(n => n.at < L).map(n => n.at).join(','))).length / ls.length;
+  ok(cells.length >= 8 && cells.length <= 16 && hit >= .6, part + ' ' + style + ': ' + cells.length + ' written rhythms, and the lines open with one', (hit * 100).toFixed(0) + '%');
+}
+
 // ── tempo ──
 for (const [part, base, style] of [['mel', MEL, 'hook'], ['mel', MEL, 'funk'], ['bass', BASS, 'funk'], ['bass', BASS, 'motown'], ['mel', MEL, 'jazz']]) {
   const stat = bpm => { const ls = run(part, base, style, { bpm }, 300, 11); const ns = ls.flatMap(notes); return { per: ns.length / ls.length, six: ns.filter(n => n.at % 2).length / ns.length }; };
@@ -78,7 +91,8 @@ for (const [part, base, style] of [['mel', MEL, 'hook'], ['mel', MEL, 'funk'], [
 const kick = Array(16).fill(0); [0, 3, 6, 10, 11].forEach(i => kick[i] = 1);
 const snare = Array(16).fill(0); [4, 12].forEach(i => snare[i] = 1);
 const groove = { steps: 16, kick, snare, hat: Array(16).fill(1) };
-for (const style of ['funk', 'rock', 'hook', 'motown', 'riff']) {
+// Motown is left out on purpose: its bass is a melodic line that plays through the kick, not on it.
+for (const style of ['funk', 'rock', 'hook', 'riff']) {
   const on = (ls) => { const ns = ls.flatMap(notes); return { k: ns.filter(n => kick[n.at]).length / ns.length, s: ns.filter(n => snare[n.at]).length / ns.length }; };
   const free = on(run('bass', BASS, style, {}, 300, 5)), locked = on(run('bass', BASS, style, { groove }, 300, 5));
   ok(locked.k > free.k + .08, 'bass ' + style + ': locks onto the kick', (free.k * 100).toFixed(0) + '% -> ' + (locked.k * 100).toFixed(0) + '% of notes on a kick');
