@@ -10503,7 +10503,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    <button class="unlock-btn" onclick="unlockAudio('roll')">Random</button>
   </div>
   <div class="unlock-note" id="unlock-note"></div>
-  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.4a</span></div>
+  <div class="unlock-by">by Ben Handel <span class="unlock-ver" id="unlock-ver" hidden>v2.5</span></div>
  </div>
 </div>
 
@@ -11985,7 +11985,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
    </div>
    <div class="ss-body" id="ss-about-body">
     <button type="button" class="tut-item tut-entry" onclick="openTutorials()" title="Short tutorials, one topic each">Tutorials<span class="tut-mark">›</span></button>
-    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.4a</span> <span class="ft-ver" id="ft-build" hidden></span></div>
+    <div class="row about-row">mõdRïff <span class="ft-ver" id="ft-ver" title="mõdRïff internal version">v2.5</span> <span class="ft-ver" id="ft-build" hidden></span></div>
     <div class="row about-row">Built by Ben Handel</div>
     <div class="row about-row">Credits <button class="tb" type="button" id="credits-btn" aria-expanded="false" aria-controls="credits-list" onclick="creditsToggle()">Show</button>
      <span class="ss-note">sounds and fonts, who made them and under what licence</span></div>
@@ -13199,7 +13199,7 @@ html[data-way=mono] body .pp-btn.pp-key { --pc:var(--part-ink); }
 
 // The internal release label is also used by the build stamp and service
 // worker update notices. The native App Store version comes from the bundle.
-const MODRIFF_VERSION = '2.4a';
+const MODRIFF_VERSION = '2.5';
 {
  const splashVersion = document.getElementById('unlock-ver');
  if(window.__modMarketingVersion){
@@ -66910,6 +66910,43 @@ window._nativeTransport = {
  }
 };
 
+// A line generated while the engine plays the part. The page holds a new line
+// back for the top of the loop (_blPendingGrid / _mlPendingGrid) and swaps it
+// in from its own scheduler, but with the engine playing that scheduler is
+// asleep: the line waited, unheard and off the roll, until Stop. So it goes to
+// the engine as its waiting line (it lands at the engine's own wrap), and the
+// roll takes it when the mirrored step comes back round.
+window._nsHandPending = function(part){
+ var nt = window._nativeTransport; if(!nt || nt.state !== 'native') return false;
+ var P = (typeof modNativePlugin === 'function') ? modNativePlugin() : null, bass = part === 'bass';
+ if(!P || !(bass ? P.seqBassPending : P.seqMelPending)) return false;
+ var d = bass ? window._blNativePending(48000, 0) : window._mlNativePending(48000, 0);
+ if(!d || d[0] !== 1) return false;
+ var st = {armed: false, prev: null};
+ window._nsHandPending.st[part] = st;
+ var arg = {pending: _mgB64(Float64Array.from(d))};
+ (bass ? P.seqBassPending(arg) : P.seqMelPending(arg)).then(function(r){
+  // Counted from the reply: a wrap before the engine held the line is not its landing.
+  // The baseline is the step last mirrored, so a wrap right after the reply still counts.
+  if(window._nsHandPending.st[part] === st && !(r && r.ok === false)){ st.armed = true; st.prev = window._nsHandPendingWatch.last[part]; }
+ }, function(){ if(window._nsHandPending.st[part] === st) window._nsHandPending.st[part] = null; });
+ return true;
+};
+window._nsHandPending.st = {};
+// Each mirror: the engine's step went backwards, so it wrapped and took the line.
+window._nsHandPendingWatch = function(part, step){
+ window._nsHandPendingWatch.last[part] = step;
+ var st = window._nsHandPending.st[part]; if(!st || !st.armed) return;
+ if(st.prev != null && step < st.prev){
+  window._nsHandPending.st[part] = null;
+  var land = part === 'bass' ? window._blLand : window._mlLand;
+  if(typeof land === 'function') land();
+  return;
+ }
+ st.prev = step;
+};
+window._nsHandPendingWatch.last = {};
+
 // Expose a state snapshot for the top-level autosave (sqGrid etc. are local
 // to this IIFE, not global, so the save/restore code outside it can't touch
 // them directly)
@@ -67545,7 +67582,7 @@ window._blProbeSwap=function(next){
  var old={freq:_blPrevFreq,slide:_blPrevSlide,gain:_blPrevGain,end:_blPrevEnd,voice:_blPrevVoice};next=next||{};
  _blPrevFreq=next.freq||0;_blPrevSlide=!!next.slide;_blPrevGain=next.gain||null;_blPrevEnd=next.end||0;_blPrevVoice=next.voice||null;return old;
 };
-window._blNativeDisplay=function(m,frame,sr){var c=getCtx();if(c && m){blNextT=c.currentTime+(m.nextFrame-frame)/sr;blSeqStep=m.nextStep;}};
+window._blNativeDisplay=function(m,frame,sr){var c=getCtx();if(c && m){blNextT=c.currentTime+(m.nextFrame-frame)/sr;blSeqStep=m.nextStep;if(window._nsHandPendingWatch)window._nsHandPendingWatch('bass',m.nextStep);}};
 window._blNativeRebase=function(at){blNextT=at;blSeqStep=0;};
 
 function _blStopMsx(at){
@@ -69367,6 +69404,8 @@ var _blPendingAt = null, _blPregenning = false;
   blGrid = live;                 // keep playing, and showing, what is sounding
   blRenderGrid();
   _blQueueWatch();
+  // The engine's own song answer takes a written-ahead line itself (_songAnswer).
+  if(!_blPregenning && typeof window._nsHandPending === 'function') window._nsHandPending('bass');
   return out;
  };
  // Arrange needs the line the generator actually wrote, right now, for a chord
@@ -70350,7 +70389,7 @@ function mlStop(){
   if(!rhythmOn && !_arpSounding() && !sqStillOn && !blStillOn) clearTimeout(clockTimer);
 }
 
-window._mlNativeDisplay=function(m,frame,sr){var c=getCtx();if(c && m){mlNextT=c.currentTime+(m.nextFrame-frame)/sr;mlSeqStep=m.nextStep;}};
+window._mlNativeDisplay=function(m,frame,sr){var c=getCtx();if(c && m){mlNextT=c.currentTime+(m.nextFrame-frame)/sr;mlSeqStep=m.nextStep;if(window._nsHandPendingWatch)window._nsHandPendingWatch('mel',m.nextStep);}};
 window._mlNativeRebase=function(at){mlNextT=at;mlSeqStep=0;};
 window.mlPlay = window._mlPlayImpl = mlPlay;
 
@@ -70735,6 +70774,7 @@ var _mlPendingAt = null, _mlPregenning = false;
   mlGrid = live;
   mlRenderGrid();
   _mlQueueWatch();
+  if(!_mlPregenning && typeof window._nsHandPending === 'function') window._nsHandPending('mel');
   return out;
  };
  window._mlGenerateRaw = function(){ return raw.apply(window, arguments); };
