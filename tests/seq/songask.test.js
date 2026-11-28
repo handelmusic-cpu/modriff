@@ -180,8 +180,11 @@ const CASES = [
         sections = [{slots: [{rootM:48, ivs:[0,4,7], bars:1}, {rootM:55, ivs:[0,4,7,10], bars:1, bassNote:59, isRest:rest}]}];
         window._blRestoreState({steps:16, grid, follow:bassFollow, genStyle:'funk', gridRootPc:0, gridIntvs:[0,4,7]});
         window._mlRestoreState({steps:16, grid, follow, genStyle:'chord', gridRootPc:0, gridIntvs:[0,4,7]});
-        window._mlSetClock(1, 0, true);
-        window._mlNativePendingTake(sr, 0);
+        // The bass is playing on both paths, as it is in a run: the engine's answer writes its line regardless (_blPregenFor), and the
+        // page's loop only while it plays (_blPregen). Stopped here, only one of the two drew the bass's dice before the melody's,
+        // which went unseen while the melody's fallback style wrote nothing at all.
+        window._mlSetClock(1, 0, true); window._blSetClock(1, 0, true);
+        window._mlNativePendingTake(sr, 0); window._blNativePendingTake(sr, 0);
         seed();
       };
       setup();
@@ -191,7 +194,7 @@ const CASES = [
       const answer = window._songAnswer([1,0,0,0,sr,3*sr,0,1,capo], 0, sr, {sec:0,slot:0}, 0, {sec:0,slot:0});
       rows.push({bassFollow,follow,rest,capo, expected, actual:answer.mel.pending || [0], left:window._mlNativePendingTake(sr,0)});
     }
-    Math.random = realRandom; window._mlSetClock(0,0,false);
+    Math.random = realRandom; window._mlSetClock(0,0,false); window._blSetClock(0,0,false);
     return rows;
   });
   for(const r of melodyAnswers) ok(JSON.stringify(r.expected) === JSON.stringify(r.actual) && r.left[0] === 0,
